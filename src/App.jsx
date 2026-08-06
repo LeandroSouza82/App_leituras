@@ -8,11 +8,13 @@ import Navigation from './components/Navigation/Navigation';
 import { useLeituras } from './hooks/useLeituras';
 import { showLeituraNotifications } from './utils/notifications';
 import ModalAviso from './components/ModalAviso/ModalAviso';
+import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondominiosModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 
 const App = () => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const {
     leituras,
     mesAnoFormatado,
@@ -90,7 +92,17 @@ const App = () => {
           />
           <section className="dashboard-summary">
             <div className="dashboard-grid">
-              <article className="metric-card metric-blue">
+              <article
+                className="metric-card metric-blue"
+                onClick={() => setModalCondominiosAberto(true)}
+                style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
                 <div className="metric-icon">
                   <Building2 size={20} />
                 </div>
@@ -165,6 +177,12 @@ const App = () => {
         onClose={handleCloseAlerts}
         leiturasHoje={leiturasHoje}
         leiturasAtrasadas={leiturasAtrasadas}
+      />
+
+      <ListaCondominiosModal
+        isOpen={modalCondominiosAberto}
+        onClose={() => setModalCondominiosAberto(false)}
+        leituras={leituras}
       />
 
       <Navigation activeTab={abaAtiva} onChange={setAbaAtiva} />

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Bell, CalendarDays, Share2 } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioExcel } from '../../utils/exportExcel';
+import ListaCondominiosModal from '../ListaCondominiosModal/ListaCondominiosModal';
 
 const formatCurrency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -27,6 +29,7 @@ const Header = ({
   totalPendentes,
   onOpenAlerts,
 }) => {
+  const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
@@ -73,7 +76,11 @@ const Header = ({
       </div>
 
       <div className="header-stats">
-        <div className="stat-card">
+        <div
+          className="stat-card"
+          onClick={() => setModalCondominiosAberto(true)}
+          style={{ cursor: 'pointer' }}
+        >
           <span>Condomínios</span>
           <strong>{totalCondominios}</strong>
         </div>
@@ -92,6 +99,12 @@ const Header = ({
           <strong>{formatCurrency(totalValor)}</strong>
         </button>
       </div>
+
+      <ListaCondominiosModal
+        isOpen={modalCondominiosAberto}
+        onClose={() => setModalCondominiosAberto(false)}
+        leituras={leituras || []}
+      />
     </header>
   );
 };
