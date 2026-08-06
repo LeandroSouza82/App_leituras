@@ -1,4 +1,4 @@
-import { CalendarDays, Share2 } from 'lucide-react';
+import { Bell, CalendarDays, Share2 } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioExcel } from '../../utils/exportExcel';
 
@@ -9,29 +9,25 @@ const formatCurrency = (value) =>
   });
 
 const getCurrentMonthYear = () => {
-  const now = new Date();
-  const formatted = now.toLocaleDateString('pt-BR', {
+  const dataAtual = new Date();
+  const mesAnoFormatado = dataAtual.toLocaleDateString('pt-BR', {
     month: 'long',
     year: 'numeric',
   });
-  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  return mesAnoFormatado.charAt(0).toUpperCase() + mesAnoFormatado.slice(1);
 };
 
-const isValidMonthYear = (value) => {
-  if (typeof value !== 'string') {
-    return false;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toLowerCase() === 'invalid date') {
-    return false;
-  }
-
-  return true;
-};
-
-const Header = ({ mesAnoFormatado, totalCondominios, totalConcluidos, percentualConcluido, totalValor, leituras }) => {
-  const title = isValidMonthYear(mesAnoFormatado) ? mesAnoFormatado : getCurrentMonthYear();
+const Header = ({
+  mesAnoFormatado,
+  totalCondominios,
+  totalConcluidos,
+  percentualConcluido,
+  totalValor,
+  leituras,
+  totalPendentes,
+  onOpenAlerts,
+}) => {
+  const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
     const arquivo = gerarRelatorioExcel(leituras, title);
@@ -67,6 +63,13 @@ const Header = ({ mesAnoFormatado, totalCondominios, totalConcluidos, percentual
           <p className="eyebrow">LeiturasApp</p>
           <h1>{title}</h1>
         </div>
+      </div>
+
+      <div className="header-actions">
+        <button type="button" className="alert-button" onClick={onOpenAlerts} aria-label="Abrir alertas">
+          <Bell size={18} />
+          {totalPendentes > 0 && <span className="alert-badge">{totalPendentes}</span>}
+        </button>
       </div>
 
       <div className="header-stats">

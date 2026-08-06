@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, CheckCircle2, DollarSign } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
@@ -6,20 +6,29 @@ import LeituraForm from './components/LeituraForm/LeituraForm';
 import LeituraList from './components/LeituraList/LeituraList';
 import Navigation from './components/Navigation/Navigation';
 import { useLeituras } from './hooks/useLeituras';
+import { showLeituraNotifications } from './utils/notifications';
+import ModalAviso from './components/ModalAviso/ModalAviso';
+import { atualizarBadgeIcone } from './utils/appBadge';
 
 const App = () => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const {
     leituras,
     mesAnoFormatado,
     totalValor,
     totalConcluidos,
     percentualConcluido,
+    leiturasHoje,
+    leiturasAtrasadas,
     adicionarLeitura,
     adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
+    editarLeitura,
   } = useLeituras();
+  const notificacaoEnviadaRef = useRef(false);
+  const totalPendentes = useMemo(() => leiturasHoje.length + leiturasAtrasadas.length, [leiturasHoje, leiturasAtrasadas]);
 
   const handleAdicionarLeitura = (dados) => {
     adicionarLeitura(dados);
@@ -29,6 +38,40 @@ const App = () => {
   const handleImportSuccess = (quantidade) => {
     alert(`${quantidade} condomínios importados com sucesso!`);
     setAbaAtiva('leituras');
+  };
+
+  useEffect(() => {
+    const temPendencias = leiturasHoje.length > 0 || leiturasAtrasadas.length > 0;
+
+    if (!temPendencias) {
+      notificacaoEnviadaRef.current = false;
+      atualizarBadgeIcone(0);
+      return;
+    }
+
+    if (!notificacaoEnviadaRef.current) {
+      notificacaoEnviadaRef.current = true;
+      showLeituraNotifications({ leiturasHoje, leiturasAtrasadas });
+    }
+
+    atualizarBadgeIcone(totalPendentes);
+  }, [leiturasHoje, leiturasAtrasadas, totalPendentes]);
+
+  useEffect(() => {
+    const chave = sessionStorage.getItem('leituras-alerta-aberto');
+    if (!chave && totalPendentes > 0) {
+      setIsModalOpen(true);
+    }
+  }, [totalPendentes]);
+
+  const handleOpenAlerts = () => {
+    setIsModalOpen(true);
+    sessionStorage.setItem('leituras-alerta-aberto', 'true');
+  };
+
+  const handleCloseAlerts = () => {
+    setIsModalOpen(false);
+    sessionStorage.setItem('leituras-alerta-aberto', 'true');
   };
 
   return (
@@ -42,6 +85,8 @@ const App = () => {
             percentualConcluido={percentualConcluido}
             totalValor={totalValor}
             leituras={leituras}
+            totalPendentes={totalPendentes}
+            onOpenAlerts={handleOpenAlerts}
           />
           <section className="dashboard-summary">
             <div className="dashboard-grid">
@@ -94,7 +139,14 @@ const App = () => {
 
       {abaAtiva === 'leituras' && (
         <div className="app-content">
-          <LeituraList leituras={leituras} onToggle={toggleCompleto} onDelete={deletarLeitura} />
+          <LeituraList
+            leituras={leituras}
+            leiturasHoje={leiturasHoje}
+            leiturasAtrasadas={leiturasAtrasadas}
+            onToggle={toggleCompleto}
+            onDelete={deletarLeitura}
+            onEdit={editarLeitura}
+          />
         </div>
       )}
 
@@ -107,6 +159,13 @@ const App = () => {
           />
         </div>
       )}
+
+      <ModalAviso
+        isOpen={isModalOpen}
+        onClose={handleCloseAlerts}
+        leiturasHoje={leiturasHoje}
+        leiturasAtrasadas={leiturasAtrasadas}
+      />
 
       <Navigation activeTab={abaAtiva} onChange={setAbaAtiva} />
     </div>

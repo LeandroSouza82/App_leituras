@@ -1,0 +1,46 @@
+const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [] }) => {
+  const temHoje = leiturasHoje.length > 0;
+  const temAtrasadas = leiturasAtrasadas.length > 0;
+
+  if (!temHoje && !temAtrasadas) {
+    return null;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+      {temHoje && (
+        <div
+          style={{
+            background: '#fef3c7',
+            color: '#92400e',
+            border: '1px solid #fde68a',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            fontSize: '0.95rem',
+            fontWeight: 600,
+          }}
+        >
+          ⚠️ <strong>Atenção:</strong> Você tem {leiturasHoje.length} leitura(s) agendada(s) para HOJE!
+        </div>
+      )}
+
+      {temAtrasadas && (
+        <div
+          style={{
+            background: '#fee2e2',
+            color: '#991b1b',
+            border: '1px solid #fecaca',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            fontSize: '0.95rem',
+            fontWeight: 600,
+          }}
+        >
+          🚨 <strong>Pendente:</strong> Você tem {leiturasAtrasadas.length} leitura(s) ATRASADA(S)!
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AlertaBanner;

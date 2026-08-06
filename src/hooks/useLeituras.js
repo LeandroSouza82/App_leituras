@@ -28,13 +28,16 @@ const normalizeLeitura = (item) => ({
 
 export const useLeituras = () => {
   const chaveMesAno = getCurrentMonthKey();
+  const diaAtual = new Date().getDate();
 
   const [leituras, setLeituras] = useState(() => {
     const storedLeituras = getLeituras(chaveMesAno).map(normalizeLeitura);
     const ultimaSessao = getLastSessionMonth();
 
     if (ultimaSessao && ultimaSessao !== chaveMesAno) {
-      const resetLeituras = storedLeituras.map((item) => ({ ...normalizeLeitura(item), completo: false }));
+      const leiturasDoMesAnterior = getLeituras(ultimaSessao).map(normalizeLeitura);
+      const fonteLeituras = leiturasDoMesAnterior.length > 0 ? leiturasDoMesAnterior : storedLeituras;
+      const resetLeituras = fonteLeituras.map((item) => ({ ...normalizeLeitura(item), completo: false }));
       saveLeituras(chaveMesAno, resetLeituras);
       setLastSessionMonth(chaveMesAno);
       return resetLeituras;
@@ -68,6 +71,16 @@ export const useLeituras = () => {
     setLeituras((previous) => previous.filter((item) => item.id !== id));
   };
 
+  const editarLeitura = (idTarget, novosDados) => {
+    setLeituras((prev) =>
+      prev.map((item) =>
+        String(item.id) === String(idTarget)
+          ? { ...item, ...novosDados }
+          : item
+      )
+    );
+  };
+
   const adicionarEmLote = (novosCondominios) => {
     const leiturasConvertidas = novosCondominios.map((item) =>
       createLeitura({
@@ -80,6 +93,16 @@ export const useLeituras = () => {
 
     setLeituras((previous) => [...leiturasConvertidas, ...previous]);
   };
+
+  const leiturasHoje = useMemo(
+    () => leituras.filter((item) => !item.completo && Number(item.diaLeitura) === diaAtual),
+    [leituras, diaAtual]
+  );
+
+  const leiturasAtrasadas = useMemo(
+    () => leituras.filter((item) => !item.completo && Number(item.diaLeitura) < diaAtual),
+    [leituras, diaAtual]
+  );
 
   const totalValor = useMemo(
     () => leituras.reduce((sum, item) => sum + Number(item.valor), 0),
@@ -112,9 +135,12 @@ export const useLeituras = () => {
     totalValor,
     totalConcluidos,
     percentualConcluido,
+    leiturasHoje,
+    leiturasAtrasadas,
     adicionarLeitura,
     adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
+    editarLeitura,
   };
 };

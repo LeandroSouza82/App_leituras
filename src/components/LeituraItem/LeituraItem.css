@@ -159,6 +159,29 @@
   font-weight: 700;
 }
 
+.btn-editar {
+  background-color: #dbeafe !important;
+  border: none;
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  color: #2563eb;
+}
+
+.btn-editar:hover {
+  background-color: #bfdbfe !important;
+}
+
+.btn-editar svg {
+  display: block;
+  color: #2563eb;
+}
+
 .delete-btn {
   border: none;
   width: 38px;
