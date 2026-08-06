@@ -1,0 +1,31 @@
+.list-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06);
+}
+
+.list-header h2 {
+  margin: 0 0 6px;
+  color: #111827;
+}
+
+.list-header p {
+  margin: 0 0 16px;
+  color: #6b7280;
+}
+
+.list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty-state {
+  padding: 24px;
+  border: 1px dashed #e5e7eb;
+  border-radius: 16px;
+  color: #6b7280;
+  text-align: center;
+}

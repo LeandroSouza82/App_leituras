@@ -1,0 +1,81 @@
+.form-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06);
+}
+
+.form-heading h2 {
+  margin: 0 0 6px;
+  color: #111827;
+}
+
+.form-heading p {
+  margin: 0 0 16px;
+  color: #6b7280;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.field span {
+  color: #374151;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.field input {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #f8f9fa;
+  color: #111827;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.submit-btn {
+  grid-column: 1 / -1;
+  border: none;
+  border-radius: 14px;
+  padding: 13px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 24px rgba(16, 185, 129, 0.24);
+}
+
+@media (max-width: 639px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
