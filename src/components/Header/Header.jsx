@@ -28,6 +28,7 @@ const Header = ({
   leituras,
   totalPendentes,
   onOpenAlerts,
+  onOpenProgressoModal,
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const title = getCurrentMonthYear();
@@ -84,7 +85,11 @@ const Header = ({
           <span>Condomínios</span>
           <strong>{totalCondominios}</strong>
         </div>
-        <div className="stat-card">
+        <div
+          className="stat-card stat-card-action"
+          onClick={onOpenProgressoModal || (() => setModalCondominiosAberto(true))}
+          style={{ cursor: 'pointer' }}
+        >
           <span>Progresso</span>
           <strong>{totalConcluidos}/{totalCondominios}</strong>
           <div className="progress-track">

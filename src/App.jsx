@@ -9,12 +9,14 @@ import { useLeituras } from './hooks/useLeituras';
 import { showLeituraNotifications } from './utils/notifications';
 import ModalAviso from './components/ModalAviso/ModalAviso';
 import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondominiosModal';
+import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 
 const App = () => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
+  const [showProgressoModal, setShowProgressoModal] = useState(false);
   const {
     leituras,
     mesAnoFormatado,
@@ -89,6 +91,7 @@ const App = () => {
             leituras={leituras}
             totalPendentes={totalPendentes}
             onOpenAlerts={handleOpenAlerts}
+            onOpenProgressoModal={() => setShowProgressoModal(true)}
           />
           <section className="dashboard-summary">
             <div className="dashboard-grid">
@@ -133,7 +136,17 @@ const App = () => {
               </article>
             </div>
 
-            <div className="completion-card">
+            <div
+              className="completion-card"
+              onClick={() => setShowProgressoModal(true)}
+              style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
               <div className="completion-header">
                 <div>
                   <h3>Progresso do mês</h3>
@@ -182,6 +195,12 @@ const App = () => {
       <ListaCondominiosModal
         isOpen={modalCondominiosAberto}
         onClose={() => setModalCondominiosAberto(false)}
+        leituras={leituras}
+      />
+
+      <ProgressoModal
+        isOpen={showProgressoModal}
+        onClose={() => setShowProgressoModal(false)}
         leituras={leituras}
       />
 
