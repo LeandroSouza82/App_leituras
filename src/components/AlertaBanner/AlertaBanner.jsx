@@ -1,4 +1,4 @@
-const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [] }) => {
+const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasado }) => {
   const temHoje = leiturasHoje.length > 0;
   const temAtrasadas = leiturasAtrasadas.length > 0;
 
@@ -7,7 +7,20 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [] }) => {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+    <div
+      style={{
+        position: 'sticky',
+        top: '12px',
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        marginBottom: '12px',
+        background: '#ffffff',
+        paddingTop: '4px',
+        paddingBottom: '4px',
+      }}
+    >
       {temHoje && (
         <div
           style={{
@@ -26,6 +39,7 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [] }) => {
 
       {temAtrasadas && (
         <div
+          onClick={onFocarAtrasado}
           style={{
             background: '#fee2e2',
             color: '#991b1b',
@@ -34,7 +48,11 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [] }) => {
             padding: '10px 12px',
             fontSize: '0.95rem',
             fontWeight: 600,
+            cursor: onFocarAtrasado ? 'pointer' : 'default',
+            userSelect: 'none',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           }}
+          title="Clique para focar na leitura atrasada"
         >
           🚨 <strong>Pendente:</strong> Você tem {leiturasAtrasadas.length} leitura(s) ATRASADA(S)!
         </div>

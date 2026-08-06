@@ -11,6 +11,22 @@
   color: #1e3a8a;
 }
 
+@keyframes piscarBordaAtrasado {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+    border-color: #dc2626;
+  }
+  50% {
+    box-shadow: 0 0 12px 4px rgba(220, 38, 38, 0.6);
+    border-color: #ef4444;
+  }
+}
+
+.item-card.focado-atrasado {
+  animation: piscarBordaAtrasado 0.8s ease-in-out infinite;
+  border-color: #dc2626 !important;
+}
+
 .item-card.completed {
   border-color: #93c5fd;
   background: #dbeafe;

@@ -1,6 +1,15 @@
 import './ModalConfirmacao.css';
 
-const ModalConfirmacao = ({ isOpen, titulo, mensagem, onConfirm, onCancel }) => {
+const ModalConfirmacao = ({
+  isOpen,
+  titulo,
+  mensagem,
+  onConfirm,
+  onCancel,
+  textoCancelar = 'Não, cancelar',
+  textoConfirmar = 'Sim, confirmar',
+  btnConfirmarClasse = 'btn-confirmar',
+}) => {
   if (!isOpen) {
     return null;
   }
@@ -12,10 +21,10 @@ const ModalConfirmacao = ({ isOpen, titulo, mensagem, onConfirm, onCancel }) => 
         <p>{mensagem}</p>
         <div className="modal-acoes">
           <button type="button" className="btn-cancelar" onClick={onCancel}>
-            Não, cancelar
+            {textoCancelar}
           </button>
-          <button type="button" className="btn-confirmar" onClick={onConfirm}>
-            Sim, confirmar
+          <button type="button" className={btnConfirmarClasse} onClick={onConfirm}>
+            {textoConfirmar}
           </button>
         </div>
       </div>

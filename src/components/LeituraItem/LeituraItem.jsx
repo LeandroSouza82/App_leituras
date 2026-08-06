@@ -17,12 +17,13 @@ const formatDateBR = (dateString) => {
   return date.toLocaleDateString('pt-BR');
 };
 
-const LeituraItem = ({ leitura, onToggle, onDelete, onEdit }) => {
+const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const diaAtual = new Date().getDate();
   const diaLeitura = Number(leitura.diaLeitura);
   const [isEditing, setIsEditing] = useState(false);
   const [editDia, setEditDia] = useState(leitura.diaLeitura);
   const [mostrarModal, setMostrarModal] = useState(false);
+  const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
 
   const { statusLabel, statusClass, statusEmoji } = leitura.completo
     ? { statusLabel: 'Concluído', statusClass: 'status-success', statusEmoji: '🟢' }
@@ -60,7 +61,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit }) => {
 
   return (
     <>
-    <article className={`item-card ${leitura.completo ? 'completed' : ''}`}>
+    <article className={`item-card ${leitura.completo ? 'completed' : ''} ${isFocused ? 'focado-atrasado' : ''}`}>
       <label className="item-main">
         <span className={`checkbox ${leitura.completo ? 'checked' : ''}`}>
           {leitura.completo ? <Check size={14} /> : null}
@@ -88,7 +89,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit }) => {
             <button type="button" className="btn-editar" onClick={() => setIsEditing(!isEditing)} title="Editar dia">
               <Pencil color="#2563eb" size={18} />
             </button>
-            <button type="button" className="delete-btn" onClick={() => onDelete(leitura.id)}>
+            <button type="button" className="delete-btn" onClick={() => setMostrarModalDeletar(true)}>
               <Trash2 size={16} />
             </button>
           </div>
@@ -131,6 +132,19 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit }) => {
       mensagem={mensagemModal}
       onConfirm={handleConfirmar}
       onCancel={handleCancelar}
+    />
+    <ModalConfirmacao
+      isOpen={mostrarModalDeletar}
+      titulo="Excluir Condomínio"
+      mensagem="Tem certeza que deseja excluir este condomínio?"
+      textoCancelar="Cancelar"
+      textoConfirmar="Excluir"
+      btnConfirmarClasse="btn-excluir"
+      onConfirm={() => {
+        onDelete(leitura.id);
+        setMostrarModalDeletar(false);
+      }}
+      onCancel={() => setMostrarModalDeletar(false)}
     />
     </>
   );
