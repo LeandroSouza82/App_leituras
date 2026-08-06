@@ -8,8 +8,10 @@ const getCurrentMonthKey = () => {
   return `${year}-${month}`;
 };
 
+const gerarIdUnico = () => Date.now() + Math.random().toString(36).substr(2, 9);
+
 const createLeitura = ({ nome, data, apartamentos, valor, diaLeitura }) => ({
-  id: Date.now(),
+  id: gerarIdUnico(),
   nome,
   data,
   apartamentos: Number(apartamentos),
@@ -18,15 +20,21 @@ const createLeitura = ({ nome, data, apartamentos, valor, diaLeitura }) => ({
   completo: false,
 });
 
+const normalizeLeitura = (item) => ({
+  ...item,
+  id: item.id || gerarIdUnico(),
+  completo: typeof item.completo === 'boolean' ? item.completo : false,
+});
+
 export const useLeituras = () => {
   const chaveMesAno = getCurrentMonthKey();
 
   const [leituras, setLeituras] = useState(() => {
-    const storedLeituras = getLeituras(chaveMesAno);
+    const storedLeituras = getLeituras(chaveMesAno).map(normalizeLeitura);
     const ultimaSessao = getLastSessionMonth();
 
     if (ultimaSessao && ultimaSessao !== chaveMesAno) {
-      const resetLeituras = storedLeituras.map((item) => ({ ...item, completo: false }));
+      const resetLeituras = storedLeituras.map((item) => ({ ...normalizeLeitura(item), completo: false }));
       saveLeituras(chaveMesAno, resetLeituras);
       setLastSessionMonth(chaveMesAno);
       return resetLeituras;
@@ -58,6 +66,19 @@ export const useLeituras = () => {
 
   const deletarLeitura = (id) => {
     setLeituras((previous) => previous.filter((item) => item.id !== id));
+  };
+
+  const adicionarEmLote = (novosCondominios) => {
+    const leiturasConvertidas = novosCondominios.map((item) =>
+      createLeitura({
+        nome: item.nome,
+        apartamentos: item.apartamentos,
+        valor: item.valor,
+        diaLeitura: item.diaLeitura,
+      })
+    );
+
+    setLeituras((previous) => [...leiturasConvertidas, ...previous]);
   };
 
   const totalValor = useMemo(
@@ -92,6 +113,7 @@ export const useLeituras = () => {
     totalConcluidos,
     percentualConcluido,
     adicionarLeitura,
+    adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
   };

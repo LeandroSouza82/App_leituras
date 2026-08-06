@@ -27,16 +27,26 @@ const LeituraItem = ({ leitura, onToggle, onDelete }) => {
     ? { statusLabel: 'Fazer Hoje/Breve', statusClass: 'status-warning', statusEmoji: '🟡' }
     : { statusLabel: `Aguardando (Dia ${diaLeitura})`, statusClass: 'status-pending', statusEmoji: '⚪' };
 
+  const badgeText = `Dia ${diaLeitura}`;
+  const badgeDayClass = leitura.completo
+    ? 'badge-dia-success'
+    : diaLeitura < diaAtual
+    ? 'badge-dia-danger'
+    : 'badge-dia-awaiting';
+
   return (
     <article className={`item-card ${leitura.completo ? 'completed' : ''}`}>
       <label className="item-main">
         <span className={`checkbox ${leitura.completo ? 'checked' : ''}`}>
           {leitura.completo ? <Check size={14} /> : null}
         </span>
-        <input type="checkbox" checked={leitura.completo} onChange={() => onToggle(leitura.id)} />
+        <input type="checkbox" checked={Boolean(leitura.completo)} onChange={() => onToggle(leitura.id)} />
         <div className="item-info">
+          <div className="card-header">
+            <h3 className="card-title">{leitura.nome}</h3>
+            <span className={`badge-dia ${badgeDayClass}`}>{badgeText}</span>
+          </div>
           <div className="item-info-top">
-            <h3>{leitura.nome}</h3>
             <span className={`status-badge ${statusClass}`}>
               {statusEmoji} {statusLabel}
             </span>
