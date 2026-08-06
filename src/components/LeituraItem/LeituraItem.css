@@ -1,17 +1,19 @@
 .item-card {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
+  padding: 24px 16px 16px;
+  border: 2px solid #93c5fd;
   border-radius: 18px;
-  background: #fff;
+  background: #e0f2fe;
+  color: #1e3a8a;
 }
 
 .item-card.completed {
-  border-color: #10b981;
-  background: #f8fff9;
+  border-color: #93c5fd;
+  background: #dbeafe;
 }
 
 .item-main {
@@ -49,6 +51,51 @@
   gap: 8px;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.card-title {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+  word-break: break-word;
+  text-align: left;
+  padding-right: 75px;
+  margin: 0;
+}
+
+.badge-dia {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #ffffff !important;
+  text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.badge-dia-success {
+  background: #16a34a;
+}
+
+.badge-dia-danger {
+  background: #dc2626;
+}
+
+.badge-dia-awaiting {
+  background: #7c3aed;
+}
+
 .item-info-top {
   display: flex;
   flex-wrap: wrap;
@@ -58,7 +105,7 @@
 
 .item-info h3 {
   margin: 0;
-  color: #111827;
+  color: #1f2937;
   font-size: 1rem;
 }
 
@@ -66,7 +113,7 @@
 .item-info span {
   margin: 0;
   font-size: 0.9rem;
-  color: #6b7280;
+  color: #1e3a8a;
 }
 
 .status-badge {
@@ -107,7 +154,7 @@
 }
 
 .item-value {
-  color: #2563eb;
+  color: #1e3a8a;
   font-size: 1.18rem;
   font-weight: 700;
 }
