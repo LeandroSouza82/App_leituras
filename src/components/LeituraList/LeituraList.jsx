@@ -1,9 +1,18 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './LeituraList.css';
 import LeituraItem from '../LeituraItem/LeituraItem';
 import AlertaBanner from '../AlertaBanner/AlertaBanner';
 
-const LeituraList = ({ leituras, leiturasHoje, leiturasAtrasadas, onToggle, onDelete, onEdit }) => {
+const LeituraList = ({
+  leituras,
+  leiturasHoje,
+  leiturasAtrasadas,
+  onToggle,
+  onDelete,
+  onEdit,
+  focarAtrasadoAuto,
+  onResetFocarAtrasadoAuto,
+}) => {
   const diaAtual = new Date().getDate();
   const [indiceAtualDoFoco, setIndiceAtualDoFoco] = useState(0);
   const [itemFocadoId, setItemFocadoId] = useState(null);
@@ -37,7 +46,7 @@ const LeituraList = ({ leituras, leiturasHoje, leiturasAtrasadas, onToggle, onDe
 
     if (targetItem && itemRefs.current[targetItem.id]) {
       const element = itemRefs.current[targetItem.id];
-      const offsetTop = 180; // Deslocamento que garante que o aviso de pendências permaneça visível
+      const offsetTop = 180;
       const yPos = element.getBoundingClientRect().top + window.scrollY - offsetTop;
 
       window.scrollTo({
@@ -51,9 +60,17 @@ const LeituraList = ({ leituras, leiturasHoje, leiturasAtrasadas, onToggle, onDe
       }, 2000);
     }
 
-    // Incrementar o índice com ciclo
     setIndiceAtualDoFoco((prev) => (prev + 1) % indicesAtrasados.length);
   };
+
+  useEffect(() => {
+    if (focarAtrasadoAuto) {
+      handleFocarAtrasado();
+      if (onResetFocarAtrasadoAuto) {
+        onResetFocarAtrasadoAuto();
+      }
+    }
+  }, [focarAtrasadoAuto]);
 
   return (
     <section className="list-card">

@@ -1,7 +1,7 @@
 .form-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 24px;
+  border-radius: 8px;
   padding: 24px;
   box-shadow: 0 10px 35px rgba(15, 23, 42, 0.06);
 }
@@ -55,7 +55,7 @@
 .submit-btn {
   grid-column: 1 / -1;
   border: none;
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 13px 16px;
   display: inline-flex;
   align-items: center;
@@ -83,7 +83,7 @@
 
 .import-btn {
   border: 1px solid #d1d5db;
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 12px 16px;
   display: inline-flex;
   align-items: center;

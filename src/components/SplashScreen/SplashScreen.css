@@ -1,0 +1,140 @@
+.splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #1e88e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 1;
+  transition: opacity 0.7s ease-in-out;
+  overflow: hidden;
+}
+
+.splash-screen.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.splash-logo-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.splash-logo-badge {
+  width: 64px;
+  height: 64px;
+  background-color: #ffffff;
+  color: #1e88e5;
+  font-size: 2rem;
+  font-weight: 800;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: logoPop 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.splash-title-container {
+  display: flex;
+  gap: 10px;
+  font-size: 2.8rem;
+  font-weight: 800;
+  color: #ffffff;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.splash-title-fast {
+  display: inline-block;
+  opacity: 0;
+  animation: slideFromLeft 1.2s cubic-bezier(0.25, 1, 0.5, 1) 0.3s forwards;
+}
+
+.splash-title-leitura {
+  display: inline-block;
+  opacity: 0;
+  animation: slideFromRight 1.2s cubic-bezier(0.25, 1, 0.5, 1) 0.3s forwards;
+}
+
+.splash-slogan {
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin: 0;
+  max-width: 320px;
+  opacity: 0;
+  animation: fadeInSlogan 1s ease-out 1.6s forwards;
+}
+
+@keyframes slideFromLeft {
+  0% {
+    transform: translateX(-150px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideFromRight {
+  0% {
+    transform: translateX(150px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes logoPop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInSlogan {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 0.95;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .splash-logo-container {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .splash-title-container {
+    font-size: 2.4rem;
+  }
+  .splash-slogan {
+    font-size: 0.95rem;
+  }
+}

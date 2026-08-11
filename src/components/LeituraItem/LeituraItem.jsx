@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Check, Pencil, Trash2 } from 'lucide-react';
+import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2 } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
+import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModal';
 
 const formatCurrency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -20,8 +21,7 @@ const formatDateBR = (dateString) => {
 const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const diaAtual = new Date().getDate();
   const diaLeitura = Number(leitura.diaLeitura);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editDia, setEditDia] = useState(leitura.diaLeitura);
+  const [mostrarModalEdicao, setMostrarModalEdicao] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
 
@@ -59,6 +59,12 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     setMostrarModal(false);
   };
 
+  const handleOpenMaps = (e) => {
+    e.stopPropagation();
+    const query = encodeURIComponent(leitura.endereco || leitura.nome);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+  };
+
   return (
     <>
     <article className={`item-card ${leitura.completo ? 'completed' : ''} ${isFocused ? 'focado-atrasado' : ''}`}>
@@ -77,52 +83,49 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
               {statusEmoji} {statusLabel}
             </span>
           </div>
-          <p>{formatDateBR(leitura.data)}</p>
-          <span>{leitura.apartamentos} apartamentos</span>
+
+          <div className="tipo-leitura-tag">
+            <Gauge size={14} />
+            <span>{leitura.tipoLeitura || 'Água e Gás'}</span>
+          </div>
+
+          <p className="item-data">{formatDateBR(leitura.data)} • {leitura.apartamentos} aptos</p>
+
+          {leitura.instrucoesAcesso && (
+            <div className="info-extra">
+              <KeyRound size={13} />
+              <span>{leitura.instrucoesAcesso}</span>
+            </div>
+          )}
+
+          {leitura.contatoSindico && (
+            <div className="info-extra">
+              <Phone size={13} />
+              <a href={`tel:${leitura.contatoSindico}`} onClick={(e) => e.stopPropagation()}>
+                {leitura.contatoSindico}
+              </a>
+            </div>
+          )}
         </div>
       </label>
 
       <div className="item-actions">
         <div className="item-value">{formatCurrency(leitura.valor)}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button type="button" className="btn-editar" onClick={() => setIsEditing(!isEditing)} title="Editar dia">
-              <Pencil color="#2563eb" size={18} />
-            </button>
-            <button type="button" className="delete-btn" onClick={() => setMostrarModalDeletar(true)}>
-              <Trash2 size={16} />
-            </button>
-          </div>
-          {isEditing && (
-            <div className="painel-edicao" style={{ display: 'flex', gap: '8px', marginTop: '2px', alignItems: 'center' }}>
-              <label style={{ fontSize: '0.8rem' }}>Novo Dia:</label>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={editDia}
-                onChange={(e) => setEditDia(e.target.value)}
-                style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  onEdit(leitura.id, { diaLeitura: Number(editDia) });
-                  setIsEditing(false);
-                }}
-                style={{ padding: '4px 8px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: '4px' }}
-              >
-                Salvar
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                style={{ padding: '4px 8px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '4px' }}
-              >
-                Sair
-              </button>
-            </div>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            className="btn-maps"
+            onClick={handleOpenMaps}
+            title="Abrir no Google Maps"
+          >
+            <Navigation size={16} />
+          </button>
+          <button type="button" className="btn-editar" onClick={() => setMostrarModalEdicao(true)} title="Editar condomínio">
+            <Pencil color="#1e88e5" size={16} />
+          </button>
+          <button type="button" className="delete-btn" onClick={() => setMostrarModalDeletar(true)}>
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
     </article>
@@ -145,6 +148,12 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
         setMostrarModalDeletar(false);
       }}
       onCancel={() => setMostrarModalDeletar(false)}
+    />
+    <EditarCondominioModal
+      isOpen={mostrarModalEdicao}
+      onClose={() => setMostrarModalEdicao(false)}
+      condominio={leitura}
+      onSave={(id, dadosAtualizados) => onEdit(id, dadosAtualizados)}
     />
     </>
   );

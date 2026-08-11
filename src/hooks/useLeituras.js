@@ -10,19 +10,27 @@ const getCurrentMonthKey = () => {
 
 const gerarIdUnico = () => Date.now() + Math.random().toString(36).substr(2, 9);
 
-const createLeitura = ({ nome, data, apartamentos, valor, diaLeitura }) => ({
+const createLeitura = ({ nome, data, apartamentos, valor, diaLeitura, tipoLeitura, endereco, instrucoesAcesso, contatoSindico }) => ({
   id: gerarIdUnico(),
   nome,
-  data,
+  data: data || new Date().toISOString().split('T')[0],
   apartamentos: Number(apartamentos),
   valor: Number(valor),
   diaLeitura: Number(diaLeitura),
+  tipoLeitura: tipoLeitura && tipoLeitura.trim() ? tipoLeitura.trim() : 'Água e Gás',
+  endereco: endereco || '',
+  instrucoesAcesso: instrucoesAcesso || '',
+  contatoSindico: contatoSindico || '',
   completo: false,
 });
 
 const normalizeLeitura = (item) => ({
   ...item,
   id: item.id || gerarIdUnico(),
+  tipoLeitura: item.tipoLeitura && String(item.tipoLeitura).trim() ? String(item.tipoLeitura).trim() : 'Água e Gás',
+  endereco: item.endereco || '',
+  instrucoesAcesso: item.instrucoesAcesso || '',
+  contatoSindico: item.contatoSindico || '',
   completo: typeof item.completo === 'boolean' ? item.completo : false,
 });
 
@@ -88,6 +96,10 @@ export const useLeituras = () => {
         apartamentos: item.apartamentos,
         valor: item.valor,
         diaLeitura: item.diaLeitura,
+        tipoLeitura: item.tipoLeitura,
+        endereco: item.endereco,
+        instrucoesAcesso: item.instrucoesAcesso,
+        contatoSindico: item.contatoSindico,
       })
     );
 

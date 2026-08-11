@@ -1,14 +1,16 @@
 .item-card {
   position: relative;
+  width: 100%;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  padding: 24px 16px 16px;
-  border: 2px solid #93c5fd;
-  border-radius: 18px;
-  background: #e0f2fe;
-  color: #1e3a8a;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 @keyframes piscarBordaAtrasado {
@@ -28,8 +30,61 @@
 }
 
 .item-card.completed {
-  border-color: #93c5fd;
-  background: #dbeafe;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.tipo-leitura-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1e88e5;
+  background-color: #e0f2fe;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.info-extra {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.info-extra a {
+  color: #1e88e5;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.item-data {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.btn-maps {
+  background: #e0f2fe;
+  color: #1e88e5;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-maps:hover {
+  background: #bae6fd;
 }
 
 .item-main {
@@ -77,13 +132,16 @@
 
 .card-title {
   flex: 1;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: #1e293b;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
+  white-space: normal;
   text-align: left;
   padding-right: 75px;
   margin: 0;
+  line-height: 1.3;
 }
 
 .badge-dia {
@@ -166,13 +224,16 @@
 .item-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: nowrap;
 }
 
 .item-value {
   color: #1e3a8a;
-  font-size: 1.18rem;
+  font-size: 1.2rem;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .btn-editar {
@@ -211,16 +272,11 @@
 }
 
 @media (max-width: 639px) {
-  .item-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .item-actions {
-    justify-content: space-between;
+  .card-title {
+    font-size: 1rem;
   }
 
   .item-value {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
   }
 }
