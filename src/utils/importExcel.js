@@ -22,17 +22,24 @@ const parseNumberValue = (value) => {
 };
 
 const parseDayValue = (value) => {
-  const parsed = Number(String(value).replace(/[^0-9]/g, ''));
-  if (!Number.isFinite(parsed)) {
-    return 1;
+  const valueStr = String(value).trim();
+  
+  // Se está vazio, retorna "1"
+  if (!valueStr) {
+    return '1';
   }
-  if (parsed < 1) {
-    return 1;
+  
+  // Tenta extrair número (ex: "dia 5" → "5", "7 a 10" → "7", "Variado" → "Variado")
+  const match = valueStr.match(/\d+/);
+  if (match) {
+    const num = Number(match[0]);
+    if (num >= 1 && num <= 31) {
+      return String(num);
+    }
   }
-  if (parsed > 31) {
-    return 31;
-  }
-  return parsed;
+  
+  // Se não conseguiu extrair um número válido, retorna o texto original (ex: "Variado")
+  return valueStr;
 };
 
 const gerarIdUnico = () => Date.now() + Math.random().toString(36).substr(2, 9);

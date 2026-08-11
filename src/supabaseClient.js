@@ -4,9 +4,9 @@ const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Supabase URL e anon key não configurados.');
+  throw new Error(
+    'Supabase URL e anon key não configurados. Verifique VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.'
+  );
 }
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export { supabase };
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

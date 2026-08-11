@@ -16,28 +16,48 @@ import './Perfil.css';
 
 const FALLBACK_USER = {
   id: 'fallback-user',
-  name: 'Leitor Oficial',
-  email: 'leitor@fastleitura.com.br',
+  name: 'Leiturista não identificado',
+  email: 'leiturista@fastleitura.com.br',
+  role: 'Leiturista',
   pix: '',
   phone: '',
 };
 
-const getInitials = (name) => name
+const getInitials = (name) => String(name || '')
   .split(' ')
   .filter(Boolean)
   .slice(0, 2)
   .map((part) => part[0].toUpperCase())
-  .join('');
+  .join('') || 'L';
 
 const getUserData = (user) => ({
   id: user?.id || FALLBACK_USER.id,
   name: user?.user_metadata?.full_name || user?.user_metadata?.name || FALLBACK_USER.name,
   email: user?.email || FALLBACK_USER.email,
+  role: user?.user_metadata?.role || 'Leiturista',
   pix: user?.user_metadata?.pix || '',
   phone: user?.user_metadata?.phone || user?.phone || '',
 });
 
-const Perfil = ({ onShowToast, onNavigate, onRefresh }) => {
+const loadProfileData = async (userId) => {
+  if (!userId || !supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('nome, celular, funcao')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  return data;
+};
+
+const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
   const [user, setUser] = useState(FALLBACK_USER);
   const [pix, setPix] = useState('');
   const [phone, setPhone] = useState('');
@@ -56,22 +76,39 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh }) => {
         return;
       }
 
-      const { data, error } = await supabase.auth.getUser();
-      if (!isMounted) {
-        return;
-      }
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!isMounted) {
+          return;
+        }
 
-      if (error || !data.user) {
-        onShowToast('Sessão de teste ativa. Dados fictícios carregados.', 'success');
+        if (error || !data.user) {
+          onShowToast('Sessão de teste ativa. Dados fictícios carregados.', 'success');
+          setLoadingUser(false);
+          return;
+        }
+
+        const profileData = await loadProfileData(data.user.id);
+        const baseUser = getUserData(data.user);
+        const userData = {
+          ...baseUser,
+          name: profileData?.nome || baseUser.name,
+          phone: profileData?.celular || baseUser.phone,
+          role: profileData?.funcao || baseUser.role,
+        };
+
+        setUser(userData);
+        setPix(userData.pix);
+        setPhone(userData.phone);
         setLoadingUser(false);
-        return;
+      } catch {
+        if (isMounted) {
+          setUser(FALLBACK_USER);
+          setPix('');
+          setPhone('');
+          setLoadingUser(false);
+        }
       }
-
-      const userData = getUserData(data.user);
-      setUser(userData);
-      setPix(userData.pix);
-      setPhone(userData.phone);
-      setLoadingUser(false);
     };
 
     loadUser();
@@ -81,6 +118,8 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh }) => {
   }, [onShowToast]);
 
   const initials = useMemo(() => getInitials(user.name), [user.name]);
+  const perfilName = user.name || 'Leiturista não identificado';
+  const perfilRole = user.role || 'Leiturista';
 
   const handleSaveData = async (event) => {
     event.preventDefault();
@@ -123,6 +162,14 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh }) => {
   };
 
   const handleSignOut = async () => {
+    if (onLogout) {
+      const saiu = await onLogout();
+      if (saiu === false) {
+        onShowToast('Não foi possível sair da conta.', 'error');
+      }
+      return;
+    }
+
     if (supabase && user.id !== FALLBACK_USER.id) {
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -143,13 +190,13 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh }) => {
         </div>
         <div className="perfil-heading">
           <span className="perfil-eyebrow">Minha conta</span>
-          <h1 id="perfil-title">{loadingUser ? 'Carregando perfil...' : user.name}</h1>
+          <h1 id="perfil-title">{loadingUser ? 'Leiturista não identificado' : perfilName}</h1>
           <div className="perfil-contact-line">
             <Mail size={15} aria-hidden="true" />
             <span>{user.email}</span>
           </div>
         </div>
-        <span className="perfil-status"><span /> Leitor Ativo</span>
+        <span className="perfil-status"><span /> {perfilRole}</span>
       </header>
 
       <form className="perfil-card" onSubmit={handleSaveData}>

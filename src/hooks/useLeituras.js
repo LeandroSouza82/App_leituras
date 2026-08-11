@@ -7,6 +7,13 @@ import {
   salvarCondominio,
 } from '../services/condominioService';
 
+// Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
+const extrairNumeroDia = (diaTexto) => {
+  if (!diaTexto) return null;
+  const numeroString = String(diaTexto).match(/\d+/)?.[0];
+  return numeroString ? Number.parseInt(numeroString, 10) : null;
+};
+
 const getCurrentMonthKey = () => {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -17,6 +24,7 @@ const getCurrentMonthKey = () => {
 export const useLeituras = (onFeedback = () => {}) => {
   const diaAtual = new Date().getDate();
   const [leituras, setLeituras] = useState([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -36,7 +44,7 @@ export const useLeituras = (onFeedback = () => {}) => {
     return () => {
       isMounted = false;
     };
-  }, [onFeedback]);
+  }, [onFeedback, reloadKey]);
 
   const adicionarLeitura = async (novaLeitura) => {
     try {
@@ -110,12 +118,20 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const leiturasHoje = useMemo(
-    () => leituras.filter((item) => !item.completo && Number(item.diaLeitura) === diaAtual),
+    () => leituras.filter((item) => {
+      if (item.completo) return false;
+      const dia = extrairNumeroDia(item.diaLeitura);
+      return dia === diaAtual;
+    }),
     [leituras, diaAtual]
   );
 
   const leiturasAtrasadas = useMemo(
-    () => leituras.filter((item) => !item.completo && Number(item.diaLeitura) < diaAtual),
+    () => leituras.filter((item) => {
+      if (item.completo) return false;
+      const dia = extrairNumeroDia(item.diaLeitura);
+      return dia !== null && dia < diaAtual;
+    }),
     [leituras, diaAtual]
   );
 
@@ -146,6 +162,10 @@ export const useLeituras = (onFeedback = () => {}) => {
     });
   }, []);
 
+  const recarregarCondominios = () => {
+    setReloadKey((previous) => previous + 1);
+  };
+
   return {
     leituras,
     mesAnoFormatado,
@@ -159,5 +179,6 @@ export const useLeituras = (onFeedback = () => {}) => {
     toggleCompleto,
     deletarLeitura,
     editarLeitura,
+    recarregarCondominios,
   };
 };

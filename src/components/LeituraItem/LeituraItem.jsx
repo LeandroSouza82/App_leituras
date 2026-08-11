@@ -1,8 +1,16 @@
 import { useState } from 'react';
-import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2 } from 'lucide-react';
+import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
 import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModal';
+import { supabase } from '../../services/supabaseClient';
+
+// Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
+const extrairNumeroDia = (diaTexto) => {
+  if (!diaTexto) return null;
+  const numeroString = String(diaTexto).match(/\d+/)?.[0];
+  return numeroString ? Number.parseInt(numeroString, 10) : null;
+};
 
 const formatCurrency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -20,23 +28,24 @@ const formatDateBR = (dateString) => {
 
 const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const diaAtual = new Date().getDate();
-  const diaLeitura = Number(leitura.diaLeitura);
+  const diaLeitura = extrairNumeroDia(leitura.diaLeitura);
   const [mostrarModalEdicao, setMostrarModalEdicao] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
+  const [capturandoGpsId, setCapturandoGpsId] = useState(null);
 
   const { statusLabel, statusClass, statusEmoji } = leitura.completo
     ? { statusLabel: 'Concluído', statusClass: 'status-success', statusEmoji: '🟢' }
-    : diaAtual > diaLeitura
+    : diaLeitura !== null && diaAtual > diaLeitura
     ? { statusLabel: 'Atrasado', statusClass: 'status-danger', statusEmoji: '🔴' }
-    : diaLeitura - diaAtual <= 2
+    : diaLeitura !== null && diaLeitura - diaAtual <= 2
     ? { statusLabel: 'Fazer Hoje/Breve', statusClass: 'status-warning', statusEmoji: '🟡' }
-    : { statusLabel: `Aguardando (Dia ${diaLeitura})`, statusClass: 'status-pending', statusEmoji: '⚪' };
+    : { statusLabel: `Aguardando (Dia ${leitura.diaLeitura})`, statusClass: 'status-pending', statusEmoji: '⚪' };
 
-  const badgeText = `Dia ${diaLeitura}`;
+  const badgeText = `Dia ${leitura.diaLeitura}`;
   const badgeDayClass = leitura.completo
     ? 'badge-dia-success'
-    : diaLeitura < diaAtual
+    : diaLeitura !== null && diaLeitura < diaAtual
     ? 'badge-dia-danger'
     : 'badge-dia-awaiting';
 
@@ -59,10 +68,65 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     setMostrarModal(false);
   };
 
+  const salvarLocalizacaoGPS = async (e) => {
+    e.stopPropagation();
+    if (!navigator.geolocation) {
+      alert('Seu navegador/dispositivo não suporta geolocalização.');
+      return;
+    }
+
+    setCapturandoGpsId(leitura.id);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+
+        const { error } = await supabase
+          .from('condominios')
+          .update({ latitude, longitude })
+          .eq('id', leitura.id);
+
+        setCapturandoGpsId(null);
+
+        if (error) {
+          alert('Erro ao salvar localização: ' + error.message);
+        } else {
+          alert('📍 Localização GPS salva com sucesso!');
+          onEdit(leitura.id, { latitude, longitude });
+        }
+      },
+      () => {
+        setCapturandoGpsId(null);
+        alert('Não foi possível obter a localização. Verifique as permissões de GPS do aparelho.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const handleOpenMaps = (e) => {
     e.stopPropagation();
-    const query = encodeURIComponent(leitura.endereco || leitura.nome);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+    if (!leitura) return;
+
+    let termoBusca = '';
+
+    // 1ª Opção: Coordenadas de GPS gravadas no banco
+    if (leitura.latitude && leitura.longitude) {
+      termoBusca = `${leitura.latitude},${leitura.longitude}`;
+    }
+    // 2ª Opção: Endereço por extenso
+    else if (leitura.endereco && String(leitura.endereco).trim() !== '') {
+      termoBusca = leitura.endereco.trim();
+    }
+    // 3ª Opção: Nome do condomínio + Região
+    else {
+      termoBusca = `${leitura.nome.trim()}, Grande Florianópolis - SC`;
+    }
+
+    // Monta a URL da Search API do Google Maps com segurança
+    const urlMapas = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(termoBusca)}`;
+
+    // Abre em nova aba com flags de segurança
+    window.open(urlMapas, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -119,6 +183,15 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
             title="Abrir no Google Maps"
           >
             <Navigation size={16} />
+          </button>
+          <button
+            type="button"
+            className={`btn-gps ${leitura.latitude && leitura.longitude ? 'gps-saved' : ''} ${capturandoGpsId === leitura.id ? 'gps-loading' : ''}`}
+            onClick={salvarLocalizacaoGPS}
+            disabled={capturandoGpsId === leitura.id}
+            title={leitura.latitude && leitura.longitude ? 'GPS já capturado - Clique para atualizar' : 'Capturar localização GPS exata'}
+          >
+            <LocateFixed size={16} />
           </button>
           <button type="button" className="btn-editar" onClick={() => setMostrarModalEdicao(true)} title="Editar condomínio">
             <Pencil color="#1e88e5" size={16} />

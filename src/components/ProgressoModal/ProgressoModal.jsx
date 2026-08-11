@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import './ProgressoModal.css';
 
+// Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
+const extrairNumeroDia = (diaTexto) => {
+  if (!diaTexto) return null;
+  const numeroString = String(diaTexto).match(/\d+/)?.[0];
+  return numeroString ? Number.parseInt(numeroString, 10) : null;
+};
+
 const ProgressoModal = ({ isOpen, onClose, leituras = [] }) => {
   const [busca, setBusca] = useState('');
 
@@ -11,7 +18,7 @@ const ProgressoModal = ({ isOpen, onClose, leituras = [] }) => {
   const pendentes = (leituras || []).filter((item) => !item.completo);
   const proximoDia =
     pendentes.length > 0
-      ? Math.min(...pendentes.map((item) => Number(item.diaLeitura) || 99))
+      ? Math.min(...pendentes.map((item) => extrairNumeroDia(item.diaLeitura) || 99))
       : null;
 
   const leiturasOrdenadas = [...(leituras || [])].sort((a, b) => {
@@ -20,7 +27,9 @@ const ProgressoModal = ({ isOpen, onClose, leituras = [] }) => {
       return a.completo ? -1 : 1;
     }
     // 2. Ordenação secundária pelo dia da leitura (crescente)
-    return Number(a.diaLeitura) - Number(b.diaLeitura);
+    const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
+    const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;
+    return diaA - diaB;
   });
 
   const listaFiltrada = leiturasOrdenadas.filter((item) =>

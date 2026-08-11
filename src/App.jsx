@@ -18,10 +18,7 @@ import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
 
-const SPLASH_SESSION_KEY = 'fast-leitura-splash-concluida';
-
-const MainApp = () => {
-  const [showSplash, setShowSplash] = useState(() => sessionStorage.getItem(SPLASH_SESSION_KEY) !== 'true');
+const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
@@ -42,6 +39,7 @@ const MainApp = () => {
     toggleCompleto,
     deletarLeitura,
     editarLeitura,
+    recarregarCondominios,
   } = useLeituras(showToast);
   const notificacaoEnviadaRef = useRef(false);
   const totalPendentes = useMemo(() => leiturasHoje.length + leiturasAtrasadas.length, [leiturasHoje, leiturasAtrasadas]);
@@ -95,14 +93,8 @@ const MainApp = () => {
     setFocarAtrasadoAuto(true);
   };
 
-  const handleSplashFinish = useCallback(() => {
-    sessionStorage.setItem(SPLASH_SESSION_KEY, 'true');
-    setShowSplash(false);
-  }, []);
-
   return (
     <>
-      {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
       <div className="app-shell app-has-navigation">
         {abaAtiva === 'dashboard' && (
           <>
@@ -217,6 +209,7 @@ const MainApp = () => {
               adicionarLeitura={handleAdicionarLeitura}
               adicionarEmLote={adicionarEmLote}
               onImportSuccess={handleImportSuccess}
+              onRecarregarCondominios={recarregarCondominios}
             />
           </div>
         )}
@@ -226,6 +219,7 @@ const MainApp = () => {
             onShowToast={showToast}
             onNavigate={setAbaAtiva}
             onRefresh={() => window.location.reload()}
+            onLogout={onLogout}
           />
         )}
 
@@ -265,20 +259,47 @@ const MainApp = () => {
 
 const App = () => {
   const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [loadingSession, setLoadingSession] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+
+  const handleSplashFinish = useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
+  const handleLoginSuccess = useCallback((nextSession) => {
+    setSession(nextSession);
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        return false;
+      }
+    }
+
+    sessionStorage.removeItem('leituras-alerta-aberto');
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('leiturasapp:'))
+      .forEach((key) => localStorage.removeItem(key));
+    setSession(null);
+    setShowSplash(true);
+    return true;
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
-      setAuthLoading(false);
+      setLoadingSession(false);
       return undefined;
     }
 
     let isMounted = true;
+
     const loadSession = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data: { session: currentSession } = {} } = await supabase.auth.getSession();
         if (isMounted) {
-          setSession(data.session);
+          setSession(currentSession ?? null);
         }
       } catch {
         if (isMounted) {
@@ -286,33 +307,37 @@ const App = () => {
         }
       } finally {
         if (isMounted) {
-          setAuthLoading(false);
+          setLoadingSession(false);
         }
       }
     };
 
     loadSession();
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+
+    const { data: { subscription } = {} } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (isMounted) {
-        setSession(nextSession);
+        setSession(nextSession ?? null);
+        setLoadingSession(false);
       }
     });
 
     return () => {
       isMounted = false;
-      authListener.subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 
-  if (authLoading) {
-    return <div className="auth-loading" role="status">Verificando sua sessão...</div>;
+  if (showSplash) {
+    return <SplashScreen onFinish={handleSplashFinish} />;
   }
 
-  if (!supabase || !session) {
-    return <Login />;
+  if (!session) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  return <MainApp />;
+  return <MainApp onLogout={handleLogout} />;
 };
 
 export default App;

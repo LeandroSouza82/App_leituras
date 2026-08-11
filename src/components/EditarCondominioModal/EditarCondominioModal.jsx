@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
+import { supabase } from '../../services/supabaseClient';
 import './EditarCondominioModal.css';
 
 const parseCurrencyToNumber = (value) => {
@@ -32,6 +33,8 @@ const buildFormState = (condominio) => ({
   endereco: condominio?.endereco || '',
   instrucoesAcesso: condominio?.instrucoesAcesso || '',
   contatoSindico: condominio?.contatoSindico || '',
+  latitude: condominio?.latitude || null,
+  longitude: condominio?.longitude || null,
 });
 
 const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
@@ -59,6 +62,24 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
   const handleCancelar = () => {
     setFeedback(null);
     onClose();
+  };
+
+  const handleLimparGps = async () => {
+    if (!confirm('Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado.')) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('condominios')
+      .update({ latitude: null, longitude: null })
+      .eq('id', condominio.id);
+
+    if (error) {
+      alert('Erro ao limpar GPS: ' + error.message);
+    } else {
+      alert('📍 Localização GPS removida! O app usará o endereço digitado.');
+      setForm((prev) => ({ ...prev, latitude: null, longitude: null }));
+    }
   };
 
   const handleSalvar = async (event) => {
@@ -98,7 +119,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
     const dadosAtualizados = {
       nome: form.nome.trim(),
       tipoLeitura: form.tipoLeitura,
-      diaLeitura: Number(form.diaLeitura),
+      diaLeitura: String(form.diaLeitura).trim(),
       apartamentos: Number(form.apartamentos),
       valor: valorNumerico,
       endereco: form.endereco.trim(),
@@ -187,6 +208,16 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <span>Contato / Telefone do Síndico</span>
             <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
           </label>
+
+          {form.latitude && form.longitude && (
+            <button
+              type="button"
+              onClick={handleLimparGps}
+              className="btn-limpar-gps"
+            >
+              🗑️ Remover GPS Salvo (Voltar para Endereço)
+            </button>
+          )}
 
           <div className="editar-condominio-acoes">
             <button type="button" className="btn-cancelar-edicao" onClick={handleCancelar}>

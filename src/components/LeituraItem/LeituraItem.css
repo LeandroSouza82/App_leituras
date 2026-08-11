@@ -87,6 +87,50 @@
   background: #bae6fd;
 }
 
+.btn-gps {
+  background: #fef3c7;
+  color: #ca8a04;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-gps:hover:not(:disabled) {
+  background: #fde047;
+  color: #b45309;
+}
+
+.btn-gps:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-gps.gps-loading {
+  animation: spin 1s linear infinite;
+}
+
+.btn-gps.gps-saved {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.btn-gps.gps-saved:hover {
+  background: #bbf7d0;
+  color: #15803d;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .item-main {
   display: flex;
   align-items: center;

@@ -167,6 +167,29 @@
   cursor: not-allowed;
 }
 
+.btn-limpar-gps {
+  grid-column: 1 / -1;
+  border: 1px solid #ef4444;
+  border-radius: 10px;
+  padding: 11px 18px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  margin-top: 8px;
+}
+
+.btn-limpar-gps:hover {
+  background-color: #fee2e2;
+  border-color: #dc2626;
+}
+
+.btn-limpar-gps:active {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
 @media (max-width: 639px) {
   .editar-condominio-form {
     grid-template-columns: 1fr;

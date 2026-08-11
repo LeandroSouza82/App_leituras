@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { FileSpreadsheet, Plus } from 'lucide-react';
 import { processarPlanilhaExcel } from '../../utils/importExcel';
 import Toast, { useToast } from '../Toast/Toast';
+import ImportadorPlanilha from '../ImportadorPlanilha';
 import './LeituraForm.css';
 
 const initialState = {
@@ -49,7 +50,7 @@ const stripCurrencyFormatting = (value) =>
     .replace(/\./g, '')
     .replace(/,/g, ',');
 
-const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => {
+const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRecarregarCondominios }) => {
   const [form, setForm] = useState(initialState);
   const fileInputRef = useRef(null);
   const { toast, showToast, dismissToast } = useToast();
@@ -76,6 +77,16 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleImportSuccess = (total) => {
+    showToast(`${total} condomínios importados e sincronizados com sucesso!`, 'success');
+    if (typeof onRecarregarCondominios === 'function') {
+      onRecarregarCondominios();
+    }
+    if (typeof onImportSuccess === 'function') {
+      onImportSuccess(total);
+    }
   };
 
   const handleChange = (event) => {
@@ -218,6 +229,25 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
         </div>
       </form>
       </section>
+
+      <section className="form-card">
+        <div className="form-heading">
+          <h2>📊 Importar Planilha Completa</h2>
+          <p>Sincronize todos os condomínios de uma planilha .xlsx com o Supabase.</p>
+        </div>
+        <ImportadorPlanilha 
+          onImportComplete={handleImportSuccess}
+          onStatusChange={(message) => {
+            if (!message.toLowerCase().includes('processando')) {
+              // Apenas mostra o resultado final, não todas as etapas
+              if (message.toLowerCase().includes('sucesso')) {
+                showToast(message, 'success');
+              }
+            }
+          }}
+        />
+      </section>
+
       <Toast {...toast} onClose={dismissToast} />
     </>
   );

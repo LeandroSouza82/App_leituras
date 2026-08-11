@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus } from 'lucide-react';
-import { supabase } from '../services/supabase';
+import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus, UserRound, Phone } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 import './Login.css';
 
-const Login = () => {
+const Login = ({ onLoginSuccess }) => {
   const [modoCadastro, setModoCadastro] = useState(false);
+  const [nomeCompleto, setNomeCompleto] = useState('');
+  const [celular, setCelular] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
@@ -14,8 +16,18 @@ const Login = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     const emailNormalizado = email.trim();
+    const nomeNormalizado = nomeCompleto.trim();
+    const celularNormalizado = celular.trim();
 
-    if (!emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+    if (modoCadastro) {
+      if (!nomeNormalizado || !celularNormalizado || !emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+        setFeedback({
+          tipo: 'erro',
+          mensagem: 'Informe nome completo, celular, e-mail válido e uma senha com pelo menos 6 caracteres.',
+        });
+        return;
+      }
+    } else if (!emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe um e-mail válido e uma senha com pelo menos 6 caracteres.' });
       return;
     }
@@ -29,25 +41,64 @@ const Login = () => {
     setFeedback(null);
 
     try {
-      const resposta = modoCadastro
-        ? await supabase.auth.signUp({ email: emailNormalizado, password: senha })
-        : await supabase.auth.signInWithPassword({ email: emailNormalizado, password: senha });
+      if (modoCadastro) {
+        const { data, error } = await supabase.auth.signUp({
+          email: emailNormalizado,
+          password: senha,
+          options: {
+            data: {
+              full_name: nomeNormalizado,
+              phone: celularNormalizado,
+              role: 'Leiturista',
+            },
+          },
+        });
 
-      if (resposta.error) {
-        const mensagem = modoCadastro
-          ? 'Não foi possível criar a conta. Verifique os dados informados.'
-          : 'Credenciais inválidas. Confira seu e-mail e senha.';
-        throw new Error(mensagem);
+        if (error) throw error;
+
+        setFeedback({
+          tipo: 'sucesso',
+          mensagem: data?.session
+            ? 'Conta criada com sucesso!'
+            : 'Conta criada! Confira seu e-mail para confirmar o acesso.',
+        });
+
+        if (data?.session && onLoginSuccess) {
+          onLoginSuccess(data.session);
+        }
+        return;
       }
 
-      setFeedback({
-        tipo: 'sucesso',
-        mensagem: modoCadastro && !resposta.data.session
-          ? 'Conta criada! Confira seu e-mail para confirmar o acesso.'
-          : 'Login realizado com sucesso!',
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailNormalizado,
+        password: senha,
       });
-    } catch (error) {
-      setFeedback({ tipo: 'erro', mensagem: error.message || 'Erro ao conectar com o Supabase.' });
+
+      if (error) throw error;
+
+      if (data?.session) {
+        console.log('✅ Usuário autenticado com sucesso!');
+        console.log('UUID do Usuário:', data.session.user.id);
+        console.log('E-mail logado:', data.session.user.email);
+
+        setFeedback({
+          tipo: 'sucesso',
+          mensagem: 'Login realizado com sucesso!',
+        });
+
+        if (onLoginSuccess) {
+          onLoginSuccess(data.session);
+        }
+        return;
+      }
+
+      throw new Error('Sessão não foi retornada pelo Supabase.');
+    } catch (err) {
+      console.error('❌ Erro na autenticação:', err.message);
+      setFeedback({
+        tipo: 'erro',
+        mensagem: err.message || 'Falha ao autenticar. Verifique seus dados.',
+      });
     } finally {
       setCarregando(false);
     }
@@ -73,6 +124,40 @@ const Login = () => {
             <div className={`login-feedback login-feedback-${feedback.tipo}`} role="alert">
               {feedback.mensagem}
             </div>
+          )}
+
+          {modoCadastro && (
+            <>
+              <label className="login-field">
+                <span>Nome Completo</span>
+                <div className="login-input-wrap">
+                  <UserRound size={18} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={nomeCompleto}
+                    onChange={(event) => setNomeCompleto(event.target.value)}
+                    placeholder="Seu nome completo"
+                    autoComplete="name"
+                    disabled={carregando}
+                  />
+                </div>
+              </label>
+
+              <label className="login-field">
+                <span>Celular</span>
+                <div className="login-input-wrap">
+                  <Phone size={18} aria-hidden="true" />
+                  <input
+                    type="tel"
+                    value={celular}
+                    onChange={(event) => setCelular(event.target.value)}
+                    placeholder="(00) 00000-0000"
+                    autoComplete="tel"
+                    disabled={carregando}
+                  />
+                </div>
+              </label>
+            </>
           )}
 
           <label className="login-field">

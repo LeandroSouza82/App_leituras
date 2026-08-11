@@ -3,6 +3,13 @@ import './LeituraList.css';
 import LeituraItem from '../LeituraItem/LeituraItem';
 import AlertaBanner from '../AlertaBanner/AlertaBanner';
 
+// Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
+const extrairNumeroDia = (diaTexto) => {
+  if (!diaTexto) return null;
+  const numeroString = String(diaTexto).match(/\d+/)?.[0];
+  return numeroString ? Number.parseInt(numeroString, 10) : null;
+};
+
 const LeituraList = ({
   leituras,
   leiturasHoje,
@@ -20,14 +27,19 @@ const LeituraList = ({
 
   // 1. Ordenação dos dados
   const leiturasOrdenadas = useMemo(() => {
-    return [...leituras].sort((a, b) => Number(a.diaLeitura) - Number(b.diaLeitura));
+    return [...leituras].sort((a, b) => {
+      const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
+      const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;
+      return diaA - diaB;
+    });
   }, [leituras]);
 
   // 1. Análise de Dados: Mapeia apenas os índices dos itens com status "Atrasado"
   const indicesAtrasados = useMemo(() => {
     const indices = [];
     leiturasOrdenadas.forEach((item, index) => {
-      if (!item.completo && Number(item.diaLeitura) < diaAtual) {
+      const dia = extrairNumeroDia(item.diaLeitura);
+      if (!item.completo && dia !== null && dia < diaAtual) {
         indices.push(index);
       }
     });

@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import './SplashScreen.css';
+import iconImg from '../../assets/icon.png';
 
 const SplashScreen = ({ onFinish }) => {
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    // Inicia o fade out próximo do final dos 7 segundos (aos 6.3s)
     const fadeTimer = setTimeout(() => {
       setFadeOut(true);
-    }, 6300);
+    }, 3200);
 
-    // Finaliza a splash screen exatamente aos 7 segundos
     const finishTimer = setTimeout(() => {
       onFinish();
-    }, 7000);
+    }, 3500);
 
     return () => {
       clearTimeout(fadeTimer);
@@ -24,14 +23,16 @@ const SplashScreen = ({ onFinish }) => {
   return (
     <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
       <div className="splash-content">
-        <div className="splash-logo-container">
-          <div className="splash-logo-badge">FL</div>
-          <div className="splash-title-container">
-            <span className="splash-title-fast">Fast</span>
-            <span className="splash-title-leitura">Leitura</span>
-          </div>
+        <img
+          src={iconImg}
+          alt="Fast Leitura Icon"
+          className="splash-logo-img"
+        />
+        <div className="splash-title-container">
+          <span className="title-fast">Fast</span>
+          <span className="title-leitura">Leitura</span>
         </div>
-        <p className="splash-slogan">
+        <p className="slogan">
           Agilidade e precisão na medição do seu condomínio
         </p>
       </div>

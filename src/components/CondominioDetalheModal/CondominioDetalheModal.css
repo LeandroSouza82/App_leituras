@@ -132,6 +132,58 @@
   background-color: #bae6fd;
 }
 
+.detalhe-botoes-container {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-acao-gps {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background-color: #fef3c7;
+  color: #ca8a04;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-acao-gps:hover:not(:disabled) {
+  background-color: #fde047;
+  color: #b45309;
+}
+
+.btn-acao-gps:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-acao-gps.gps-loading {
+  animation: spin 1s linear infinite;
+}
+
+.btn-acao-gps.gps-saved {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.btn-acao-gps.gps-saved:hover {
+  background-color: #bbf7d0;
+  color: #15803d;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .btn-acao-telefone {
   display: inline-flex;
   align-items: center;
