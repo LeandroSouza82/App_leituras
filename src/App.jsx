@@ -15,10 +15,12 @@ import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
+import Login from './components/Login';
+import { supabase } from './services/supabase';
 
 const SPLASH_SESSION_KEY = 'fast-leitura-splash-concluida';
 
-const App = () => {
+const MainApp = () => {
   const [showSplash, setShowSplash] = useState(() => sessionStorage.getItem(SPLASH_SESSION_KEY) !== 'true');
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -259,6 +261,58 @@ const App = () => {
       <Toast {...toast} onClose={dismissToast} />
     </>
   );
+};
+
+const App = () => {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return undefined;
+    }
+
+    let isMounted = true;
+    const loadSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (isMounted) {
+          setSession(data.session);
+        }
+      } catch {
+        if (isMounted) {
+          setSession(null);
+        }
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    loadSession();
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (isMounted) {
+        setSession(nextSession);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (authLoading) {
+    return <div className="auth-loading" role="status">Verificando sua sessão...</div>;
+  }
+
+  if (!supabase || !session) {
+    return <Login />;
+  }
+
+  return <MainApp />;
 };
 
 export default App;
