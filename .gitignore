@@ -1,5 +1,9 @@
 node_modules/
 dist/
+.idea/
+android/.idea/
+android/.gradle/
+android/**/build/
 .env
 .env.*
 !.env.example
