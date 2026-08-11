@@ -5,7 +5,7 @@ const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'leituras', label: 'Leituras', icon: Building2 },
   { id: 'cadastrar', label: 'Cadastro', icon: PlusCircle },
-  { id: 'perfil', label: 'Perfil', icon: UserRound, disabled: true },
+  { id: 'perfil', label: 'Perfil', icon: UserRound },
 ];
 
 const BottomNavbar = ({ activeTab, onChange }) => (

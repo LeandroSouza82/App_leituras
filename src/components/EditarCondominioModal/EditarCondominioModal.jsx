@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { supabase } from '../../services/supabaseClient';
 import Toast, { useToast } from '../Toast/Toast';
 import './EditarCondominioModal.css';
 
@@ -110,26 +109,14 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
     setSalvando(true);
     setFeedback(null);
 
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from('condominios')
-          .update(dadosAtualizados)
-          .eq('id', condominio.id);
+    const sucesso = await onSave(condominio.id, dadosAtualizados);
+    setSalvando(false);
 
-        if (error) {
-          throw error;
-        }
-      } catch (error) {
-        setSalvando(false);
-        setFeedback({ tipo: 'erro', mensagem: 'Não foi possível sincronizar com o Supabase. Alterações salvas apenas localmente.' });
-        onSave(condominio.id, dadosAtualizados);
-        return;
-      }
+    if (sucesso === false) {
+      setFeedback({ tipo: 'erro', mensagem: 'Não foi possível salvar o condomínio no Supabase.' });
+      return;
     }
 
-    setSalvando(false);
-    onSave(condominio.id, dadosAtualizados);
     showToast('Condomínio atualizado com sucesso!');
     onClose();
   };

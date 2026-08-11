@@ -14,6 +14,7 @@ import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondo
 import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
+import Perfil from './pages/Perfil/Perfil';
 
 const SPLASH_SESSION_KEY = 'fast-leitura-splash-concluida';
 
@@ -39,7 +40,7 @@ const App = () => {
     toggleCompleto,
     deletarLeitura,
     editarLeitura,
-  } = useLeituras();
+  } = useLeituras(showToast);
   const notificacaoEnviadaRef = useRef(false);
   const totalPendentes = useMemo(() => leiturasHoje.length + leiturasAtrasadas.length, [leiturasHoje, leiturasAtrasadas]);
 
@@ -216,6 +217,14 @@ const App = () => {
               onImportSuccess={handleImportSuccess}
             />
           </div>
+        )}
+
+        {abaAtiva === 'perfil' && (
+          <Perfil
+            onShowToast={showToast}
+            onNavigate={setAbaAtiva}
+            onRefresh={() => window.location.reload()}
+          />
         )}
 
         <ModalAviso
