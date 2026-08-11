@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FileSpreadsheet, Plus } from 'lucide-react';
 import { processarPlanilhaExcel } from '../../utils/importExcel';
+import Toast, { useToast } from '../Toast/Toast';
 import './LeituraForm.css';
 
 const initialState = {
@@ -8,6 +9,10 @@ const initialState = {
   apartamentos: '',
   valor: '',
   diaLeitura: '',
+  tipoLeitura: 'Água e Gás',
+  endereco: '',
+  instrucoesAcesso: '',
+  contatoSindico: '',
 };
 
 const parseCurrencyToNumber = (value) => {
@@ -47,6 +52,7 @@ const stripCurrencyFormatting = (value) =>
 const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => {
   const [form, setForm] = useState(initialState);
   const fileInputRef = useRef(null);
+  const { toast, showToast, dismissToast } = useToast();
 
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
@@ -56,7 +62,7 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
 
     const registros = await processarPlanilhaExcel(file);
     if (!registros.length) {
-      alert('Nenhum condomínio válido encontrado na planilha.');
+      showToast('Nenhum condomínio válido encontrado na planilha.', 'error');
       return;
     }
 
@@ -106,13 +112,13 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
     event.preventDefault();
 
     if (!form.nome.trim() || !form.apartamentos || !form.valor || !form.diaLeitura) {
-      alert('Preencha todos os campos antes de adicionar uma leitura.');
+      showToast('Preencha todos os campos antes de adicionar uma leitura.', 'error');
       return;
     }
 
     const valorNumerico = parseCurrencyToNumber(form.valor);
     if (!valorNumerico && form.valor.trim() !== '0') {
-      alert('Informe um valor válido para a leitura.');
+      showToast('Informe um valor válido para a leitura.', 'error');
       return;
     }
 
@@ -121,13 +127,18 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
       apartamentos: form.apartamentos,
       valor: valorNumerico,
       diaLeitura: form.diaLeitura,
+      tipoLeitura: form.tipoLeitura,
+      endereco: form.endereco.trim(),
+      instrucoesAcesso: form.instrucoesAcesso.trim(),
+      contatoSindico: form.contatoSindico.trim(),
     });
 
     setForm(initialState);
   };
 
   return (
-    <section className="form-card">
+    <>
+      <section className="form-card">
       <div className="form-heading">
         <h2>Nova leitura</h2>
         <p>Cadastre condomínio, data, apartamentos e valor.</p>
@@ -137,6 +148,16 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
         <label className="field field-full">
           <span>Nome do condomínio</span>
           <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
+        </label>
+
+        <label className="field field-full">
+          <span>Tipo de Leitura</span>
+          <select name="tipoLeitura" value={form.tipoLeitura} onChange={handleChange}>
+            <option value="Água e Gás">Água e Gás</option>
+            <option value="Somente Água">Somente Água</option>
+            <option value="Somente Gás">Somente Gás</option>
+            <option value="Energia Elétrica">Energia Elétrica</option>
+          </select>
         </label>
 
         <label className="field">
@@ -157,9 +178,24 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
           />
         </label>
 
-        <label className="field">
+        <label className="field field-full">
           <span>Dia da Leitura</span>
           <input type="number" name="diaLeitura" min="1" max="31" value={form.diaLeitura} onChange={handleChange} placeholder="ex: 5, 10, 25" />
+        </label>
+
+        <label className="field field-full">
+          <span>Endereço do Condomínio (Google Maps)</span>
+          <input name="endereco" value={form.endereco} onChange={handleChange} placeholder="Rua, Número, Bairro, Cidade" />
+        </label>
+
+        <label className="field field-full">
+          <span>Instruções de Acesso</span>
+          <input name="instrucoesAcesso" value={form.instrucoesAcesso} onChange={handleChange} placeholder="Ex: Senha da portaria: 1234, Interfone 101" />
+        </label>
+
+        <label className="field field-full">
+          <span>Contato do Síndico / Gestor</span>
+          <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
         </label>
 
         <button type="submit" className="submit-btn">
@@ -181,7 +217,9 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess }) => 
           />
         </div>
       </form>
-    </section>
+      </section>
+      <Toast {...toast} onClose={dismissToast} />
+    </>
   );
 };
 

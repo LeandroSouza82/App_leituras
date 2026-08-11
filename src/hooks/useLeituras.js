@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getLastSessionMonth, getLeituras, saveLeituras, setLastSessionMonth } from '../services/storageService';
+import {
+  alternarStatusLeitura,
+  atualizarCondominio,
+  buscarCondominios,
+  deletarCondominio,
+  salvarCondominio,
+} from '../services/condominioService';
 
 const getCurrentMonthKey = () => {
   const now = new Date();
@@ -8,90 +14,99 @@ const getCurrentMonthKey = () => {
   return `${year}-${month}`;
 };
 
-const gerarIdUnico = () => Date.now() + Math.random().toString(36).substr(2, 9);
-
-const createLeitura = ({ nome, data, apartamentos, valor, diaLeitura }) => ({
-  id: gerarIdUnico(),
-  nome,
-  data,
-  apartamentos: Number(apartamentos),
-  valor: Number(valor),
-  diaLeitura: Number(diaLeitura),
-  completo: false,
-});
-
-const normalizeLeitura = (item) => ({
-  ...item,
-  id: item.id || gerarIdUnico(),
-  completo: typeof item.completo === 'boolean' ? item.completo : false,
-});
-
-export const useLeituras = () => {
-  const chaveMesAno = getCurrentMonthKey();
+export const useLeituras = (onFeedback = () => {}) => {
   const diaAtual = new Date().getDate();
-
-  const [leituras, setLeituras] = useState(() => {
-    const storedLeituras = getLeituras(chaveMesAno).map(normalizeLeitura);
-    const ultimaSessao = getLastSessionMonth();
-
-    if (ultimaSessao && ultimaSessao !== chaveMesAno) {
-      const leiturasDoMesAnterior = getLeituras(ultimaSessao).map(normalizeLeitura);
-      const fonteLeituras = leiturasDoMesAnterior.length > 0 ? leiturasDoMesAnterior : storedLeituras;
-      const resetLeituras = fonteLeituras.map((item) => ({ ...normalizeLeitura(item), completo: false }));
-      saveLeituras(chaveMesAno, resetLeituras);
-      setLastSessionMonth(chaveMesAno);
-      return resetLeituras;
-    }
-
-    if (!ultimaSessao) {
-      setLastSessionMonth(chaveMesAno);
-    }
-
-    return storedLeituras;
-  });
+  const [leituras, setLeituras] = useState([]);
 
   useEffect(() => {
-    saveLeituras(chaveMesAno, leituras);
-  }, [chaveMesAno, leituras]);
+    let isMounted = true;
 
-  const adicionarLeitura = (novaLeitura) => {
-    const leitura = createLeitura(novaLeitura);
-    setLeituras((previous) => [leitura, ...previous]);
+    buscarCondominios()
+      .then((dados) => {
+        if (isMounted) {
+          setLeituras(dados);
+        }
+      })
+      .catch((error) => {
+        if (isMounted) {
+          onFeedback(error.message, 'error');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [onFeedback]);
+
+  const adicionarLeitura = async (novaLeitura) => {
+    try {
+      const leitura = await salvarCondominio(novaLeitura);
+      setLeituras((previous) => [leitura, ...previous]);
+      return leitura;
+    } catch (error) {
+      onFeedback(error.message, 'error');
+      return null;
+    }
   };
 
-  const toggleCompleto = (id) => {
+  const toggleCompleto = async (id) => {
+    const leituraAnterior = leituras.find((item) => item.id === id);
+    if (!leituraAnterior) {
+      return;
+    }
+
     setLeituras((previous) =>
       previous.map((item) =>
         item.id === id ? { ...item, completo: !item.completo } : item
       )
     );
+
+    try {
+      await alternarStatusLeitura(id, undefined, leituraAnterior.completo);
+    } catch (error) {
+      setLeituras((previous) =>
+        previous.map((item) => (item.id === id ? leituraAnterior : item))
+      );
+      onFeedback(error.message, 'error');
+    }
   };
 
-  const deletarLeitura = (id) => {
+  const deletarLeitura = async (id) => {
+    const leituraAnterior = leituras.find((item) => item.id === id);
     setLeituras((previous) => previous.filter((item) => item.id !== id));
+
+    try {
+      await deletarCondominio(id);
+    } catch (error) {
+      if (leituraAnterior) {
+        setLeituras((previous) => [leituraAnterior, ...previous]);
+      }
+      onFeedback(error.message, 'error');
+    }
   };
 
-  const editarLeitura = (idTarget, novosDados) => {
-    setLeituras((prev) =>
-      prev.map((item) =>
-        String(item.id) === String(idTarget)
-          ? { ...item, ...novosDados }
-          : item
-      )
-    );
+  const editarLeitura = async (idTarget, novosDados) => {
+    try {
+      const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
+      setLeituras((previous) =>
+        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
+      );
+      return true;
+    } catch (error) {
+      onFeedback(error.message, 'error');
+      return false;
+    }
   };
 
-  const adicionarEmLote = (novosCondominios) => {
-    const leiturasConvertidas = novosCondominios.map((item) =>
-      createLeitura({
-        nome: item.nome,
-        apartamentos: item.apartamentos,
-        valor: item.valor,
-        diaLeitura: item.diaLeitura,
-      })
-    );
-
-    setLeituras((previous) => [...leiturasConvertidas, ...previous]);
+  const adicionarEmLote = async (novosCondominios) => {
+    try {
+      const leiturasSalvas = await Promise.all(novosCondominios.map((item) => salvarCondominio(item)));
+      setLeituras((previous) => [...leiturasSalvas, ...previous]);
+      return leiturasSalvas;
+    } catch (error) {
+      onFeedback(error.message, 'error');
+      return [];
+    }
   };
 
   const leiturasHoje = useMemo(
@@ -122,12 +137,14 @@ export const useLeituras = () => {
   }, [leituras.length, totalConcluidos]);
 
   const mesAnoFormatado = useMemo(() => {
-    const [month, year] = chaveMesAno.split('-');
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
     return new Date(`${year}-${month}-01`).toLocaleDateString('pt-BR', {
       month: 'long',
       year: 'numeric',
     });
-  }, [chaveMesAno]);
+  }, []);
 
   return {
     leituras,

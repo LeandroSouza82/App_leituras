@@ -39,12 +39,12 @@
 }
 
 .nav-button:hover {
-  background: rgba(37, 99, 235, 0.06);
+  background: rgba(30, 136, 229, 0.08);
 }
 
 .nav-button.active {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #e0f2fe;
+  color: #1e88e5;
   transform: translateY(-1px);
 }
 

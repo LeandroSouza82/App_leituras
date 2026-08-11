@@ -63,6 +63,10 @@ export const processarPlanilhaExcel = async (file) => {
     apartamentos: headings.indexOf('quantidade de unidades'),
     valor: headings.indexOf('valor cobrado'),
     diaLeitura: headings.indexOf('data da leitura'),
+    tipoLeitura: headings.indexOf('tipo de leitura'),
+    endereco: headings.indexOf('endereço'),
+    instrucoesAcesso: headings.indexOf('instruções de acesso'),
+    contatoSindico: headings.indexOf('contato do síndico'),
   };
 
   return rows.slice(1).reduce((result, row) => {
@@ -74,6 +78,10 @@ export const processarPlanilhaExcel = async (file) => {
     const apartamentos = parseNumberValue(row[columnMap.apartamentos]);
     const valor = parseNumberValue(row[columnMap.valor]);
     const diaLeitura = parseDayValue(row[columnMap.diaLeitura]);
+    const tipoLeitura = String(row[columnMap.tipoLeitura] || '').trim();
+    const endereco = String(row[columnMap.endereco] || '').trim();
+    const instrucoesAcesso = String(row[columnMap.instrucoesAcesso] || '').trim();
+    const contatoSindico = String(row[columnMap.contatoSindico] || '').trim();
 
     result.push({
       id: gerarIdUnico(),
@@ -81,6 +89,10 @@ export const processarPlanilhaExcel = async (file) => {
       apartamentos,
       valor,
       diaLeitura,
+      tipoLeitura,
+      endereco,
+      instrucoesAcesso,
+      contatoSindico,
       completo: false,
     });
 

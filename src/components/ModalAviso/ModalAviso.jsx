@@ -1,6 +1,6 @@
 import './ModalAviso.css';
 
-const ModalAviso = ({ isOpen, onClose, leiturasHoje = [], leiturasAtrasadas = [] }) => {
+const ModalAviso = ({ isOpen, onClose, leiturasHoje = [], leiturasAtrasadas = [], onNavigateToLeituras }) => {
   if (!isOpen) {
     return null;
   }
@@ -14,13 +14,20 @@ const ModalAviso = ({ isOpen, onClose, leiturasHoje = [], leiturasAtrasadas = []
       ? 'Nenhuma leitura pendente no momento.'
       : `${totalHoje} leitura(s) para HOJE e ${totalAtrasadas} ATRASADA(S)!`;
 
+  const handleEntendido = () => {
+    onClose();
+    if (onNavigateToLeituras && totalPendentes > 0) {
+      onNavigateToLeituras();
+    }
+  };
+
   return (
     <div className="modal-aviso-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="modal-aviso-card" onClick={(event) => event.stopPropagation()}>
         <h3>🔔 Resumo de Leituras Pendentes</h3>
         <p>{mensagem}</p>
-        <button type="button" className="modal-aviso-button" onClick={onClose}>
-          Entendido
+        <button type="button" className="modal-aviso-button" onClick={handleEntendido}>
+          Ver Leituras
         </button>
       </div>
     </div>
