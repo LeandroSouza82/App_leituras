@@ -3,4 +3,21 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: true,
+    port: 5173,
+    allowedHosts: 'all',
+    hmr: {
+      overlay: false,
+    },
+  },
+  pwa: {
+    registerType: 'prompt',
+    injectRegister: 'auto',
+    workbox: {
+      skipWaiting: false,
+      clientsClaim: false,
+    },
+  },
 });
+

@@ -17,6 +17,7 @@ import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
+import { useOfflineSync } from './hooks/useOfflineSync';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -41,11 +42,41 @@ const MainApp = ({ onLogout }) => {
     editarLeitura,
     recarregarCondominios,
   } = useLeituras(showToast);
+  const { isOnline, pendentesCount, salvarLeituraOffline } = useOfflineSync();
   const notificacaoEnviadaRef = useRef(false);
   const totalPendentes = useMemo(() => leiturasHoje.length + leiturasAtrasadas.length, [leiturasHoje, leiturasAtrasadas]);
 
-  const handleAdicionarLeitura = (dados) => {
-    adicionarLeitura(dados);
+  const handleAdicionarLeitura = async (dados) => {
+    if (!isOnline) {
+      const salvo = salvarLeituraOffline({
+        ...dados,
+        completo: false,
+        origem: 'offline',
+      });
+
+      if (salvo) {
+        showToast('Leitura salva localmente. Ela será sincronizada quando a conexão voltar.', 'success');
+      } else {
+        showToast('Não foi possível guardar a leitura localmente. Tente novamente.', 'error');
+      }
+
+      setAbaAtiva('leituras');
+      return;
+    }
+
+    const leituraSalva = await adicionarLeitura(dados);
+    if (!leituraSalva) {
+      const salvo = salvarLeituraOffline({
+        ...dados,
+        completo: false,
+        origem: 'offline',
+      });
+
+      if (salvo) {
+        showToast('O envio falhou, mas a leitura foi salva localmente e será sincronizada depois.', 'warning');
+      }
+    }
+
     setAbaAtiva('leituras');
   };
 
@@ -96,6 +127,11 @@ const MainApp = ({ onLogout }) => {
   return (
     <>
       <div className="app-shell app-has-navigation">
+        <div className={`offline-banner ${isOnline ? 'online' : 'offline'}`}>
+          {isOnline ? 'Conectado' : 'Modo offline — suas leituras serão salvas localmente'}
+          {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
+        </div>
+
         {abaAtiva === 'dashboard' && (
           <>
             <Header
@@ -218,7 +254,7 @@ const MainApp = ({ onLogout }) => {
           <Perfil
             onShowToast={showToast}
             onNavigate={setAbaAtiva}
-            onRefresh={() => window.location.reload()}
+            onRefresh={() => recarregarCondominios()}
             onLogout={onLogout}
           />
         )}
@@ -297,11 +333,29 @@ const App = () => {
 
     const loadSession = async () => {
       try {
-        const { data: { session: currentSession } = {} } = await supabase.auth.getSession();
+        const { data: { session: currentSession } = {}, error } = await supabase.auth.getSession();
+
+        if (error) {
+          throw error;
+        }
+
         if (isMounted) {
           setSession(currentSession ?? null);
         }
-      } catch {
+      } catch (err) {
+        const mensagem = String(err?.message || '');
+        const offlineByNetwork = mensagem.includes('Failed to fetch')
+          || mensagem.includes('fetch')
+          || mensagem.includes('network')
+          || !navigator.onLine;
+
+        if (offlineByNetwork) {
+          if (isMounted) {
+            setSession((previousSession) => previousSession ?? null);
+          }
+          return;
+        }
+
         if (isMounted) {
           setSession(null);
         }
@@ -314,9 +368,17 @@ const App = () => {
 
     loadSession();
 
-    const { data: { subscription } = {} } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } = {} } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (isMounted) {
-        setSession(nextSession ?? null);
+        if (nextSession) {
+          setSession(nextSession);
+        } else if (event === 'SIGNED_OUT') {
+          // Apenas zera a sessão se o logout foi disparado de forma explícita pelo usuário
+          setSession(null);
+        } else if (!navigator.onLine) {
+          // Mantém a sessão local em caso de oscilação ou reconexão de rede
+          console.warn('[Auth] Oscilação de rede detectada. Mantendo sessão ativa localmente.');
+        }
         setLoadingSession(false);
       }
     });

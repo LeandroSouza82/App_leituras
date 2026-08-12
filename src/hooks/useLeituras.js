@@ -63,15 +63,39 @@ export const useLeituras = (onFeedback = () => {}) => {
       return;
     }
 
+    const novoCompleto = !leituraAnterior.completo;
+
     setLeituras((previous) =>
       previous.map((item) =>
-        item.id === id ? { ...item, completo: !item.completo } : item
+        item.id === id ? { ...item, completo: novoCompleto } : item
       )
     );
 
     try {
       await alternarStatusLeitura(id, undefined, leituraAnterior.completo);
     } catch (error) {
+      const mensagemErro = error?.message || '';
+      const falhaDeRede = mensagemErro.includes('Failed to fetch') || !navigator.onLine;
+
+      if (falhaDeRede) {
+        console.warn('Alteração salva localmente (offline). Sincronizará ao reconectar.');
+
+        try {
+          const pendencias = JSON.parse(localStorage.getItem('pendencias_offline') || '[]');
+          pendencias.push({
+            id,
+            completo: novoCompleto,
+            mes_referencia: getCurrentMonthKey(),
+            data: new Date().toISOString(),
+          });
+          localStorage.setItem('pendencias_offline', JSON.stringify(pendencias));
+        } catch (storageError) {
+          console.warn('Não foi possível persistir pendência offline:', storageError);
+        }
+
+        return;
+      }
+
       setLeituras((previous) =>
         previous.map((item) => (item.id === id ? leituraAnterior : item))
       );

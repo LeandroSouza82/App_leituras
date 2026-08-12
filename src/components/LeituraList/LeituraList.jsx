@@ -10,6 +10,14 @@ const extrairNumeroDia = (diaTexto) => {
   return numeroString ? Number.parseInt(numeroString, 10) : null;
 };
 
+// Normaliza o texto removendo acentos, espaços desnecessários e convertendo para minúsculas
+const normalizarTexto = (texto) => {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
 const LeituraList = ({
   leituras,
   leiturasHoje,
@@ -23,6 +31,7 @@ const LeituraList = ({
   const diaAtual = new Date().getDate();
   const [indiceAtualDoFoco, setIndiceAtualDoFoco] = useState(0);
   const [itemFocadoId, setItemFocadoId] = useState(null);
+  const [filtroCondominio, setFiltroCondominio] = useState('');
   const itemRefs = useRef({});
 
   // 1. Ordenação dos dados
@@ -34,17 +43,38 @@ const LeituraList = ({
     });
   }, [leituras]);
 
-  // 1. Análise de Dados: Mapeia apenas os índices dos itens com status "Atrasado"
+  // 2. Filtro dos dados em tempo real
+  const leiturasFiltradas = useMemo(() => {
+    const termoBusca = normalizarTexto(filtroCondominio).trim();
+    if (!termoBusca) return leiturasOrdenadas;
+
+    return leiturasOrdenadas.filter((item) => {
+      const valoresParaVerificar = [
+        item.nome,
+        item.condominio,
+        item.nome_condominio,
+        item.descricao,
+        item.titulo,
+        item.condominio?.nome
+      ];
+
+      return valoresParaVerificar.some((valor) => 
+        normalizarTexto(valor).includes(termoBusca)
+      );
+    });
+  }, [leiturasOrdenadas, filtroCondominio]);
+
+  // 3. Análise de Dados: Mapeia apenas os índices dos itens com status "Atrasado" na lista filtrada
   const indicesAtrasados = useMemo(() => {
     const indices = [];
-    leiturasOrdenadas.forEach((item, index) => {
+    leiturasFiltradas.forEach((item, index) => {
       const dia = extrairNumeroDia(item.diaLeitura);
       if (!item.completo && dia !== null && dia < diaAtual) {
         indices.push(index);
       }
     });
     return indices;
-  }, [leiturasOrdenadas, diaAtual]);
+  }, [leiturasFiltradas, diaAtual]);
 
   // 4. Lógica de Scroll e Destaque
   const handleFocarAtrasado = () => {
@@ -54,7 +84,7 @@ const LeituraList = ({
 
     const idx = indiceAtualDoFoco % indicesAtrasados.length;
     const targetIndex = indicesAtrasados[idx];
-    const targetItem = leiturasOrdenadas[targetIndex];
+    const targetItem = leiturasFiltradas[targetIndex];
 
     if (targetItem && itemRefs.current[targetItem.id]) {
       const element = itemRefs.current[targetItem.id];
@@ -93,6 +123,16 @@ const LeituraList = ({
         </div>
       </div>
 
+      <div className="busca-container">
+        <input
+          type="text"
+          placeholder="🔍 Buscar condomínio..."
+          value={filtroCondominio}
+          onChange={(e) => setFiltroCondominio(e.target.value)}
+          className="busca-input"
+        />
+      </div>
+
       <AlertaBanner
         leiturasHoje={leiturasHoje}
         leiturasAtrasadas={leiturasAtrasadas}
@@ -104,19 +144,27 @@ const LeituraList = ({
           Nenhuma leitura adicionada ainda. Comece a adicionar seus condomínios!
         </div>
       ) : (
-        <div className="list-items">
-          {leiturasOrdenadas.map((item) => (
-            <div key={item.id} ref={(el) => (itemRefs.current[item.id] = el)}>
-              <LeituraItem
-                leitura={item}
-                onToggle={onToggle}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                isFocused={itemFocadoId === item.id}
-              />
+        <>
+          {leiturasFiltradas.length === 0 ? (
+            <div className="empty-state">
+              Nenhum condomínio encontrado com "{filtroCondominio}".
             </div>
-          ))}
-        </div>
+          ) : (
+            <div className="list-items">
+              {leiturasFiltradas.map((item) => (
+                <div key={item.id} ref={(el) => (itemRefs.current[item.id] = el)}>
+                  <LeituraItem
+                    leitura={item}
+                    onToggle={onToggle}
+                    onDelete={onDelete}
+                    onEdit={onEdit}
+                    isFocused={itemFocadoId === item.id}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
