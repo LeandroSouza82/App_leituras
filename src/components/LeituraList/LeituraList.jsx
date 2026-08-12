@@ -116,28 +116,30 @@ const LeituraList = ({
 
   return (
     <section className="list-card">
-      <div className="list-header">
-        <div>
-          <h2>Leituras do mês</h2>
-          <p>Gerencie os condomínios cadastrados.</p>
+      <div className="list-sticky-top">
+        <div className="list-header">
+          <div>
+            <h2>Leituras do mês</h2>
+            <p>Gerencie os condomínios cadastrados.</p>
+          </div>
         </div>
-      </div>
 
-      <div className="busca-container">
-        <input
-          type="text"
-          placeholder="🔍 Buscar condomínio..."
-          value={filtroCondominio}
-          onChange={(e) => setFiltroCondominio(e.target.value)}
-          className="busca-input"
+        <div className="busca-container">
+          <input
+            type="text"
+            placeholder="🔍 Buscar condomínio..."
+            value={filtroCondominio}
+            onChange={(e) => setFiltroCondominio(e.target.value)}
+            className="busca-input"
+          />
+        </div>
+
+        <AlertaBanner
+          leiturasHoje={leiturasHoje}
+          leiturasAtrasadas={leiturasAtrasadas}
+          onFocarAtrasado={handleFocarAtrasado}
         />
       </div>
-
-      <AlertaBanner
-        leiturasHoje={leiturasHoje}
-        leiturasAtrasadas={leiturasAtrasadas}
-        onFocarAtrasado={handleFocarAtrasado}
-      />
 
       {leituras.length === 0 ? (
         <div className="empty-state">

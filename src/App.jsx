@@ -8,7 +8,7 @@ import BottomNavbar from './components/BottomNavbar/BottomNavbar';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import AReceberModal from './components/AReceberModal/AReceberModal';
 import { useLeituras } from './hooks/useLeituras';
-import { showLeituraNotifications } from './utils/notifications';
+import { NotificationService } from './services/notificationService';
 import ModalAviso from './components/ModalAviso/ModalAviso';
 import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondominiosModal';
 import ProgressoModal from './components/ProgressoModal/ProgressoModal';
@@ -86,6 +86,11 @@ const MainApp = ({ onLogout }) => {
   };
 
   useEffect(() => {
+    // Solicita permissão ao iniciar o app
+    NotificationService.requestPermissions();
+  }, []);
+
+  useEffect(() => {
     const temPendencias = leiturasHoje.length > 0 || leiturasAtrasadas.length > 0;
 
     if (!temPendencias) {
@@ -96,7 +101,8 @@ const MainApp = ({ onLogout }) => {
 
     if (!notificacaoEnviadaRef.current) {
       notificacaoEnviadaRef.current = true;
-      showLeituraNotifications({ leiturasHoje, leiturasAtrasadas });
+      // Agenda os alarmes/notificações para as leituras pendentes
+      NotificationService.scheduleReadings([...leiturasHoje, ...leiturasAtrasadas]);
     }
 
     atualizarBadgeIcone(totalPendentes);
@@ -128,7 +134,9 @@ const MainApp = ({ onLogout }) => {
     <>
       <div className="app-shell app-has-navigation">
         <div className={`offline-banner ${isOnline ? 'online' : 'offline'}`}>
-          {isOnline ? 'Conectado' : 'Modo offline — suas leituras serão salvas localmente'}
+          {isOnline
+            ? 'Conectado'
+            : 'Offline - Sincronização pendente para o banco de dados'}
           {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
         </div>
 

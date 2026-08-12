@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.leiturasapp.app',
-  appName: 'LeiturasApp',
+  appId: 'com.fastleituras.app',
+  appName: 'Fast Leituras',
   webDir: 'dist'
 };
 

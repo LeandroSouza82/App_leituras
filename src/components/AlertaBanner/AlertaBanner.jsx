@@ -9,16 +9,10 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasa
   return (
     <div
       style={{
-        position: 'sticky',
-        top: '12px',
-        zIndex: 100,
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
         marginBottom: '12px',
-        background: '#ffffff',
-        paddingTop: '4px',
-        paddingBottom: '4px',
       }}
     >
       {temHoje && (

@@ -20,6 +20,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--bg-app);
 }
 
@@ -31,20 +32,39 @@ select {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 0 0 112px;
   max-width: 100%;
   margin: 0 auto;
   background: var(--bg-app);
 }
 
+/* Evita que a tela inteira role quando estiver na aba de listagem */
+.app-shell:has(.list-card) {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0; /* A lista gerencia seu próprio espaçamento inferior */
+}
+
+.app-shell:has(.list-card) .app-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0;
+  padding: 0 12px;
+}
+
 .offline-banner {
-  position: sticky;
-  top: 0;
-  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -62,8 +82,8 @@ select {
 }
 
 .offline-banner.offline {
-  background: rgba(245, 158, 11, 0.14);
-  color: #92400e;
+  background: #dc2626;
+  color: #ffffff;
 }
 
 .app-content {

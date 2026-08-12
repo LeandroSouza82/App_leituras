@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../services/supabase';
+import { Network } from '@capacitor/network';
 
 const STORAGE_KEY = 'leituras_pendentes';
 const PENDENCIAS_OFFLINE_KEY = 'pendencias_offline';
+
+// ... (keep helper functions unchanged)
 
 const readPendingQueue = () => {
   try {
@@ -45,7 +48,7 @@ const writePendenciasOffline = (items) => {
 };
 
 export function useOfflineSync() {
-  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [isOnline, setIsOnline] = useState(true);
   const [pendentes, setPendentes] = useState([]);
 
   const carregarFilaLocal = useCallback(() => {
@@ -73,7 +76,7 @@ export function useOfflineSync() {
   }, []);
 
   const sincronizarPendenciasOffline = useCallback(async () => {
-    if (!navigator.onLine || !supabase) {
+    if (!isOnline || !supabase) {
       return;
     }
 
@@ -121,7 +124,7 @@ export function useOfflineSync() {
     }
 
     writePendenciasOffline(pendenciasRestantes);
-  }, []);
+  }, [isOnline]);
 
   const sincronizarFilaPendente = useCallback(async () => {
     if (!isOnline || !supabase) {
@@ -165,27 +168,27 @@ export function useOfflineSync() {
   useEffect(() => {
     carregarFilaLocal();
 
-    const handleOnline = async () => {
-      setIsOnline(true);
-      await sincronizarPendenciasOffline();
-      await sincronizarFilaPendente();
+    const checkInitialStatus = async () => {
+      const status = await Network.getStatus();
+      setIsOnline(status.connected);
+      if (status.connected) {
+        sincronizarPendenciasOffline();
+        sincronizarFilaPendente();
+      }
     };
 
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    checkInitialStatus();
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    if (navigator.onLine) {
-      sincronizarPendenciasOffline();
-      sincronizarFilaPendente();
-    }
+    const listener = Network.addListener('networkStatusChange', (status) => {
+      setIsOnline(status.connected);
+      if (status.connected) {
+        sincronizarPendenciasOffline();
+        sincronizarFilaPendente();
+      }
+    });
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      listener.remove();
     };
   }, [carregarFilaLocal, sincronizarFilaPendente, sincronizarPendenciasOffline]);
 
