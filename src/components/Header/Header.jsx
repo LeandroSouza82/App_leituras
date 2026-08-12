@@ -64,7 +64,7 @@ const Header = ({
           <CalendarDays size={20} />
         </div>
         <div>
-          <p className="eyebrow">LeiturasApp</p>
+          <p className="eyebrow">Fast Leituras</p>
           <h1>{title}</h1>
         </div>
       </div>
