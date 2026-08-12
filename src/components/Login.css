@@ -159,6 +159,85 @@
   text-decoration: underline;
 }
 
+.login-forgot-password {
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.login-forgot-password:hover:not(:disabled) {
+  color: #1e88e5;
+  text-decoration: underline;
+}
+
+/* Modal de Recuperação */
+.login-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.login-modal-card {
+  width: min(100%, 380px);
+  padding: 24px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  animation: login-enter 250ms ease both;
+}
+
+.login-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.login-modal-header h3 {
+  margin: 0;
+  color: #17324d;
+  font-size: 1.15rem;
+}
+
+.login-modal-back {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.login-modal-text {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.mb-4 {
+  margin-bottom: 16px;
+}
+
 .login-feedback {
   padding: 11px 12px;
   border-radius: 7px;

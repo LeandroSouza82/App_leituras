@@ -142,10 +142,17 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
     setSaving(false);
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    onShowToast('Dados locais e da sessão atualizados.');
-    window.setTimeout(() => onRefresh(), 450);
+    try {
+      await onRefresh();
+      onShowToast('Dados locais e da sessão atualizados.');
+    } catch (error) {
+      console.error('Erro ao sincronizar:', error);
+      onShowToast('Erro ao atualizar os dados.', 'error');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handlePasswordChange = async () => {
