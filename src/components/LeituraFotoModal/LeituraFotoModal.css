@@ -113,13 +113,243 @@
   color: #166534;
 }
 
-.btn-apto.foto-concluida:hover {
-  background: #bbf7d0;
-  border-color: #4ade80;
+.torre-selector {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 16px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  scrollbar-width: none;
+}
+
+.torre-selector::-webkit-scrollbar {
+  display: none;
+}
+
+.btn-torre {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-torre.active {
+  background: #1e88e5;
+  color: white;
+  border-color: #1e88e5;
+}
+
+.apto-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.apto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+
+.apto-name {
+  font-weight: 800;
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.apto-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-medicao {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-medicao:hover {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.btn-medicao.concluido {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.btn-medicao svg {
+  color: inherit;
 }
 
 .btn-apto-icon-success {
   color: #22c55e;
+}
+
+.concluido-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.unit-miniature {
+  width: 100%;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #86efac;
+}
+
+.concluido-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #166534;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.camera-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+}
+
+.camera-placeholder span {
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.btn-apto-simples.concluido {
+  background: #f0fdf4;
+  border-color: #86efac;
+  padding: 8px 6px;
+}
+
+.selectors-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: white;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.torre-filter-wrapper-select {
+  flex: 0 0 32%;
+}
+
+.select-torre-ap {
+  width: 100%;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+  background: #1e88e5;
+  color: white;
+  font-weight: 800;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(30, 136, 229, 0.2);
+  outline: none;
+}
+
+.medicao-toggle-group-expand {
+  flex: 1;
+  display: flex;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 10px;
+  gap: 2px;
+}
+
+.medicao-toggle-group-expand .btn-medicao-toggle {
+  flex: 1;
+  padding: 8px 2px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-weight: 800;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-medicao-toggle.active-energia {
+  background: #16a34a;
+  color: white;
+  box-shadow: 0 2px 4px rgba(22, 163, 74, 0.3);
+}
+
+.medicao-toggle-group {
+  display: flex;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 10px;
+  gap: 4px;
+}
+
+.btn-medicao-toggle {
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-weight: 800;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-medicao-toggle.active-agua {
+  background: #0ea5e9;
+  color: white;
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
+}
+
+.btn-medicao-toggle.active-gas {
+  background: #f59e0b;
+  color: white;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.modal-selectors {
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
 }
 
 .foto-modal-footer {
@@ -166,4 +396,49 @@
 
 .btn-cancelar-foto {
   flex: 1;
+}
+
+.btn-settings-units {
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.btn-settings-units:hover {
+  background: #f1f5f9;
+  color: #1e88e5;
+}
+
+.no-units-notice {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  padding: 16px;
+  border-radius: 12px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.no-units-notice p {
+  color: #92400e;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.no-units-notice button {
+  background: #fbbf24;
+  color: #78350f;
+  border: 0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
 }

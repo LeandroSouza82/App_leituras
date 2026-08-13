@@ -67,8 +67,12 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   const gerarSequencia = () => {
     const novas = [];
-    for (let andar = parseInt(andarInicial); andar <= parseInt(andarFinal); andar++) {
-      for (let apto = 1; apto <= parseInt(unidadesPorLine); apto++) {
+    const ini = parseInt(andarInicial);
+    const fim = parseInt(andarFinal);
+    const qtd = parseInt(unidadesPorAndar);
+
+    for (let andar = ini; andar <= fim; andar++) {
+      for (let apto = 1; apto <= qtd; apto++) {
         const andarStr = quatroDigitos ? String(andar).padStart(2, '0') : String(andar);
         const aptoStr = String(apto).padStart(2, '0');
         novas.push(`${prefixo}-${andarStr}${aptoStr}`);
@@ -146,7 +150,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
               </div>
               <div className="field">
                 <label>Unidades por Andar</label>
-                <input type="number" value={unidadesPorAndar} onChange={e => setAndarFinal(e.target.value)} />
+                <input type="number" value={unidadesPorAndar} onChange={e => setUnidadesPorAndar(e.target.value)} />
               </div>
               <label className="checkbox-field">
                 <input type="checkbox" checked={quatroDigitos} onChange={e => setQuatroDigitos(e.target.checked)} />

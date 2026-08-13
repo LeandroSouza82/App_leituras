@@ -168,27 +168,31 @@ export function useOfflineSync() {
   useEffect(() => {
     carregarFilaLocal();
 
-    const checkInitialStatus = async () => {
+    let listenerHandle = null;
+
+    const setupListener = async () => {
       const status = await Network.getStatus();
       setIsOnline(status.connected);
       if (status.connected) {
         sincronizarPendenciasOffline();
         sincronizarFilaPendente();
       }
+
+      listenerHandle = await Network.addListener('networkStatusChange', (status) => {
+        setIsOnline(status.connected);
+        if (status.connected) {
+          sincronizarPendenciasOffline();
+          sincronizarFilaPendente();
+        }
+      });
     };
 
-    checkInitialStatus();
-
-    const listener = Network.addListener('networkStatusChange', (status) => {
-      setIsOnline(status.connected);
-      if (status.connected) {
-        sincronizarPendenciasOffline();
-        sincronizarFilaPendente();
-      }
-    });
+    setupListener();
 
     return () => {
-      listener.remove();
+      if (listenerHandle) {
+        listenerHandle.remove();
+      }
     };
   }, [carregarFilaLocal, sincronizarFilaPendente, sincronizarPendenciasOffline]);
 

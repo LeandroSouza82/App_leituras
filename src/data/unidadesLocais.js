@@ -2,16 +2,35 @@
  * unidadesLocais - Registro offline de condomínios e suas respectivas unidades/torres.
  */
 
-// Função auxiliar para gerar unidades de 101 a 1110 (11 andares, 10 por andar)
+// Função auxiliar para gerar unidades de 0101 a 1110 (Padronização 4 dígitos uCondo)
 const gerarUnidadesTorre = (prefixo) => {
   const unidades = [];
   for (let andar = 1; andar <= 11; andar++) {
     for (let apto = 1; apto <= 10; apto++) {
-      const num = `${andar}${String(apto).padStart(2, '0')}`;
-      unidades.push(`${prefixo}-${num}`);
+      const andarStr = String(andar).padStart(2, '0');
+      const aptoStr = String(apto).padStart(2, '0');
+      unidades.push(`${prefixo}-${andarStr}${aptoStr}`);
     }
   }
   return unidades;
+};
+
+/**
+ * normalizarUnidadeuCondo - Garante que a unidade tenha 4 dígitos numéricos (ex: A-0101)
+ */
+export const normalizarUnidadeuCondo = (unidadeStr) => {
+  if (!unidadeStr) return '';
+  const partes = unidadeStr.split('-');
+  if (partes.length !== 2) return unidadeStr;
+
+  const prefixo = partes[0];
+  let numero = partes[1];
+
+  if (numero.length === 3) {
+    numero = '0' + numero;
+  }
+
+  return `${prefixo}-${numero}`;
 };
 
 export const CONDOMINIOS_OFFLINE = {
@@ -21,7 +40,6 @@ export const CONDOMINIOS_OFFLINE = {
       ...gerarUnidadesTorre('B')
     ]
   },
-  // Adicione outros condomínios aqui seguindo o mesmo padrão
 };
 
 export const getUnidadesOffline = (nomeCondominio) => {

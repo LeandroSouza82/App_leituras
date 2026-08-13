@@ -16,6 +16,7 @@
     "@capacitor/local-notifications": "^8.2.1",
     "@capacitor/network": "^8.0.1",
     "@capacitor/share": "^8.0.1",
+    "@ionic/pwa-elements": "^3.4.0",
     "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",

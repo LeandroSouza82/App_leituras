@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import './index.css';
+import { defineCustomElements } from '@ionic/pwa-elements/loader';
+
+// Registra os elementos de PWA do Ionic (necessário para a câmera no navegador/WebView)
+defineCustomElements(window);
 
 // Proteção cirúrgica contra reloads automáticos ao reconectar à internet ou atualizar Service Worker
 if (typeof window !== 'undefined') {

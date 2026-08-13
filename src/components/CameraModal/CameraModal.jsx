@@ -1,139 +1,87 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Zap, ZapOff, Camera, Check, RefreshCw } from 'lucide-react';
+import { X, Zap, ZapOff, Camera as CameraIcon, Check, RefreshCw } from 'lucide-react';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import './CameraModal.css';
 
 const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
-  const [stream, setStream] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
-  const [flashOn, setFlashOn] = useState(false);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      startCamera();
-    } else {
-      stopCamera();
+    if (isOpen && !capturedImage && !isTakingPhoto) {
+      openCapacitorCamera();
     }
-    return () => stopCamera();
-  }, [isOpen]);
+  }, [isOpen, capturedImage]);
 
-  const startCamera = async () => {
+  const openCapacitorCamera = async () => {
     try {
-      const constraints = {
-        video: {
-          facingMode: { exact: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
+      setIsTakingPhoto(true);
+      const photo = await Camera.getPhoto({
+        quality: 35, // Compressão extrema para salvar no Supabase (meta 25-40KB)
+        width: 800,  // Redimensionamento nativo para 800px de largura
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+        correctOrientation: true, // Garante que a foto não fique virada
+        promptLabelHeader: unitInfo,
+        promptLabelPhoto: 'Selecionar da Galeria',
+        promptLabelDevice: 'Tirar Foto',
+      });
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      console.error('Erro ao acessar a câmera traseira:', err);
-      // Fallback para qualquer câmera se a traseira falhar (ex: simulador)
-      try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setStream(mediaStream);
-        if (videoRef.current) videoRef.current.srcObject = mediaStream;
-      } catch (e) {
-        alert('Não foi possível acessar a câmera.');
+      if (photo.base64String) {
+        const rawBase64Image = `data:image/jpeg;base64,${photo.base64String}`;
+        setCapturedImage(rawBase64Image);
+        // Limpeza imediata da referência do objeto photo para liberar memória
+        photo.base64String = null;
+      } else {
         onClose();
       }
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => {
-        track.stop();
-      });
-      setStream(null);
-    }
-    setFlashOn(false);
-    setCapturedImage(null);
-  };
-
-  const toggleFlash = async () => {
-    if (!stream) return;
-    const track = stream.getVideoTracks()[0];
-    const capabilities = track.getCapabilities();
-
-    if (capabilities.torch) {
-      try {
-        const newState = !flashOn;
-        await track.applyConstraints({
-          advanced: [{ torch: newState }]
-        });
-        setFlashOn(newState);
-      } catch (e) {
-        console.warn('Lanterna não suportada neste dispositivo/navegador.');
+    } catch (err) {
+      console.error('Erro ao abrir câmera Capacitor:', err);
+      if (err.message !== 'User cancelled photos app') {
+        alert('Erro ao acessar a câmera: ' + err.message);
       }
-    } else {
-      alert('A lanterna não é suportada por este navegador/aparelho.');
+      onClose();
+    } finally {
+      setIsTakingPhoto(false);
     }
   };
 
-  const takePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+  const handleConfirm = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
-  };
-
-  const handleConfirm = () => {
-    onCapture(capturedImage);
-    stopCamera();
+    if (capturedImage) {
+      onCapture(capturedImage);
+    }
+    setCapturedImage(null);
     onClose();
   };
 
-  const handleRetake = () => {
+  const handleRetake = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     setCapturedImage(null);
+    openCapacitorCamera();
+  };
+
+  const handleClose = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCapturedImage(null);
+    onClose();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="camera-modal-root">
-      {!capturedImage ? (
-        <div className="camera-view-container">
-          <video ref={videoRef} autoPlay playsInline muted className="camera-video" />
-
-          <div className="camera-overlay">
-            <header className="camera-header">
-              <span className="camera-unit-label">{unitInfo}</span>
-              <div className="camera-top-actions">
-                <button type="button" className={`btn-flash ${flashOn ? 'on' : ''}`} onClick={toggleFlash}>
-                  {flashOn ? <Zap size={24} /> : <ZapOff size={24} />}
-                </button>
-                <button type="button" className="btn-close-camera" onClick={onClose}>
-                  <X size={24} />
-                </button>
-              </div>
-            </header>
-
-            <div className="camera-footer">
-              <button type="button" className="btn-shutter" onClick={takePhoto}>
-                <div className="shutter-inner" />
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
+    <div className="camera-modal-root" onClick={(e) => e.stopPropagation()}>
+      {capturedImage ? (
         <div className="camera-confirm-container">
           <img src={capturedImage} alt="Captura" className="preview-img" />
           <div className="confirm-overlay">
-            <h3>Confirmar Foto?</h3>
+            <h3>{unitInfo}</h3>
+            <p>Conferir nitidez da leitura</p>
             <div className="confirm-actions">
               <button type="button" className="btn-confirm-no" onClick={handleRetake}>
                 <RefreshCw size={20} /> Refazer
@@ -144,8 +92,17 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="camera-loading-view">
+          <div className="loading-spinner">
+            <CameraIcon size={40} className="spin-animation" />
+            <p>Abrindo Câmera...</p>
+          </div>
+          <button type="button" className="btn-close-loading" onClick={handleClose}>
+            <X size={24} />
+          </button>
+        </div>
       )}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 };
