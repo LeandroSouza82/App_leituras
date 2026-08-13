@@ -1,0 +1,164 @@
+.camera-modal-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: black;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+}
+
+.camera-view-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+}
+
+.camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.camera-unit-label {
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.camera-top-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.btn-flash, .btn-close-camera {
+  background: rgba(0, 0, 0, 0.4);
+  border: 0;
+  color: white;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.btn-flash.on {
+  background: #f59e0b;
+  color: white;
+}
+
+.camera-footer {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 30px;
+}
+
+.btn-shutter {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 4px solid white;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.shutter-inner {
+  width: 60px;
+  height: 60px;
+  background: white;
+  border-radius: 50%;
+}
+
+.btn-shutter:active .shutter-inner {
+  transform: scale(0.9);
+  background: #f1f5f9;
+}
+
+/* Tela de Confirmação */
+.camera-confirm-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: black;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.confirm-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.9);
+  padding: 30px 20px;
+  border-radius: 24px 24px 0 0;
+  text-align: center;
+  color: white;
+}
+
+.confirm-overlay h3 {
+  margin-bottom: 20px;
+  font-size: 1.2rem;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 15px;
+}
+
+.btn-confirm-no, .btn-confirm-yes {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 0.95rem;
+  border: 0;
+  cursor: pointer;
+}
+
+.btn-confirm-no {
+  background: #475569;
+  color: white;
+}
+
+.btn-confirm-yes {
+  background: #16a34a;
+  color: white;
+}
