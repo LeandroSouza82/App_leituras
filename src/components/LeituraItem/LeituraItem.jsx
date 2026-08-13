@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed } from 'lucide-react';
+import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed, Camera as CameraIcon } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
 import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModal';
+import LeituraFotoModal from '../LeituraFotoModal/LeituraFotoModal';
 import { supabase } from '../../services/supabaseClient';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
@@ -32,6 +33,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const [mostrarModalEdicao, setMostrarModalEdicao] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
+  const [mostrarModalFoto, setMostrarModalFoto] = useState(false);
   const [capturandoGpsId, setCapturandoGpsId] = useState(null);
 
   const { statusLabel, statusClass, statusEmoji } = leitura.completo
@@ -193,6 +195,14 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
           >
             <LocateFixed size={16} />
           </button>
+          <button
+            type="button"
+            className="btn-camera"
+            onClick={(e) => { e.stopPropagation(); setMostrarModalFoto(true); }}
+            title="Tirar foto da leitura"
+          >
+            <CameraIcon size={16} />
+          </button>
           <button type="button" className="btn-editar" onClick={() => setMostrarModalEdicao(true)} title="Editar condomínio">
             <Pencil color="#1e88e5" size={16} />
           </button>
@@ -227,6 +237,11 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
       onClose={() => setMostrarModalEdicao(false)}
       condominio={leitura}
       onSave={(id, dadosAtualizados) => onEdit(id, dadosAtualizados)}
+    />
+    <LeituraFotoModal
+      isOpen={mostrarModalFoto}
+      onClose={() => setMostrarModalFoto(false)}
+      leitura={leitura}
     />
     </>
   );

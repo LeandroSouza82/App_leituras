@@ -125,6 +125,26 @@
   color: #15803d;
 }
 
+.btn-camera {
+  background: #f0f9ff;
+  color: #0ea5e9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-camera:hover {
+  background: #e0f2fe;
+  color: #0284c7;
+  transform: scale(1.05);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
