@@ -75,8 +75,10 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
     for (let andar = ini; andar <= fim; andar++) {
       for (let apto = 1; apto <= qtd; apto++) {
+        // Aplica a regra de formatação numérica baseada no checkbox "Padronizar 4 dígitos"
         const andarStr = quatroDigitos ? String(andar).padStart(2, '0') : String(andar);
-        const aptoStr = String(apto).padStart(2, '0');
+        const aptoStr = quatroDigitos ? String(apto).padStart(2, '0') : String(apto);
+
         novas.push(`${prefixo}-${andarStr}${aptoStr}`);
       }
     }
