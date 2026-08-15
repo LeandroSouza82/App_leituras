@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, RefreshCw, Trash2, CheckCircle2, Save } from 'lucide-react';
+import Zoom from 'react-medium-image-zoom';
+import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
 const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDelete, onSaveReading, initialValue = '' }) => {
@@ -42,7 +44,9 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
 
         <div className="preview-foto-body">
           <div className="preview-img-container">
-            <img src={imageUri} alt="Preview do Medidor" className="preview-full-img" />
+            <Zoom>
+              <img src={imageUri} alt="Preview do Medidor" className="preview-full-img" />
+            </Zoom>
           </div>
 
           <div className="reading-input-container">
