@@ -9,6 +9,7 @@ import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnid
 import CameraModal from '../CameraModal/CameraModal';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
 import { StorageService } from '../../services/storageService';
+import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import './LeituraFotoModal.css';
 
@@ -333,16 +334,19 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
       const fileName = `leitura_foto_${leitura.id}_${unidadeNormalizada}_${tipoServico}_${Date.now()}.jpg`;
 
-      // 1. Salvamento Direto na Raiz do Directory.Data via Base64
-      // Isso elimina o erro "Invalid Path" causado por URLs de WebView
-      const savedFile = await CameraService.salvarFotoNaRaiz(photoData.base64, fileName);
+      // 1. Aplica o carimbo de data e hora via HTML5 Canvas
+      const stampedBase64 = await ImageStampService.applyTimestamp(photoData.base64);
 
-      // 2. Sucesso: Atualiza estado visual usando o webPath para preview imediato
+      // 2. Salvamento Direto na Raiz do Directory.Data via Base64 (Com carimbo)
+      const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
+
+      // 3. Sucesso: Atualiza estado visual usando o novo base64 carimbado para o preview
+      const stampedWebPath = `data:image/jpeg;base64,${stampedBase64}`;
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeNormalizada]: {
           ...(prev[unidadeNormalizada] || {}),
-          [tipoMedicaoAtivo]: photoData.webPath
+          [tipoMedicaoAtivo]: stampedWebPath
         }
       }));
 
