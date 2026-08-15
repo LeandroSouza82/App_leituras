@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, Hash, Plus, Save, Settings2, Trash2 } from 'lucide-react';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { salvarArquivoSeguro } from '../../services/filesystemService';
 import * as XLSX from 'xlsx';
 import './ModalGerenciarUnidades.css';
 
@@ -87,15 +89,27 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
     setAvulsa('');
   };
 
-  const salvarLocal = () => {
+  const salvarLocal = async () => {
     if (unidadesTemp.length === 0) {
       alert('Nenhuma unidade para salvar.');
       return;
     }
-    localStorage.setItem(storageKey, JSON.stringify(unidadesTemp));
-    onUnidadesAtualizadas(unidadesTemp);
-    alert('Unidades salvas offline com sucesso!');
-    onClose();
+
+    try {
+      // 1. Salvar no localStorage (Cache Rápido)
+      localStorage.setItem(storageKey, JSON.stringify(unidadesTemp));
+
+      // 2. Persistência Permanente no Filesystem (Directory.Data)
+      const fileName = `unidades_${condominioId}.json`;
+      await salvarArquivoSeguro(fileName, JSON.stringify(unidadesTemp));
+
+      onUnidadesAtualizadas(unidadesTemp);
+      alert('Unidades salvas permanentemente no dispositivo!');
+      onClose();
+    } catch (error) {
+      console.error('Erro ao salvar unidades no filesystem:', error);
+      alert('Erro ao persistir dados: ' + error.message);
+    }
   };
 
   const limparLista = () => {

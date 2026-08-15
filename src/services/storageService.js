@@ -1,28 +1,81 @@
-const STORAGE_PREFIX = 'leiturasapp';
-const STORAGE_LAST_SESSION = 'ultima_sessao_mes';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
-const getStorageKey = (chaveMesAno) => `${STORAGE_PREFIX}:${chaveMesAno}`;
+/**
+ * storageService - Unificação da camada de persistência para evitar erros de diretório.
+ * Estratégia: Flat Storage (Tudo na raiz do Directory.Data)
+ */
+export const StorageService = {
+  /**
+   * Salva um arquivo de forma segura na raiz.
+   */
+  async saveFile(fileName, base64Data) {
+    try {
+      // Remove barras para garantir que fique na raiz
+      const safeFileName = fileName.replace(/\//g, '_');
 
-export const getLeituras = (chaveMesAno) => {
-  const stored = localStorage.getItem(getStorageKey(chaveMesAno));
+      await Filesystem.writeFile({
+        path: safeFileName,
+        data: base64Data,
+        directory: Directory.Data,
+        recursive: true
+      });
 
-  if (!stored) {
-    return [];
+      return true;
+    } catch (error) {
+      console.error('[Storage] Erro ao salvar arquivo:', safeFileName, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Lê um arquivo da raiz.
+   */
+  async readFile(fileName) {
+    try {
+      const result = await Filesystem.readFile({
+        path: fileName,
+        directory: Directory.Data
+      });
+      return result.data;
+    } catch (error) {
+      console.error('[Storage] Erro ao ler arquivo:', fileName, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Lista arquivos filtrando por prefixo.
+   */
+  async listFiles(prefix = '') {
+    try {
+      const { files } = await Filesystem.readdir({
+        path: '',
+        directory: Directory.Data
+      });
+
+      const fileList = files.map(f => typeof f === 'string' ? f : f.name);
+
+      if (!prefix) return fileList;
+      return fileList.filter(name => name.startsWith(prefix));
+    } catch (error) {
+      console.error('[Storage] Erro ao listar arquivos:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Remove um arquivo da raiz.
+   */
+  async deleteFile(fileName) {
+    try {
+      await Filesystem.deleteFile({
+        path: fileName,
+        directory: Directory.Data
+      });
+      return true;
+    } catch (error) {
+      console.warn('[Storage] Arquivo não encontrado para remoção:', fileName);
+      return false;
+    }
   }
-
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return [];
-  }
-};
-
-export const saveLeituras = (chaveMesAno, leituras) => {
-  localStorage.setItem(getStorageKey(chaveMesAno), JSON.stringify(leituras));
-};
-
-export const getLastSessionMonth = () => localStorage.getItem(STORAGE_LAST_SESSION);
-
-export const setLastSessionMonth = (mesAno) => {
-  localStorage.setItem(STORAGE_LAST_SESSION, mesAno);
 };

@@ -49,23 +49,23 @@ export const ShareIntentService = {
           directory: Directory.Data,
           recursive: true
         });
-      } catch (e) {
+        console.log('[ShareIntent] Diretório garantido:', targetDir);
+      } catch (ignored) {
         // Ignora se a pasta já existir
       }
 
       // 2. Extrai o nome original do arquivo do URI ou gera um timestamp
-      const fileName = `import_${new Date().getTime()}.xlsx`; // Fallback
-      // Em implementações reais, pode-se usar plugins para obter o nome original via content resolver
+      const fileName = `shared_${new Date().getTime()}.xlsx`;
 
       // 3. Copia o arquivo usando a API do Filesystem
-      // Nota: O Filesystem.copy do Capacitor v6 suporta cópia direta de content:// URIs no Android
+      const targetPath = `${targetDir}/${fileName}`;
       const result = await Filesystem.copy({
         from: uri,
-        to: `${targetDir}/${fileName}`,
+        to: targetPath,
         toDirectory: Directory.Data
       });
 
-      console.log('[ShareIntent] Arquivo salvo localmente:', result.uri);
+      console.log('[ShareIntent] Arquivo salvo permanentemente em:', result.uri);
 
       return {
         name: fileName,

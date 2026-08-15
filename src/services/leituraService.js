@@ -1,5 +1,6 @@
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { StorageService } from './storageService';
 import * as XLSX from 'xlsx';
 
 /**
@@ -7,46 +8,21 @@ import * as XLSX from 'xlsx';
  */
 export const LeituraService = {
   /**
-   * Garante que a pasta de armazenamento local '/leituras/' exista.
-   */
-  async garantirPastaLeituras() {
-    try {
-      await Filesystem.mkdir({
-        path: 'leituras',
-        directory: Directory.Data,
-        recursive: true,
-      });
-      return true;
-    } catch (error) {
-      if (error.message && error.message.includes('already exists')) return true;
-      return false;
-    }
-  },
-
-  /**
    * Gera uma planilha Excel no padrão uCondo e compartilha.
-   * @param {Object} leitura - Objeto do condomínio
-   * @param {String} servicoFiltro - 'agua', 'gas', 'energia' ou 'todos'
+   * Estratégia: Lê os arquivos da raiz (Flat Storage) para evitar erros de diretório.
    */
   async exportarParaWhatsApp(leitura, servicoFiltro = 'todos') {
     try {
       const nomeLimpo = leitura.nome.replace(/\s+/g, '_');
+      const prefixoChave = `leitura_foto_${leitura.id}_`;
 
-      // 1. Localiza arquivos deste condomínio no diretório
-      const { files } = await Filesystem.readdir({
-        path: 'leituras',
-        directory: Directory.Data
+      // 1. Localiza arquivos deste condomínio na RAIZ
+      const files = await StorageService.listFiles(prefixoChave);
+
+      const padraoCondo = files.filter(name => {
+        if (servicoFiltro === 'todos') return true;
+        return name.includes(`_${servicoFiltro.toUpperCase()}_`);
       });
-
-      const padraoCondo = files
-        .map(f => typeof f === 'string' ? f : f.name)
-        .filter(name => {
-          const startsWithCondo = name.startsWith(nomeLimpo);
-          if (!startsWithCondo) return false;
-
-          if (servicoFiltro === 'todos') return true;
-          return name.includes(`_${servicoFiltro.toUpperCase()}_`);
-        });
 
       if (padraoCondo.length === 0) {
         alert(`Nenhuma leitura encontrada para ${servicoFiltro === 'todos' ? 'este condomínio' : servicoFiltro.toUpperCase()}.`);
@@ -56,9 +32,9 @@ export const LeituraService = {
       // 2. Mapeia os dados para o padrão uCondo
       const dadosConsumo = padraoCondo.map(fileName => {
         const partes = fileName.split('_');
-        if (partes.length < 3) return null;
+        if (partes.length < 5) return null;
 
-        const unidadeRaw = partes[1]; // Ex: A-0101
+        const unidadeRaw = partes[3]; // Padrão: leitura_foto_condoId_unidade_servico_timestamp.jpg
 
         return {
           'Unidade *': unidadeRaw,
@@ -90,6 +66,7 @@ export const LeituraService = {
 
       const suffix = servicoFiltro === 'todos' ? 'Geral' : servicoFiltro.toUpperCase();
       const fileName = `uCondo_${nomeLimpo}_${suffix}_${new Date().getTime()}.xlsx`;
+
       const result = await Filesystem.writeFile({
         path: fileName,
         data: base64Data,

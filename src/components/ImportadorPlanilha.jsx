@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CheckCircle2, Loader2, Upload, FileSpreadsheet } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckCircle2, Loader2, Upload, FileSpreadsheet, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
 import { FilePickerService } from '../services/filePickerService';
@@ -172,6 +172,28 @@ const syncCondominios = async (listaCondominios) => {
 const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
+  const [localFiles, setLocalFiles] = useState([]);
+
+  // Varredura automática na inicialização para persistência visual
+  useEffect(() => {
+    carregarArquivosLocais();
+  }, []);
+
+  const carregarArquivosLocais = async () => {
+    try {
+      console.log('[Importador] Iniciando varredura de arquivos locais...');
+
+      // Debug: Ver o que tem na raiz do Directory.Data
+      const rootDir = await Filesystem.readdir({ path: '', directory: Directory.Data });
+      console.log('[Importador] Conteúdo da raiz Data:', rootDir.files);
+
+      const files = await FilePickerService.getLocalSpreadsheets();
+      setLocalFiles(files);
+      console.log('[Importador] Arquivos carregados para o estado:', files.length);
+    } catch (error) {
+      console.error('[Importador] Erro ao listar arquivos:', error);
+    }
+  };
 
   const emitStatus = (message) => {
     setStatus(message);
@@ -180,29 +202,12 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
     }
   };
 
-  const handlePickFile = async () => {
+  const processarBufferExcel = async (data, fileName) => {
     try {
       setIsProcessing(true);
-      emitStatus('Abrindo seletor de arquivos...');
+      emitStatus(`Processando: ${fileName}...`);
 
-      const fileData = await FilePickerService.pickAndSaveSpreadsheet();
-
-      if (!fileData) {
-        setIsProcessing(false);
-        emitStatus('');
-        return;
-      }
-
-      emitStatus(`Processando: ${fileData.name}...`);
-
-      // 1. Ler o arquivo (Base64) que foi salvo localmente
-      const fileContents = await Filesystem.readFile({
-        path: fileData.path,
-        directory: Directory.Data
-      });
-
-      // 2. Converter Base64 para Workbook do XLSX
-      const workbook = XLSX.read(fileContents.data, { type: 'base64' });
+      const workbook = XLSX.read(data, { type: 'base64' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
@@ -220,15 +225,52 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       const totalImportado = await syncCondominios(listaCondominios);
 
       emitStatus(`Sucesso! ${totalImportado} condomínios sincronizados.`);
-
       if (onImportComplete) {
         onImportComplete(totalImportado);
       }
+
+      // Atualiza a lista após nova importação
+      carregarArquivosLocais();
     } catch (error) {
-      console.error('[Importador] Falha:', error);
-      emitStatus(error?.message || 'Erro ao importar a planilha. Tente novamente.');
+      console.error('[Importador] Falha no processamento:', error);
+      emitStatus(error?.message || 'Erro ao processar planilha.');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handlePickFile = async () => {
+    try {
+      emitStatus('Abrindo seletor de arquivos...');
+      const fileData = await FilePickerService.pickAndSaveSpreadsheet();
+
+      if (!fileData) {
+        emitStatus('');
+        return;
+      }
+
+      const fileContents = await Filesystem.readFile({
+        path: fileData.path,
+        directory: Directory.Data
+      });
+
+      await processarBufferExcel(fileContents.data, fileData.name);
+    } catch (error) {
+      emitStatus('Falha na seleção do arquivo.');
+    }
+  };
+
+  const handleProcessLocalFile = async (file) => {
+    try {
+      console.log('[Importador] Lendo arquivo local:', file.path);
+      const fileContents = await Filesystem.readFile({
+        path: file.path,
+        directory: Directory.Data
+      });
+      await processarBufferExcel(fileContents.data, file.name);
+    } catch (error) {
+      console.error('[Importador] Erro na leitura local:', error);
+      emitStatus('Erro ao ler arquivo local.');
     }
   };
 
@@ -257,6 +299,40 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
         {isProcessing ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSpreadsheet size={18} />}
         {isProcessing ? 'Processando...' : 'Selecionar e Importar Planilha'}
       </button>
+
+      {/* Lista de Planilhas Persistentes no Dispositivo */}
+      {localFiles.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <h4 style={{ fontSize: 12, color: '#64748b', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <History size={14} /> Planilhas no Dispositivo
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {localFiles.map((file, index) => (
+              <div
+                key={index}
+                onClick={() => !isProcessing && handleProcessLocalFile(file)}
+                style={{
+                  padding: '10px 12px',
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: '#334155',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>
+                  {file.name.split('_').slice(1).join('_') || file.name}
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>IMPORTAR</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {status && (
         <div

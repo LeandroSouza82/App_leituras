@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Share2, Settings } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
-import { processAndStampImage } from '../../services/cameraService';
+import { CameraService } from '../../services/cameraService';
 import { getUnidadesOffline, normalizarUnidadeuCondo } from '../../data/unidadesLocais';
 import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnidades';
 import CameraModal from '../CameraModal/CameraModal';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
+import { StorageService } from '../../services/storageService';
 import { supabase } from '../../services/supabase';
 import './LeituraFotoModal.css';
 
@@ -22,6 +24,76 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activeApto, setActiveApto] = useState(null);
   const [unidadesCarregadas, setUnidadesAtualizadas] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const storageKey = useMemo(() => `unidades_${leitura?.id || 'default'}`, [leitura?.id]);
+
+  useEffect(() => {
+    if (isOpen && leitura) {
+      const carregarDadosIniciais = async () => {
+        try {
+          // 1. Carregar status das fotos salvas no FS
+          verificarFotosSalvas();
+
+          const condId = leitura?.id || leitura?.condominio_id;
+          let unidadesParaCarregar = [];
+
+          // 2. Tentar carregar do Filesystem (Permanente)
+          try {
+            const fileName = `unidades_${condId}.json`;
+            const fileResult = await Filesystem.readFile({
+              path: fileName,
+              directory: Directory.Data,
+              encoding: 'utf8'
+            });
+            if (fileResult.data) {
+              unidadesParaCarregar = JSON.parse(fileResult.data);
+              console.log('[Offline] Unidades carregadas do Filesystem');
+            }
+          } catch (fsError) {
+            console.log('[Offline] Arquivo JSON não encontrado, tentando localStorage...');
+          }
+
+          // 3. Fallback para localStorage se FS falhar
+          if (unidadesParaCarregar.length === 0) {
+            const salvas = localStorage.getItem(storageKey);
+            if (salvas) {
+              unidadesParaCarregar = JSON.parse(salvas);
+              console.log('[Offline] Unidades carregadas do localStorage');
+            }
+          }
+
+          // 4. Se ainda vazio, tentar Supabase
+          if (unidadesParaCarregar.length === 0 && supabase && condId) {
+            const { data: unidadesData, error: supaErr } = await supabase
+              .from('unidades')
+              .select('*')
+              .eq('condominio_id', condId);
+
+            if (!supaErr && unidadesData && unidadesData.length > 0) {
+              unidadesParaCarregar = unidadesData.map(u => u.numero || u.identificador || u.unidade);
+              console.log('[Online] Unidades carregadas do Supabase');
+            }
+          }
+
+          // 5. Último recurso: Lista offline padrão
+          if (unidadesParaCarregar.length === 0) {
+            const locais = getUnidadesOffline(leitura.nome);
+            if (locais) {
+              unidadesParaCarregar = locais;
+              console.log('[Default] Unidades carregadas do registro offline estático');
+            }
+          }
+
+          setUnidadesAtualizadas(unidadesParaCarregar);
+        } catch (error) {
+          console.error('Erro no carregamento inicial da modal:', error);
+        }
+      };
+
+      carregarDadosIniciais();
+    }
+  }, [isOpen, leitura, storageKey]);
 
   // Lógica de processamento de unidades e torres
   const { unidadesPorTorre, torres, listaCompleta } = useMemo(() => {
@@ -87,46 +159,42 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const verificarFotosSalvas = async () => {
     if (!leitura?.id) return;
     try {
-      const { files } = await Filesystem.readdir({
-        path: 'leituras',
-        directory: Directory.Data,
-      });
+      console.log('[FileSystem] Iniciando varredura na raiz do Directory.Data');
+
+      // Varredura direta na raiz via StorageService
+      const files = await StorageService.listFiles(`leitura_foto_${leitura.id}_`);
+
+      console.log('[FileSystem] Fotos encontradas para este condomínio:', files.length);
 
       const capturadas = {};
       const valoresSalvos = {};
-      const prefixoChave = `leitora_foto_${leitura.id}_`;
 
-      for (const file of files) {
-        const fileName = typeof file === 'string' ? file : file.name;
-        if (fileName.startsWith(prefixoChave)) {
-          const partes = fileName.replace('.jpg', '').split('_');
-          if (partes.length >= 5) {
-            const unidade = partes[3];
-            const servico = partes[4].toLowerCase();
+      for (const fileName of files) {
+        // leitura_foto_condoId_unidade_servico_timestamp.jpg
+        const partes = fileName.replace('.jpg', '').split('_');
+        if (partes.length >= 6) {
+          const unidade = partes[3];
+          const servico = partes[4].toLowerCase();
 
-            try {
-              const fileData = await Filesystem.readFile({
-                path: `leituras/${fileName}`,
-                directory: Directory.Data
-              });
+          try {
+            const data = await StorageService.readFile(fileName);
 
-              if (!capturadas[unidade]) capturadas[unidade] = {};
-              capturadas[unidade][servico] = `data:image/jpeg;base64,${fileData.data}`;
+            if (!capturadas[unidade]) capturadas[unidade] = {};
+            capturadas[unidade][servico] = `data:image/jpeg;base64,${data}`;
 
-              const localVal = localStorage.getItem(`valor_${leitura.id}_${unidade}_${servico}`);
-              if (localVal) {
-                if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
-                valoresSalvos[unidade][servico] = localVal;
-              }
-            } catch (readErr) {
-              console.error('Erro ao ler foto individual:', fileName);
+            const localVal = localStorage.getItem(`valor_${leitura.id}_${unidade}_${servico}`);
+            if (localVal) {
+              if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
+              valoresSalvos[unidade][servico] = localVal;
             }
+          } catch (readErr) {
+            console.error('Erro ao ler foto individual:', fileName);
           }
         }
       }
       setFotosCapturadas(capturadas);
       setLeiturasValores(valoresSalvos);
-    } catch (e) {
+    } catch (ignored) {
       setFotosCapturadas({});
       setLeiturasValores({});
     }
@@ -146,15 +214,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     try {
       const unidadeNormalizada = normalizarUnidadeuCondo(activeApto);
-      const storageKeyPhoto = `leitora_foto_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`;
+      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`;
 
-      try {
-        await Filesystem.deleteFile({
-          path: `leituras/${storageKeyPhoto}.jpg`,
-          directory: Directory.Data,
-        });
-      } catch (err) {
-        console.warn('Arquivo não encontrado para exclusão física.');
+      // Localiza o arquivo exato na raiz antes de deletar via StorageService
+      const files = await StorageService.listFiles(prefixoChave);
+
+      if (files.length > 0) {
+        await StorageService.deleteFile(files[0]);
       }
 
       if (supabase) {
@@ -255,41 +321,40 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleCapturePhoto = async (base64Data) => {
+  const handleCapturePhoto = async (photoData) => {
+    if (!activeApto || isProcessing) return;
+
     try {
+      setIsProcessing(true);
+
       const unidadeNormalizada = normalizarUnidadeuCondo(activeApto);
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
 
-      const finalBase64 = await processAndStampImage(base64Data, {
-        unidade: unidadeNormalizada,
-        servico: tipoServico,
-        timestamp: new Date()
-      });
+      // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
+      const fileName = `leitura_foto_${leitura.id}_${unidadeNormalizada}_${tipoServico}_${Date.now()}.jpg`;
 
-      if (!finalBase64) {
-        throw new Error('O processamento do carimbo retornou vazio.');
-      }
+      // 1. Salvamento Direto na Raiz do Directory.Data via Base64
+      // Isso elimina o erro "Invalid Path" causado por URLs de WebView
+      const savedFile = await CameraService.salvarFotoNaRaiz(photoData.base64, fileName);
 
-      const storageKeyPhoto = `leitora_foto_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`;
-
-      await Filesystem.writeFile({
-        path: `leituras/${storageKeyPhoto}.jpg`,
-        data: finalBase64,
-        directory: Directory.Data,
-      });
-
+      // 2. Sucesso: Atualiza estado visual usando o webPath para preview imediato
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeNormalizada]: {
           ...(prev[unidadeNormalizada] || {}),
-          [tipoMedicaoAtivo]: `data:image/jpeg;base64,${finalBase64}`
+          [tipoMedicaoAtivo]: photoData.webPath
         }
       }));
 
       setIsPreviewOpen(true);
+      console.log('[FileSystem] Foto persistida na raiz:', savedFile.path);
+
     } catch (error) {
-      console.error('Erro ao processar/salvar foto:', error);
-      alert('❌ Falha Crítica ao Processar Foto: ' + error.message);
+      console.error("[FileSystem] Falha Crítica ao Processar Foto:", error);
+      alert('❌ Erro ao salvar evidência: ' + error.message);
+    } finally {
+      // ⚠️ GARANTIA DE DESTRAVAMENTO DA UI
+      setIsProcessing(false);
     }
   };
 

@@ -33,11 +33,12 @@ export async function salvarArquivoSeguro(pathCompleto, dadosBase64) {
       });
     }
 
-    // 4. Salva o arquivo
+    // 4. Salva o arquivo com recursive: true para garantir proteção extra no diretório pai
     await Filesystem.writeFile({
       path: pathLimpo,
       data: dadosBase64,
-      directory: Directory.Data
+      directory: Directory.Data,
+      recursive: true // <-- Essencial para evitar o erro no write
     });
 
     console.log("[FileSystem] Arquivo salvo com sucesso em:", pathLimpo);

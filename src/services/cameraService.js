@@ -1,121 +1,98 @@
-/**
- * Serviço responsável pelo processamento, carimbo de auditoria e compressão de imagens.
- * As fotos carimbadas servem como comprovante legal auditável para moradores e inquilinos.
- */
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { supabase } from './supabase';
 
 /**
- * Processa uma imagem (File, Blob ou Data URL Base64), adiciona carimbo de auditoria no canto inferior direito
- * e exporta em JPEG com compressão otimizada.
- *
- * @param {File|Blob|string} imageInput - Arquivo de imagem ou URL/Base64.
- * @param {Object} options - Configurações e metadados obrigatórios.
- * @param {string} options.unidade - Identificação da unidade (ex: "1-101").
- * @param {string} options.servico - Tipo de serviço (ex: "ÁGUA").
- * @param {Date} [options.timestamp] - Data/Hora customizada (default: agora).
- * @returns {Promise<string>} Base64 (sem o prefixo) da imagem carimbada e comprimida.
+ * Serviço Sênior de Câmera e Persistência - Otimizado para evitar OOM e erros de "Invalid Path".
  */
-export const processAndStampImage = (imageInput, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const { unidade, servico, timestamp = new Date() } = options;
+export const CameraService = {
+  /**
+   * Captura foto com compressão extrema e retorna Base64 puro.
+   * Evita erros de path baseados em URLs de WebView.
+   */
+  async capturarFotoBase64(unitLabel) {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 15, // Compressão de 85% para manter arquivo ultraleve (25-40KB)
+        width: 800,
+        allowEditing: false,
+        resultType: CameraResultType.Base64, // Retorna string Base64 para gravação direta
+        source: CameraSource.Camera,
+        correctOrientation: true,
+        promptLabelHeader: unitLabel
+      });
 
-    if (!unidade || !servico) {
-      return reject(new Error('Unidade e Serviço são obrigatórios para o carimbo de auditoria.'));
+      return {
+        base64: photo.base64String,
+        format: photo.format,
+        webPath: `data:image/${photo.format};base64,${photo.base64String}`
+      };
+    } catch (error) {
+      console.error('[Camera] Erro na captura Base64:', error);
+      throw error;
     }
+  },
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+  /**
+   * Persiste os dados Base64 diretamente na raiz do armazenamento permanente (Flat Storage).
+   * Elimina totalmente o erro de "Invalid Path" por não depender de caminhos temporários.
+   */
+  async salvarFotoNaRaiz(base64Data, fileName) {
+    try {
+      // 1. Salvamento Direto na Raiz do Directory.Data
+      // O nome do arquivo é gerado de forma plana e limpa.
+      await Filesystem.writeFile({
+        path: fileName,
+        data: base64Data,
+        directory: Directory.Data,
+        recursive: true
+      });
 
-    img.onload = () => {
-      try {
-        // 1. Redimensionamento Proporcional (Largura Máxima: 1080px)
-        const maxWidth = 1080;
-        let width = img.width;
-        let height = img.height;
+      const finalUri = await Filesystem.getUri({
+        path: fileName,
+        directory: Directory.Data
+      });
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
+      console.log('[FileSystem] Foto persistida com sucesso na raiz:', fileName);
 
-        // 2. Inicialização do Canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
+      return { path: fileName, uri: finalUri.uri };
+    } catch (error) {
+      console.error('[FileSystem] Erro ao gravar arquivo Base64:', error);
+      throw error;
+    }
+  },
 
-        // Desenha a imagem base redimensionada
-        ctx.drawImage(img, 0, 0, width, height);
+  /**
+   * Upload direto para o Supabase Storage.
+   */
+  async uploadParaSupabase(localPath, remotePath) {
+    try {
+      const fileData = await Filesystem.readFile({
+        path: localPath,
+        directory: Directory.Data
+      });
 
-        // 3. Estrutura das Linhas de Texto (Canto Inferior Direito)
-        const dateStr = timestamp.toLocaleDateString('pt-BR');
-        const timeStr = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-        const line1 = `UNID: ${unidade} | ${servico.toUpperCase()}`;
-        const line2 = `DATA: ${dateStr} ${timeStr}`;
-        const textLines = [line1, line2];
-
-        // 4. Cálculo Dinâmico de Fonte (Math.max(14, 2.5% da largura))
-        const fontSize = Math.max(14, Math.round(width * 0.025));
-        const padding = 15; // Padding das bordas do canvas
-        const boxPadding = Math.round(fontSize * 0.6);
-        const lineHeight = fontSize * 1.4;
-
-        ctx.font = `bold ${fontSize}px sans-serif`;
-
-        // Calcula largura máxima para o fundo
-        let maxTextWidth = 0;
-        textLines.forEach((line) => {
-          const metrics = ctx.measureText(line);
-          if (metrics.width > maxTextWidth) {
-            maxTextWidth = metrics.width;
-          }
-        });
-
-        const boxWidth = maxTextWidth + boxPadding * 2;
-        const boxHeight = textLines.length * lineHeight + boxPadding;
-
-        // Posição do fundo (Canto Inferior Direito)
-        const boxX = width - boxWidth - padding;
-        const boxY = height - boxHeight - padding;
-
-        // 5. Renderização da Tarja de Contraste (rgba(0, 0, 0, 0.75))
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-
-        // 6. Renderização do Texto Branco Alinhado à Direita
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.textAlign = 'right';
-        ctx.textBaseline = 'top';
-
-        textLines.forEach((line, index) => {
-          const textX = width - padding - boxPadding;
-          const textY = boxY + (boxPadding / 2) + (index * lineHeight);
-          ctx.fillText(line, textX, textY);
-        });
-
-        // 7. Compressão JPEG 0.6
-        const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        const base64 = stampedDataUrl.split(',')[1];
-
-        console.log("-> Imagem carimbada com sucesso. Tamanho base64:", base64.length);
-        console.log("✅ Foto carimbada gerada com sucesso para unidade:", unidade);
-        resolve(base64);
-      } catch (error) {
-        reject(new Error(`Erro ao aplicar carimbo: ${error.message}`));
+      // Converte Base64 para Blob eficiente
+      const byteCharacters = atob(fileData.data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
-    };
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/jpeg' });
 
-    img.onerror = () => reject(new Error('Falha ao carregar a imagem.'));
+      const { data, error } = await supabase.storage
+        .from('fotos_leituras')
+        .upload(remotePath, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
 
-    if (typeof imageInput === 'string') {
-      img.src = imageInput;
-    } else if (imageInput instanceof File || imageInput instanceof Blob) {
-      const reader = new FileReader();
-      reader.onload = (e) => { img.src = e.target.result; };
-      reader.readAsDataURL(imageInput);
-    } else {
-      reject(new Error('Formato de entrada inválido.'));
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('[Supabase] Falha no upload:', error);
+      throw error;
     }
-  });
+  }
 };

@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Zap, ZapOff, Camera as CameraIcon, Check, RefreshCw } from 'lucide-react';
-import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import React, { useState, useEffect } from 'react';
+import { X, Camera as CameraIcon, Check, RefreshCw } from 'lucide-react';
+import { CameraService } from '../../services/cameraService';
 import './CameraModal.css';
 
 const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
@@ -16,23 +16,12 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
   const openCapacitorCamera = async () => {
     try {
       setIsTakingPhoto(true);
-      const photo = await Camera.getPhoto({
-        quality: 35, // Compressão extrema para salvar no Supabase (meta 25-40KB)
-        width: 800,  // Redimensionamento nativo para 800px de largura
-        allowEditing: false,
-        resultType: CameraResultType.Base64,
-        source: CameraSource.Camera,
-        correctOrientation: true, // Garante que a foto não fique virada
-        promptLabelHeader: unitInfo,
-        promptLabelPhoto: 'Selecionar da Galeria',
-        promptLabelDevice: 'Tirar Foto',
-      });
+      // Captura via Base64 para evitar erros de "Invalid Path" da WebView
+      const photo = await CameraService.capturarFotoBase64(unitInfo);
 
-      if (photo.base64String) {
-        const rawBase64Image = `data:image/jpeg;base64,${photo.base64String}`;
-        setCapturedImage(rawBase64Image);
-        // Limpeza imediata da referência do objeto photo para liberar memória
-        photo.base64String = null;
+      if (photo.base64) {
+        // Armazenamos um objeto com o base64 para o salvamento e o webPath para o preview
+        setCapturedImage(photo);
       } else {
         onClose();
       }
@@ -51,7 +40,8 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (capturedImage) {
+    if (capturedImage?.base64) {
+      // Repassamos os dados brutos para o salvamento seguro
       onCapture(capturedImage);
     }
     setCapturedImage(null);
@@ -76,9 +66,9 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
 
   return (
     <div className="camera-modal-root" onClick={(e) => e.stopPropagation()}>
-      {capturedImage ? (
+      {capturedImage?.webPath ? (
         <div className="camera-confirm-container">
-          <img src={capturedImage} alt="Captura" className="preview-img" />
+          <img src={capturedImage.webPath} alt="Captura" className="preview-img" />
           <div className="confirm-overlay">
             <h3>{unitInfo}</h3>
             <p>Conferir nitidez da leitura</p>

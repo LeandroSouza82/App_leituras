@@ -1,5 +1,6 @@
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { salvarArquivoSeguro } from './filesystemService';
 
 /**
  * Serviço Sênior Modular para seleção e persistência local de arquivos de planilha.
@@ -23,28 +24,18 @@ export const FilePickerService = {
       const file = result.files[0];
       const targetDir = 'planilhas_recebidas';
 
-      // 2. Garantir que a pasta interna existe
-      try {
-        await Filesystem.mkdir({
-          path: targetDir,
-          directory: Directory.Data,
-          recursive: true,
-        });
-      } catch (e) {
-        // Ignora se já existir
-      }
-
-      // 3. Gerar nome seguro e salvar cópia
-      const safeName = `${new Date().getTime()}_${file.name.replace(/\s+/g, '_')}`;
+      // 2. Gerar nome seguro e salvar cópia permanentemente usando o serviço seguro
+      const safeName = `picked_${new Date().getTime()}_${file.name.replace(/\s+/g, '_')}`;
       const targetPath = `${targetDir}/${safeName}`;
 
-      await Filesystem.writeFile({
+      await salvarArquivoSeguro(targetPath, file.data);
+
+      const uriResult = await Filesystem.getUri({
         path: targetPath,
-        data: file.data, // Base64 retornado pelo FilePicker
-        directory: Directory.Data,
+        directory: Directory.Data
       });
 
-      console.log('[FilePicker] Arquivo persistido localmente:', targetPath);
+      console.log('[FilePicker] Arquivo persistido em:', uriResult.uri);
 
       return {
         name: file.name,
@@ -65,16 +56,27 @@ export const FilePickerService = {
   async getLocalSpreadsheets() {
     try {
       const targetDir = 'planilhas_recebidas';
+
+      // Garante a existência antes de ler
+      await Filesystem.mkdir({
+        path: targetDir,
+        directory: Directory.Data,
+        recursive: true,
+      }).catch(() => {});
+
       const { files } = await Filesystem.readdir({
         path: targetDir,
         directory: Directory.Data,
       });
 
+      console.log(`[FilePicker] Varredura em ${targetDir}:`, files);
+
       return files.map(file => ({
         name: typeof file === 'string' ? file : file.name,
         path: `${targetDir}/${typeof file === 'string' ? file : file.name}`
       }));
-    } catch (e) {
+    } catch (error) {
+      console.error('[FilePicker] Erro na varredura local:', error);
       return [];
     }
   }
