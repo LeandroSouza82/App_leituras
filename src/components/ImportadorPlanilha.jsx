@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react';
-import { CheckCircle2, Loader2, Upload } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, Loader2, Upload, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
+import { FilePickerService } from '../services/filePickerService';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 const normalizeHeader = (value) =>
   String(value ?? '')
@@ -168,7 +170,6 @@ const syncCondominios = async (listaCondominios) => {
 };
 
 const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
-  const inputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -179,25 +180,29 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
     }
   };
 
-  const handleFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    const fileName = file.name.toLowerCase();
-    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
-      emitStatus('Selecione um arquivo Excel válido (.xlsx ou .xls).');
-      event.target.value = '';
-      return;
-    }
-
-    setIsProcessing(true);
-    emitStatus('Processando planilha...');
-
+  const handlePickFile = async () => {
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
+      setIsProcessing(true);
+      emitStatus('Abrindo seletor de arquivos...');
+
+      const fileData = await FilePickerService.pickAndSaveSpreadsheet();
+
+      if (!fileData) {
+        setIsProcessing(false);
+        emitStatus('');
+        return;
+      }
+
+      emitStatus(`Processando: ${fileData.name}...`);
+
+      // 1. Ler o arquivo (Base64) que foi salvo localmente
+      const fileContents = await Filesystem.readFile({
+        path: fileData.path,
+        directory: Directory.Data
+      });
+
+      // 2. Converter Base64 para Workbook do XLSX
+      const workbook = XLSX.read(fileContents.data, { type: 'base64' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
@@ -214,49 +219,43 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       const listaCondominios = parseCondominiosFromRows(rows);
       const totalImportado = await syncCondominios(listaCondominios);
 
-      emitStatus(`Planilha importada com sucesso. ${totalImportado} condomínio(s) sincronizado(s).`);
+      emitStatus(`Sucesso! ${totalImportado} condomínios sincronizados.`);
 
       if (onImportComplete) {
         onImportComplete(totalImportado);
       }
     } catch (error) {
+      console.error('[Importador] Falha:', error);
       emitStatus(error?.message || 'Erro ao importar a planilha. Tente novamente.');
     } finally {
       setIsProcessing(false);
-      event.target.value = '';
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        hidden
-        onChange={handleFile}
-      />
-
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={handlePickFile}
         disabled={isProcessing}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
-          padding: '10px 16px',
-          borderRadius: 10,
+          padding: '12px 16px',
+          borderRadius: 12,
           border: '1px solid #dbe4f0',
-          background: isProcessing ? '#e5e7eb' : '#0f172a',
+          background: isProcessing ? '#e5e7eb' : '#1e293b',
           color: '#fff',
           cursor: isProcessing ? 'not-allowed' : 'pointer',
-          fontWeight: 600,
+          fontWeight: 700,
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+          transition: 'all 0.2s'
         }}
       >
-        {isProcessing ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={18} />}
-        {isProcessing ? 'Processando planilha...' : 'Importar / Atualizar Planilha'}
+        {isProcessing ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSpreadsheet size={18} />}
+        {isProcessing ? 'Processando...' : 'Selecionar e Importar Planilha'}
       </button>
 
       {status && (

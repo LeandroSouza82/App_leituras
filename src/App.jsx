@@ -18,6 +18,7 @@ import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
+import { ShareIntentService } from './services/shareIntentService';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -88,6 +89,12 @@ const MainApp = ({ onLogout }) => {
   useEffect(() => {
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
+
+    // Inicializa o serviço de recebimento de planilhas via Share/Open
+    ShareIntentService.init((fileData) => {
+      showToast(`Planilha "${fileData.name}" recebida com sucesso!`, 'success');
+      // Aqui você poderia redirecionar para a aba de cadastro ou abrir um modal de importação
+    });
   }, []);
 
   useEffect(() => {
