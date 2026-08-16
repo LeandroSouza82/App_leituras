@@ -29,10 +29,12 @@ const LeituraList = ({
   onResetFocarAtrasadoAuto,
 }) => {
   const diaAtual = new Date().getDate();
-  const [indiceAtualDoFoco, setIndiceAtualDoFoco] = useState(0);
+  const [indiceAtrasado, setIndiceAtrasado] = useState(0);
+  const [indiceHoje, setIndiceHoje] = useState(0);
   const [itemFocadoId, setItemFocadoId] = useState(null);
   const [filtroCondominio, setFiltroCondominio] = useState('');
   const itemRefs = useRef({});
+  const focoTimeoutRef = useRef(null);
 
   // 1. Ordenação dos dados
   const leiturasOrdenadas = useMemo(() => {
@@ -55,16 +57,16 @@ const LeituraList = ({
         item.nome_condominio,
         item.descricao,
         item.titulo,
-        item.condominio?.nome
+        item.condominio?.nome,
       ];
 
-      return valoresParaVerificar.some((valor) => 
+      return valoresParaVerificar.some((valor) =>
         normalizarTexto(valor).includes(termoBusca)
       );
     });
   }, [leiturasOrdenadas, filtroCondominio]);
 
-  // 3. Análise de Dados: Mapeia apenas os índices dos itens com status "Atrasado" na lista filtrada
+  // 3. Índices dos cards "Atrasado" na lista filtrada
   const indicesAtrasados = useMemo(() => {
     const indices = [];
     leiturasFiltradas.forEach((item, index) => {
@@ -76,15 +78,31 @@ const LeituraList = ({
     return indices;
   }, [leiturasFiltradas, diaAtual]);
 
-  // 4. Lógica de Scroll e Destaque
-  const handleFocarAtrasado = () => {
-    if (!indicesAtrasados || indicesAtrasados.length === 0) {
-      return;
-    }
+  // 4. Índices dos cards "Fazer Hoje/Breve" na lista filtrada
+  const indicesHoje = useMemo(() => {
+    const indices = [];
+    leiturasFiltradas.forEach((item, index) => {
+      if (item.completo) return;
 
-    const idx = indiceAtualDoFoco % indicesAtrasados.length;
-    const targetIndex = indicesAtrasados[idx];
-    const targetItem = leiturasFiltradas[targetIndex];
+      const dia = extrairNumeroDia(item.diaLeitura);
+      // Mesma regra do status em LeituraItem: hoje ou até 2 dias à frente
+      const isFazerHoje =
+        dia !== null && (dia === diaAtual || (dia > diaAtual && dia - diaAtual <= 2));
+
+      if (isFazerHoje) {
+        indices.push(index);
+      }
+    });
+    return indices;
+  }, [leiturasFiltradas, diaAtual]);
+
+  // 5. Scroll + destaque cíclico (compartilhado entre hoje e atrasadas)
+  const handleFocarNoItem = (listaIndices, setterIndice, indiceAtual) => {
+    if (!listaIndices || listaIndices.length === 0) return;
+
+    const safeIndex = indiceAtual % listaIndices.length;
+    const targetIndexInFiltered = listaIndices[safeIndex];
+    const targetItem = leiturasFiltradas[targetIndexInFiltered];
 
     if (targetItem && itemRefs.current[targetItem.id]) {
       const element = itemRefs.current[targetItem.id];
@@ -97,13 +115,24 @@ const LeituraList = ({
       });
 
       setItemFocadoId(targetItem.id);
-      setTimeout(() => {
+
+      if (focoTimeoutRef.current) {
+        clearTimeout(focoTimeoutRef.current);
+      }
+      focoTimeoutRef.current = setTimeout(() => {
         setItemFocadoId(null);
+        focoTimeoutRef.current = null;
       }, 2000);
     }
 
-    setIndiceAtualDoFoco((prev) => (prev + 1) % indicesAtrasados.length);
+    setterIndice((indiceAtual + 1) % listaIndices.length);
   };
+
+  const handleFocarAtrasado = () =>
+    handleFocarNoItem(indicesAtrasados, setIndiceAtrasado, indiceAtrasado);
+
+  const handleFocarHoje = () =>
+    handleFocarNoItem(indicesHoje, setIndiceHoje, indiceHoje);
 
   useEffect(() => {
     if (focarAtrasadoAuto) {
@@ -113,6 +142,14 @@ const LeituraList = ({
       }
     }
   }, [focarAtrasadoAuto]);
+
+  useEffect(() => {
+    return () => {
+      if (focoTimeoutRef.current) {
+        clearTimeout(focoTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <section className="list-card">
@@ -138,6 +175,7 @@ const LeituraList = ({
           leiturasHoje={leiturasHoje}
           leiturasAtrasadas={leiturasAtrasadas}
           onFocarAtrasado={handleFocarAtrasado}
+          onFocarHoje={handleFocarHoje}
         />
       </div>
 
