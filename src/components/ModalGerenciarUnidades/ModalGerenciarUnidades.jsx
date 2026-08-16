@@ -1,9 +1,67 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Hash, Plus, Save, Settings2, Trash2 } from 'lucide-react';
+import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
+import { FilePickerService } from '../../services/filePickerService';
 import { salvarArquivoSeguro } from '../../services/filesystemService';
 import * as XLSX from 'xlsx';
 import './ModalGerenciarUnidades.css';
+
+const extrairUnidadesDePlanilha = (jsonData) => {
+  if (!Array.isArray(jsonData) || jsonData.length === 0) return [];
+
+  // 1. Procura nas primeiras 15 linhas por uma coluna de cabeçalho com "unidade", "apto", etc.
+  let colIndex = -1;
+  let headerRowIndex = -1;
+
+  for (let r = 0; r < Math.min(jsonData.length, 15); r++) {
+    const row = jsonData[r];
+    if (Array.isArray(row)) {
+      const idx = row.findIndex(cell => {
+        if (!cell) return false;
+        const str = String(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        return str.includes('unidade') || str === 'apto' || str === 'apartamento' || str === 'unid' || str === 'ap' || str === 'numero' || str === 'identificador';
+      });
+      if (idx !== -1) {
+        colIndex = idx;
+        headerRowIndex = r;
+        break;
+      }
+    }
+  }
+
+  let extraidas = [];
+
+  if (colIndex !== -1 && headerRowIndex !== -1) {
+    // Extrai da coluna identificada a partir da linha após o cabeçalho
+    for (let r = headerRowIndex + 1; r < jsonData.length; r++) {
+      const cell = jsonData[r]?.[colIndex];
+      if (cell !== undefined && cell !== null && String(cell).trim() !== '') {
+        extraidas.push(String(cell).trim());
+      }
+    }
+  }
+
+  // 2. Fallback: Se não encontrou coluna explícita, varre todas as células buscando padrões
+  if (extraidas.length === 0) {
+    jsonData.forEach((row, rIdx) => {
+      if (rIdx < 2 && jsonData.length > 5) return;
+      if (Array.isArray(row)) {
+        row.forEach(cell => {
+          if (cell === null || cell === undefined) return;
+          const val = String(cell).trim();
+          if (!val) return;
+          if (/^[A-Za-z0-9]+[-/][A-Za-z0-9]+$/.test(val) || /^([A-Za-z]+\s*)?\d{3,4}$/i.test(val)) {
+            extraidas.push(val);
+          }
+        });
+      }
+    });
+  }
+
+  // Remove duplicatas mantendo a ordem
+  return Array.from(new Set(extraidas.map(u => String(u).trim()).filter(Boolean)));
+};
 
 const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome, onUnidadesAtualizadas }) => {
   const [tab, setAba] = useState('importar'); // 'importar' | 'gerar' | 'avulso'
@@ -25,7 +83,63 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   const storageKey = `unidades_${condominioId}`;
 
-  const handleImportarPlanilha = async (event) => {
+  const processarWorkbook = (workbook) => {
+    try {
+      const firstSheetName = workbook.SheetNames[0];
+      const firstSheet = workbook.Sheets[firstSheetName];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+
+      if (!jsonData || jsonData.length === 0) {
+        throw new Error('A planilha selecionada está vazia.');
+      }
+
+      const unicas = extrairUnidadesDePlanilha(jsonData);
+
+      if (unicas.length === 0) {
+        throw new Error('Nenhuma coluna de unidades identificada na planilha.');
+      }
+
+      setUnidadesTemp(prev => [...new Set([...prev, ...unicas])]);
+      alert(`✅ ${unicas.length} unidades identificadas com sucesso!`);
+    } catch (err) {
+      console.error('Erro no processamento da planilha:', err);
+      alert('Erro ao processar planilha: ' + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSelecionarPlanilha = async () => {
+    try {
+      setIsProcessing(true);
+
+      if (Capacitor.isNativePlatform()) {
+        const fileData = await FilePickerService.pickAndSaveSpreadsheet();
+        if (!fileData) {
+          setIsProcessing(false);
+          return;
+        }
+
+        const fileContents = await Filesystem.readFile({
+          path: fileData.path,
+          directory: Directory.Data
+        });
+
+        const workbook = XLSX.read(fileContents.data, { type: 'base64' });
+        processarWorkbook(workbook);
+      } else {
+        if (fileInputRef.current) {
+          fileInputRef.current.click();
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao selecionar planilha:', err);
+      alert('Erro ao selecionar planilha: ' + err.message);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleImportarPlanilhaWeb = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -33,37 +147,12 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-      if (jsonData.length === 0) throw new Error('Planilha vazia');
-
-      // Busca cabeçalho
-      const headers = jsonData[0].map(h => String(h).toLowerCase());
-      const colIndex = headers.findIndex(h => h.includes('unidade'));
-
-      let extraidas = [];
-      if (colIndex !== -1) {
-        // Pega da coluna identificada
-        extraidas = jsonData.slice(1).map(row => row[colIndex]).filter(Boolean);
-      } else {
-        // Varre todas as células em busca de padrões
-        jsonData.forEach(row => {
-          row.forEach(cell => {
-            const val = String(cell);
-            if (val.match(/^[A-Za-z0-9]+-\d+/)) extraidas.push(val);
-          });
-        });
-      }
-
-      const únicas = Array.from(new Set(extraidas.map(u => String(u).trim())));
-      setUnidadesTemp(prev => [...new Set([...prev, ...únicas])]);
-      alert(`${únicas.length} unidades identificadas!`);
+      processarWorkbook(workbook);
     } catch (err) {
       alert('Erro ao ler planilha: ' + err.message);
-    } finally {
       setIsProcessing(false);
-      event.target.value = '';
+    } finally {
+      if (event.target) event.target.value = '';
     }
   };
 
@@ -75,7 +164,6 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
     for (let andar = ini; andar <= fim; andar++) {
       for (let apto = 1; apto <= qtd; apto++) {
-        // Aplica a regra de formatação numérica baseada no checkbox "Padronizar 4 dígitos"
         const andarStr = quatroDigitos ? String(andar).padStart(2, '0') : String(andar);
         const aptoStr = quatroDigitos ? String(apto).padStart(2, '0') : String(apto);
 
@@ -106,7 +194,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       await salvarArquivoSeguro(fileName, JSON.stringify(unidadesTemp));
 
       onUnidadesAtualizadas(unidadesTemp);
-      alert('Unidades salvas permanentemente no dispositivo!');
+      alert('✅ Unidades salvas permanentemente no dispositivo!');
       onClose();
     } catch (error) {
       console.error('Erro ao salvar unidades no filesystem:', error);
@@ -126,7 +214,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
         <header className="manage-units-header">
           <div className="manage-units-title">
             <Settings2 size={20} />
-            <h3>Configurar Unidades</h3>
+            <h3>Configurar Unidades - {condominioNome || 'Condomínio'}</h3>
           </div>
           <button className="btn-close" onClick={onClose}><X size={20} /></button>
         </header>
@@ -141,9 +229,21 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
           {tab === 'importar' && (
             <div className="tab-content">
               <p>Importe as unidades diretamente de uma planilha do uCondo ou similar.</p>
-              <input type="file" ref={fileInputRef} hidden accept=".xlsx,.xls,.csv" onChange={handleImportarPlanilha} />
-              <button className="btn-action-primary" onClick={() => fileInputRef.current.click()} disabled={isProcessing}>
-                <Upload size={18} /> {isProcessing ? 'Processando...' : 'Selecionar Planilha'}
+              <input
+                type="file"
+                ref={fileInputRef}
+                hidden
+                accept=".xlsx,.xls,.csv"
+                onChange={handleImportarPlanilhaWeb}
+              />
+              <button
+                type="button"
+                className="btn-action-primary"
+                onClick={handleSelecionarPlanilha}
+                disabled={isProcessing}
+              >
+                {isProcessing ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={18} />}
+                {isProcessing ? 'Processando...' : 'Selecionar Planilha'}
               </button>
             </div>
           )}
@@ -196,14 +296,19 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
               {unidadesTemp.length > 0 && <button className="btn-clear" onClick={limparLista}><Trash2 size={14} /></button>}
             </div>
             <div className="preview-list">
-              {unidadesTemp.map((u, i) => <span key={i} className="unit-tag">{u}</span>)}
+              {unidadesTemp.slice(0, 100).map((u, i) => <span key={i} className="unit-tag">{u}</span>)}
+              {unidadesTemp.length > 100 && (
+                <span className="unit-tag" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                  +{unidadesTemp.length - 100} unidades...
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         <footer className="manage-units-footer">
-          <button className="btn-save" onClick={salvarLocal}>
-            <Save size={18} /> Salvar Offline
+          <button className="btn-save" onClick={salvarLocal} disabled={unidadesTemp.length === 0}>
+            <Save size={18} /> Salvar Offline ({unidadesTemp.length})
           </button>
         </footer>
       </div>
