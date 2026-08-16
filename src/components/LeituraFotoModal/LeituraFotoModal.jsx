@@ -4,7 +4,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
 import { CameraService } from '../../services/cameraService';
-import { getUnidadesOffline, normalizarUnidadeuCondo } from '../../data/unidadesLocais';
+import { getUnidadesOffline } from '../../data/unidadesLocais';
 import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnidades';
 import CameraModal from '../CameraModal/CameraModal';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
@@ -103,8 +103,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     listaUnidades.forEach(unidade => {
       try {
-        const unidadeNormalizada = normalizarUnidadeuCondo(unidade);
-        const match = unidadeNormalizada?.match(/^([A-Za-z0-9]+)-/);
+        const unidadeFormatada = String(unidade || '').trim();
+        if (!unidadeFormatada) return;
+
+        const match = unidadeFormatada.match(/^([A-Za-z0-9]+)-/);
 
         if (match) {
           const prefix = match[1];
@@ -114,13 +116,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           else label = `Torre ${prefix}`;
 
           if (!mapa[label]) mapa[label] = [];
-          mapa[label].push(unidadeNormalizada);
+          mapa[label].push(unidadeFormatada);
         } else {
           if (!mapa['Geral']) mapa['Geral'] = [];
-          if (unidadeNormalizada) mapa['Geral'].push(unidadeNormalizada);
+          mapa['Geral'].push(unidadeFormatada);
         }
       } catch (err) {
-        console.error('Erro ao normalizar unidade:', unidade, err);
+        console.error('Erro ao processar unidade:', unidade, err);
       }
     });
 
@@ -133,7 +135,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return {
       unidadesPorTorre: mapa,
       torres: finalTorres,
-      listaCompleta: listaUnidades.map(u => normalizarUnidadeuCondo(u))
+      listaCompleta: listaUnidades.map(u => String(u || '').trim()).filter(Boolean)
     };
   }, [leitura, unidadesCarregadas]);
 
@@ -214,8 +216,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     if (!window.confirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
 
     try {
-      const unidadeNormalizada = normalizarUnidadeuCondo(activeApto);
-      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`;
+      const unidadeId = String(activeApto).trim();
+      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`;
 
       // Localiza o arquivo exato na raiz antes de deletar via StorageService
       const files = await StorageService.listFiles(prefixoChave);
@@ -230,7 +232,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             .from('leituras_detalhes')
             .delete()
             .match({
-              unidade_id: unidadeNormalizada,
+              unidade_id: unidadeId,
               servico: tipoMedicaoAtivo.toUpperCase(),
             });
         } catch (supaErr) {
@@ -238,14 +240,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
-      localStorage.removeItem(`valor_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`);
+      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
 
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
-        if (novo[unidadeNormalizada]) {
-          delete novo[unidadeNormalizada][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeNormalizada]).length === 0) {
-            delete novo[unidadeNormalizada];
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][tipoMedicaoAtivo];
+          if (Object.keys(novo[unidadeId]).length === 0) {
+            delete novo[unidadeId];
           }
         }
         return novo;
@@ -253,8 +255,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       setLeiturasValores((prev) => {
         const novo = { ...prev };
-        if (novo[unidadeNormalizada]) {
-          delete novo[unidadeNormalizada][tipoMedicaoAtivo];
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][tipoMedicaoAtivo];
         }
         return novo;
       });
@@ -267,18 +269,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   const handleSaveReading = async (valor) => {
     try {
-      const unidadeNormalizada = normalizarUnidadeuCondo(activeApto);
-      const fotoBase64 = fotosCapturadas[unidadeNormalizada]?.[tipoMedicaoAtivo];
+      const unidadeId = String(activeApto).trim();
+      const fotoBase64 = fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
       if (!fotoBase64 || !valor) {
         throw new Error('Foto ou valor da leitura ausentes.');
       }
 
-      localStorage.setItem(`valor_${leitura.id}_${unidadeNormalizada}_${tipoMedicaoAtivo}`, valor);
+      localStorage.setItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`, valor);
 
       setLeiturasValores(prev => ({
         ...prev,
-        [unidadeNormalizada]: { ...(prev[unidadeNormalizada] || {}), [tipoMedicaoAtivo]: valor }
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
       }));
 
       let synced = false;
@@ -288,7 +290,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const activeUserId = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
 
           const payload = {
-            unidade_id: unidadeNormalizada,
+            unidade_id: unidadeId,
             servico: tipoMedicaoAtivo.toUpperCase(),
             leitura_atual: parseFloat(valor),
             foto_url: fotoBase64,
@@ -311,9 +313,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       if (synced) {
-        alert(`Leitura de ${unidadeNormalizada} salva e sincronizada!`);
+        alert(`Leitura de ${unidadeId} salva e sincronizada!`);
       } else {
-        alert(`Leitura de ${unidadeNormalizada} salva offline com sucesso! Será sincronizada quando o banco estiver disponível.`);
+        alert(`Leitura de ${unidadeId} salva offline com sucesso! Será sincronizada quando o banco estiver disponível.`);
       }
 
     } catch (error) {
@@ -328,11 +330,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     try {
       setIsProcessing(true);
 
-      const unidadeNormalizada = normalizarUnidadeuCondo(activeApto);
+      const unidadeId = String(activeApto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
 
       // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
-      const fileName = `leitura_foto_${leitura.id}_${unidadeNormalizada}_${tipoServico}_${Date.now()}.jpg`;
+      const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
 
       // 1. Aplica o carimbo de data e hora via HTML5 Canvas
       const stampedBase64 = await ImageStampService.applyTimestamp(photoData.base64);
@@ -344,8 +346,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const stampedWebPath = `data:image/jpeg;base64,${stampedBase64}`;
       setFotosCapturadas((prev) => ({
         ...prev,
-        [unidadeNormalizada]: {
-          ...(prev[unidadeNormalizada] || {}),
+        [unidadeId]: {
+          ...(prev[unidadeId] || {}),
           [tipoMedicaoAtivo]: stampedWebPath
         }
       }));

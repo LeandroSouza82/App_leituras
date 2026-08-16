@@ -78,41 +78,48 @@ const LeituraList = ({
 
   // 4. Lógica de Scroll e Destaque
   const handleFocarAtrasado = () => {
-    if (!indicesAtrasados || indicesAtrasados.length === 0) {
+    let indicesAlvo = indicesAtrasados;
+    if (!indicesAlvo || indicesAlvo.length === 0) {
+      indicesAlvo = leiturasFiltradas
+        .map((item, index) => (!item.completo ? index : null))
+        .filter((i) => i !== null);
+    }
+
+    if (!indicesAlvo || indicesAlvo.length === 0) {
       return;
     }
 
-    const idx = indiceAtualDoFoco % indicesAtrasados.length;
-    const targetIndex = indicesAtrasados[idx];
+    const idx = indiceAtualDoFoco % indicesAlvo.length;
+    const targetIndex = indicesAlvo[idx];
     const targetItem = leiturasFiltradas[targetIndex];
 
     if (targetItem && itemRefs.current[targetItem.id]) {
       const element = itemRefs.current[targetItem.id];
-      const offsetTop = 180;
-      const yPos = element.getBoundingClientRect().top + window.scrollY - offsetTop;
-
-      window.scrollTo({
-        top: Math.max(0, yPos),
+      element.scrollIntoView({
         behavior: 'smooth',
+        block: 'center',
       });
 
       setItemFocadoId(targetItem.id);
       setTimeout(() => {
         setItemFocadoId(null);
-      }, 2000);
+      }, 2500);
     }
 
-    setIndiceAtualDoFoco((prev) => (prev + 1) % indicesAtrasados.length);
+    setIndiceAtualDoFoco((prev) => (prev + 1) % indicesAlvo.length);
   };
 
   useEffect(() => {
     if (focarAtrasadoAuto) {
-      handleFocarAtrasado();
-      if (onResetFocarAtrasadoAuto) {
-        onResetFocarAtrasadoAuto();
-      }
+      const timer = setTimeout(() => {
+        handleFocarAtrasado();
+        if (onResetFocarAtrasadoAuto) {
+          onResetFocarAtrasadoAuto();
+        }
+      }, 150);
+      return () => clearTimeout(timer);
     }
-  }, [focarAtrasadoAuto]);
+  }, [focarAtrasadoAuto, indicesAtrasados]);
 
   return (
     <section className="list-card">

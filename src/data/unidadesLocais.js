@@ -1,4 +1,4 @@
-/**
+﻿/**
  * unidadesLocais - Registro offline de condomínios e suas respectivas unidades/torres.
  */
 
@@ -13,24 +13,6 @@ const gerarUnidadesTorre = (prefixo) => {
     }
   }
   return unidades;
-};
-
-/**
- * normalizarUnidadeuCondo - Garante que a unidade tenha 4 dígitos numéricos (ex: A-0101)
- */
-export const normalizarUnidadeuCondo = (unidadeStr) => {
-  if (!unidadeStr) return '';
-  const partes = unidadeStr.split('-');
-  if (partes.length !== 2) return unidadeStr;
-
-  const prefixo = partes[0];
-  let numero = partes[1];
-
-  if (numero.length === 3) {
-    numero = '0' + numero;
-  }
-
-  return `${prefixo}-${numero}`;
 };
 
 export const CONDOMINIOS_OFFLINE = {

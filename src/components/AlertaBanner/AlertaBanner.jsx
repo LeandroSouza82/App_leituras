@@ -17,6 +17,7 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasa
     >
       {temHoje && (
         <div
+          onClick={onFocarAtrasado}
           style={{
             background: '#fef3c7',
             color: '#92400e',
@@ -25,7 +26,11 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasa
             padding: '10px 12px',
             fontSize: '0.95rem',
             fontWeight: 600,
+            cursor: onFocarAtrasado ? 'pointer' : 'default',
+            userSelect: 'none',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           }}
+          title="Clique para focar na leitura de hoje"
         >
           ⚠️ <strong>Atenção:</strong> Você tem {leiturasHoje.length} leitura(s) agendada(s) para HOJE!
         </div>

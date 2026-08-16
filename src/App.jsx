@@ -4,6 +4,7 @@ import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
 import LeituraList from './components/LeituraList/LeituraList';
+import AlertaBanner from './components/AlertaBanner/AlertaBanner';
 import BottomNavbar from './components/BottomNavbar/BottomNavbar';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import AReceberModal from './components/AReceberModal/AReceberModal';
@@ -161,6 +162,11 @@ const MainApp = ({ onLogout }) => {
               onOpenProgressoModal={() => setShowProgressoModal(true)}
             />
             <section className="dashboard-summary">
+              <AlertaBanner
+                leiturasHoje={leiturasHoje}
+                leiturasAtrasadas={leiturasAtrasadas}
+                onFocarAtrasado={handleNavegarParaAtrasados}
+              />
               <div className="dashboard-grid">
                 <article
                   className="metric-card metric-blue"
