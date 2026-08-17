@@ -62,10 +62,14 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
   if (!isOpen) return null;
 
   const handleSyncClick = async () => {
-    // ⚠️ TRAVA FÍSICA INCONDICIONAL: bloqueia se fila vazia, já sincronizando OU já concluído
-    if (!pendingCount || pendingCount <= 0 || isSyncing || syncFinished) {
+    // Se fila vazia: feedback amigável e return imediato — sem nenhuma tentativa de envio
+    if (pendingCount === 0) {
+      alert('Todos os arquivos estão sincronizados!');
       return;
     }
+
+    // Bloqueia re-entrada durante sincronização ou após conclusão da sessão atual
+    if (isSyncing || syncFinished || pendingCount === null) return;
 
     try {
       setIsSyncing(true);
@@ -75,7 +79,6 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
       setResultado(null);
       setProgress({ atual: 0, total: 0 });
 
-      // Executa a sincronização real com callback de progresso em tempo real
       const res = await sincronizarPendentes((atual, total) => {
         setProgress({ atual, total });
       });
@@ -84,33 +87,22 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
       setIsSyncing(false);
       setSyncFinished(true);
       setShowSuccessToast(true);
-      
-      // Usa pendentesRestantes retornado pelo serviço (já recontou o disco após deletar fotos)
-      // Isso garante que pendingCount reflita exatamente o que está no disco/localStorage
+
+      // pendentesRestantes é a recontagem real feita pelo serviço após deletar as fotos
       const novoPendingCount = typeof res?.pendentesRestantes === 'number'
         ? res.pendentesRestantes
         : (res?.falhas ?? 0);
       setPendingCount(novoPendingCount);
 
-      // Limpa timeout anterior se houver
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
 
-      // Toast desaparece automaticamente após 3 segundos
       toastTimeoutRef.current = setTimeout(() => {
         setShowSuccessToast(false);
-        // Após o toast, se fila está vazia, remove o estado de 'concluído'
-        // para renderizar o card 'Tudo atualizado' definitivamente
-        if (novoPendingCount === 0) {
-          setSyncFinished(false);
-        }
+        // Se tudo enviado: desfaz o estado 'concluído' para mostrar o layout cinza
+        if (novoPendingCount === 0) setSyncFinished(false);
       }, 3000);
 
-      // Notifica o App para atualizar dados locais se houver callback
-      if (onSync) {
-        await onSync();
-      }
+      if (onSync) await onSync();
     } catch (err) {
       console.error('[SideMenu] Erro fatal na sincronização:', err);
       setSyncError(true);
@@ -118,17 +110,12 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
     }
   };
 
-  // Feedback amigável quando o usuário clica no card já sincronizado (pendingCount === 0)
-  const handleZeroClick = () => {
-    alert('Tudo certo! Nenhuma leitura nova para sincronizar.');
-  };
-
   const progressPercent =
     progress.total > 0 ? Math.round((progress.atual / progress.total) * 100) : 0;
 
   const totalLeituras = progress.total || resultado?.enviadas || 0;
 
-  // Estado apagado controlado EXCLUSIVAMENTE por pendingCount === 0 (e fora de estados ativos)
+  // Estado 'apagado/cinza' baseado EXCLUSIVAMENTE em pendingCount === 0
   const isZeroPending = pendingCount === 0 && !isSyncing;
 
   const getItemClass = () => {
@@ -176,7 +163,7 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
               <button
                 type="button"
                 className={getItemClass()}
-                onClick={isZeroPending ? handleZeroClick : handleSyncClick}
+                onClick={handleSyncClick}
                 disabled={isSyncing}
               >
                 <div className="side-menu-item-icon">
