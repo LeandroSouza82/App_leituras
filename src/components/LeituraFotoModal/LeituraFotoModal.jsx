@@ -6,7 +6,6 @@ import { LeituraService } from '../../services/leituraService';
 import { CameraService } from '../../services/cameraService';
 import { getUnidadesOffline } from '../../data/unidadesLocais';
 import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnidades';
-import CameraModal from '../CameraModal/CameraModal';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
 import { StorageService } from '../../services/storageService';
 import { ImageStampService } from '../../services/imageStampService';
@@ -24,7 +23,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [torreAtiva, setTorreAtiva] = useState(null);
   const [tipoMedicaoAtivo, setTipoMedicaoAtivo] = useState('agua');
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activeApto, setActiveApto] = useState(null);
   const [unidadesCarregadas, setUnidadesAtualizadas] = useState([]);
@@ -254,7 +252,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     if (thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]) {
       setIsPreviewOpen(true);
     } else {
-      setIsCameraOpen(true);
+      handleDispararCamera(apto);
     }
   };
 
@@ -492,6 +490,79 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
+  const handleDispararCamera = async (aptoAlvo) => {
+    const apto = aptoAlvo || activeApto;
+    if (!apto || isProcessing) return;
+
+    setActiveApto(apto);
+
+    try {
+      setIsProcessing(true);
+
+      const unidadeId = String(apto).trim();
+      const tipoServico = tipoMedicaoAtivo.toUpperCase();
+      const servicoKey = tipoMedicaoAtivo.toLowerCase();
+      const unitLabel = `${apto} - ${tipoServico}`;
+
+      // 1. Abre a câmera nativa do SO diretamente
+      const photo = await CameraService.capturarFoto(unitLabel);
+
+      if (!photo?.webPath && !photo?.path) {
+        // Usuário cancelou no SO
+        return;
+      }
+
+      // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
+      const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
+
+      // 2. Aplica o carimbo de data e hora via HTML5 Canvas usando a URI webPath
+      let stampedBase64 = await ImageStampService.applyTimestamp(photo.webPath || photo.base64);
+
+      // 3. Salvamento Direto na Raiz do Directory.Data via Flat Storage
+      const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
+
+      // 4. Limpeza imediata da variável Base64 da memória RAM
+      stampedBase64 = null;
+
+      // 5. Grava marcação de conclusão persistente
+      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
+
+      setConcluidosMemoria((prev) => ({
+        ...prev,
+        [unidadeId]: {
+          ...(prev[unidadeId] || {}),
+          [servicoKey]: true
+        }
+      }));
+
+      // 6. Atualiza estado visual usando a URI convertida (sem Base64 no state)
+      setFotosCapturadas((prev) => ({
+        ...prev,
+        [unidadeId]: {
+          ...(prev[unidadeId] || {}),
+          [tipoMedicaoAtivo]: savedFile.webUrl
+        }
+      }));
+
+      // 7. Salto direto para o modal de preview e digitação da leitura
+      setIsPreviewOpen(true);
+      console.log('[FileSystem] Foto capturada e direcionada diretamente para PreviewFotoModal:', savedFile.path);
+
+    } catch (error) {
+      const msg = String(error?.message || '');
+      if (
+        !msg.toLowerCase().includes('cancel') &&
+        !msg.toLowerCase().includes('cancelled') &&
+        !msg.toLowerCase().includes('user cancelled')
+      ) {
+        console.error('[Camera] Erro ao capturar evidência:', error);
+        alert('❌ Erro ao acessar a câmera: ' + msg);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleRetakeFoto = async () => {
     try {
       const unidadeId = String(activeApto).trim();
@@ -570,67 +641,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         return novo;
       });
 
-      // 5. Fecha o preview e abre a câmera para nova foto
+      // 5. Fecha o preview e dispara diretamente a câmera nativa para a nova captura
       setIsPreviewOpen(false);
-      setIsCameraOpen(true);
+      handleDispararCamera(unidadeId);
     } catch (err) {
       console.error('[Retake] Erro ao refazer foto:', err);
       setIsPreviewOpen(false);
-      setIsCameraOpen(true);
-    }
-  };
-
-  const handleCapturePhoto = async (photoData) => {
-    if (!activeApto || isProcessing) return;
-
-    try {
-      setIsProcessing(true);
-
-      const unidadeId = String(activeApto).trim();
-      const tipoServico = tipoMedicaoAtivo.toUpperCase();
-      const servicoKey = tipoMedicaoAtivo.toLowerCase();
-
-      // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
-      const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
-
-      // 1. Aplica o carimbo de data e hora via HTML5 Canvas usando a URI webPath
-      let stampedBase64 = await ImageStampService.applyTimestamp(photoData.webPath || photoData.base64);
-
-      // 2. Salvamento Direto na Raiz do Directory.Data via Flat Storage
-      const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
-
-      // 3. Limpeza imediata da variável Base64 da memória RAM
-      stampedBase64 = null;
-
-      // 4. Grava marcação de conclusão persistente
-      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
-
-      setConcluidosMemoria((prev) => ({
-        ...prev,
-        [unidadeId]: {
-          ...(prev[unidadeId] || {}),
-          [servicoKey]: true
-        }
-      }));
-
-      // 5. Sucesso: Atualiza estado visual usando a URI convertida (sem Base64 no state)
-      setFotosCapturadas((prev) => ({
-        ...prev,
-        [unidadeId]: {
-          ...(prev[unidadeId] || {}),
-          [tipoMedicaoAtivo]: savedFile.webUrl
-        }
-      }));
-
-      setIsPreviewOpen(true);
-      console.log('[FileSystem] Foto persistida na raiz:', savedFile.path);
-
-    } catch (error) {
-      console.error("[FileSystem] Falha Crítica ao Processar Foto:", error);
-      alert('❌ Erro ao salvar evidência: ' + error.message);
-    } finally {
-      // ⚠️ GARANTIA DE DESTRAVAMENTO DA UI
-      setIsProcessing(false);
+      handleDispararCamera(activeApto);
     }
   };
 
@@ -773,13 +790,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         condominioId={leitura.id}
         condominioNome={leitura.nome}
         onUnidadesAtualizadas={(novas) => setUnidadesAtualizadas(novas)}
-      />
-
-      <CameraModal
-        isOpen={isCameraOpen}
-        onClose={() => setIsCameraOpen(false)}
-        unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
-        onCapture={handleCapturePhoto}
       />
 
       <PreviewFotoModal
