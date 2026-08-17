@@ -16,19 +16,19 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
   const openCapacitorCamera = async () => {
     try {
       setIsTakingPhoto(true);
-      // Captura via Base64 para evitar erros de "Invalid Path" da WebView
-      const photo = await CameraService.capturarFotoBase64(unitInfo);
+      // Captura via CameraResultType.Uri para evitar carregar Base64 gigante na RAM
+      const photo = await CameraService.capturarFoto(unitInfo);
 
-      if (photo.base64) {
-        // Armazenamos um objeto com o base64 para o salvamento e o webPath para o preview
+      if (photo?.webPath) {
         setCapturedImage(photo);
       } else {
         onClose();
       }
     } catch (err) {
       console.error('Erro ao abrir câmera Capacitor:', err);
-      if (err.message !== 'User cancelled photos app') {
-        alert('Erro ao acessar a câmera: ' + err.message);
+      const msg = String(err?.message || '');
+      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('cancelled')) {
+        alert('Erro ao acessar a câmera: ' + msg);
       }
       onClose();
     } finally {
@@ -40,10 +40,11 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (capturedImage?.base64) {
-      // Repassamos os dados brutos para o salvamento seguro
+    if (capturedImage?.webPath) {
+      // Repassa os dados da captura baseados em URI para o salvamento
       onCapture(capturedImage);
     }
+    // Desaloca imediatamente a imagem da memória local do modal
     setCapturedImage(null);
     onClose();
   };

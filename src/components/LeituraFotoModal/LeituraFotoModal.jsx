@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Share2, Settings } from 'lucide-react';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
 import { CameraService } from '../../services/cameraService';
@@ -45,7 +45,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             const fileResult = await Filesystem.readFile({
               path: fileName,
               directory: Directory.Data,
-              encoding: 'utf8'
+              encoding: Encoding.UTF8
             });
             if (fileResult.data) {
               unidadesParaCarregar = JSON.parse(fileResult.data);
@@ -153,7 +153,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return unidadesPorTorre[torreAtiva] || [];
   }, [torreAtiva, unidadesPorTorre, listaCompleta]);
 
-  // Contador de conclusões (Movido para fora de condicionais/loops)
+  // Contador de conclusões
   const unidadesConcluidasCount = useMemo(() => {
     return unidadesExibidas.filter(apto => fotosCapturadas[apto]?.[tipoMedicaoAtivo]).length;
   }, [unidadesExibidas, fotosCapturadas, tipoMedicaoAtivo]);
@@ -180,10 +180,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const servico = partes[4].toLowerCase();
 
           try {
-            const data = await StorageService.readFile(fileName);
+            // Obtém URI do arquivo no disco sem carregar Base64 gigante na RAM
+            const fileUriResult = await Filesystem.getUri({
+              path: fileName,
+              directory: Directory.Data
+            });
+            const webUrl = Capacitor.convertFileSrc(fileUriResult.uri);
 
             if (!capturadas[unidade]) capturadas[unidade] = {};
-            capturadas[unidade][servico] = `data:image/jpeg;base64,${data}`;
+            capturadas[unidade][servico] = webUrl;
 
             const localVal = localStorage.getItem(`valor_${leitura.id}_${unidade}_${servico}`);
             if (localVal) {
@@ -191,7 +196,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               valoresSalvos[unidade][servico] = localVal;
             }
           } catch (readErr) {
-            console.error('Erro ao ler foto individual:', fileName);
+            console.error('Erro ao obter URI da foto:', fileName, readErr);
           }
         }
       }
@@ -270,9 +275,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const handleSaveReading = async (valor) => {
     try {
       const unidadeId = String(activeApto).trim();
-      const fotoBase64 = fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
+      const fotoUrl = fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
-      if (!fotoBase64 || !valor) {
+      if (!fotoUrl || !valor) {
         throw new Error('Foto ou valor da leitura ausentes.');
       }
 
@@ -289,11 +294,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const { data: { user } } = await supabase.auth.getUser();
           const activeUserId = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
 
+          // Converte temporariamente para Base64 apenas no momento exato de envio ao Supabase
+          const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
+          const files = await StorageService.listFiles(prefixoChave);
+          let fotoBase64ToSend = '';
+          if (files.length > 0) {
+            const rawData = await StorageService.readFile(files[0]);
+            fotoBase64ToSend = `data:image/jpeg;base64,${rawData}`;
+          }
+
           const payload = {
             unidade_id: unidadeId,
             servico: tipoMedicaoAtivo.toUpperCase(),
             leitura_atual: parseFloat(valor),
-            foto_url: fotoBase64,
+            foto_url: fotoBase64ToSend || fotoUrl,
             leiturista_id: activeUserId,
             data_leitura: new Date().toISOString()
           };
@@ -301,6 +315,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const { error } = await supabase
             .from('leituras_detalhes')
             .insert([payload]);
+
+          // Limpa variável temporária para liberar RAM imediatamente
+          fotoBase64ToSend = null;
 
           if (error) {
             console.error("Erro detalhado no Supabase:", error);
@@ -336,19 +353,21 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
       const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
 
-      // 1. Aplica o carimbo de data e hora via HTML5 Canvas
-      const stampedBase64 = await ImageStampService.applyTimestamp(photoData.base64);
+      // 1. Aplica o carimbo de data e hora via HTML5 Canvas usando a URI webPath
+      let stampedBase64 = await ImageStampService.applyTimestamp(photoData.webPath || photoData.base64);
 
-      // 2. Salvamento Direto na Raiz do Directory.Data via Base64 (Com carimbo)
+      // 2. Salvamento Direto na Raiz do Directory.Data via Flat Storage
       const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
 
-      // 3. Sucesso: Atualiza estado visual usando o novo base64 carimbado para o preview
-      const stampedWebPath = `data:image/jpeg;base64,${stampedBase64}`;
+      // 3. Limpeza imediata da variável Base64 da memória RAM
+      stampedBase64 = null;
+
+      // 4. Sucesso: Atualiza estado visual usando a URI convertida (sem Base64 no state)
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeId]: {
           ...(prev[unidadeId] || {}),
-          [tipoMedicaoAtivo]: stampedWebPath
+          [tipoMedicaoAtivo]: savedFile.webUrl
         }
       }));
 

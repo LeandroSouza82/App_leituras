@@ -1,46 +1,50 @@
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from './supabase';
 
 /**
- * Serviço Sênior de Câmera e Persistência - Otimizado para evitar OOM e erros de "Invalid Path".
+ * Serviço Sênior de Câmera e Persistência - Otimizado com CameraResultType.Uri para evitar OOM.
  */
 export const CameraService = {
   /**
-   * Captura foto com compressão extrema e retorna Base64 puro.
-   * Evita erros de path baseados em URLs de WebView.
+   * Captura foto otimizada com CameraResultType.Uri, mantendo o arquivo no disco sem carregar Base64 gigante na RAM.
    */
-  async capturarFotoBase64(unitLabel) {
+  async capturarFoto(unitLabel) {
     try {
       const photo = await Camera.getPhoto({
-        quality: 15, // Compressão de 85% para manter arquivo ultraleve (25-40KB)
-        width: 800,
+        quality: 60, // Equilíbrio perfeito entre legibilidade do visor e tamanho reduzido
+        width: 800, // Limite de resolução para evitar estourar a memória RAM da WebView
         allowEditing: false,
-        resultType: CameraResultType.Base64, // Retorna string Base64 para gravação direta
+        resultType: CameraResultType.Uri, // Mantém a foto no disco e retorna URI leve
         source: CameraSource.Camera,
         correctOrientation: true,
+        saveToGallery: false,
         promptLabelHeader: unitLabel
       });
 
       return {
-        base64: photo.base64String,
-        format: photo.format,
-        webPath: `data:image/${photo.format};base64,${photo.base64String}`
+        webPath: photo.webPath,
+        path: photo.path,
+        format: photo.format
       };
     } catch (error) {
-      console.error('[Camera] Erro na captura Base64:', error);
+      console.error('[Camera] Erro na captura da foto:', error);
       throw error;
     }
   },
 
+  // Alias para compatibilidade retroativa
+  async capturarFotoBase64(unitLabel) {
+    return this.capturarFoto(unitLabel);
+  },
+
   /**
-   * Persiste os dados Base64 diretamente na raiz do armazenamento permanente (Flat Storage).
-   * Elimina totalmente o erro de "Invalid Path" por não depender de caminhos temporários.
+   * Persiste os dados na raiz do armazenamento permanente (Directory.Data)
+   * e retorna a URL web segura da WebView via Capacitor.convertFileSrc().
    */
   async salvarFotoNaRaiz(base64Data, fileName) {
     try {
-      // 1. Salvamento Direto na Raiz do Directory.Data
-      // O nome do arquivo é gerado de forma plana e limpa.
       await Filesystem.writeFile({
         path: fileName,
         data: base64Data,
@@ -53,11 +57,13 @@ export const CameraService = {
         directory: Directory.Data
       });
 
+      const webUrl = Capacitor.convertFileSrc(finalUri.uri);
+
       console.log('[FileSystem] Foto persistida com sucesso na raiz:', fileName);
 
-      return { path: fileName, uri: finalUri.uri };
+      return { path: fileName, uri: finalUri.uri, webUrl };
     } catch (error) {
-      console.error('[FileSystem] Erro ao gravar arquivo Base64:', error);
+      console.error('[FileSystem] Erro ao gravar arquivo:', error);
       throw error;
     }
   },
