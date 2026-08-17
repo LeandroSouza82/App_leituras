@@ -442,3 +442,38 @@
   font-size: 0.8rem;
   cursor: pointer;
 }
+
+/* Toast flutuante de sucesso no topo */
+.toast-success-top {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #16a34a; /* Fundo verde indicando sucesso */
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 50px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: toastSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@keyframes toastSlideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+

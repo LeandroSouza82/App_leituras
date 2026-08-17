@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Bell, CalendarDays, Share2 } from 'lucide-react';
+import { Bell, Menu, Share2 } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioExcel } from '../../utils/exportExcel';
 import ListaCondominiosModal from '../ListaCondominiosModal/ListaCondominiosModal';
+import SideMenu from '../SideMenu/SideMenu';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
@@ -32,8 +33,10 @@ const Header = ({
   totalPendentes,
   onOpenAlerts,
   onOpenProgressoModal,
+  onSync,
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
   const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
@@ -97,9 +100,14 @@ const Header = ({
   return (
     <header className="header-card">
       <div className="header-title">
-        <div className="header-icon">
-          <CalendarDays size={20} />
-        </div>
+        <button
+          type="button"
+          className="header-icon-btn"
+          onClick={() => setIsSideMenuOpen(true)}
+          aria-label="Abrir Menu Principal"
+        >
+          <Menu size={22} />
+        </button>
         <div>
           <p className="eyebrow">Fast Leituras</p>
           <h1>{title}</h1>
@@ -147,8 +155,15 @@ const Header = ({
         onClose={() => setModalCondominiosAberto(false)}
         leituras={leituras || []}
       />
+
+      <SideMenu
+        isOpen={isSideMenuOpen}
+        onClose={() => setIsSideMenuOpen(false)}
+        onSync={onSync}
+      />
     </header>
   );
 };
 
 export default Header;
+

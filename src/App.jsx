@@ -160,6 +160,7 @@ const MainApp = ({ onLogout }) => {
               totalPendentes={totalPendentes}
               onOpenAlerts={handleOpenAlerts}
               onOpenProgressoModal={() => setShowProgressoModal(true)}
+              onSync={recarregarCondominios}
             />
             <section className="dashboard-summary">
               <AlertaBanner

@@ -14,7 +14,7 @@
   margin-bottom: 16px;
 }
 
-.header-icon {
+.header-icon-btn {
   width: 50px;
   height: 50px;
   display: grid;
@@ -23,6 +23,19 @@
   background: rgba(255, 255, 255, 0.16);
   border: 1px solid rgba(255, 255, 255, 0.22);
   backdrop-filter: blur(10px);
+  color: #ffffff;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.header-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.26);
+  transform: scale(1.04);
+}
+
+.header-icon-btn:active {
+  transform: scale(0.96);
 }
 
 .eyebrow {

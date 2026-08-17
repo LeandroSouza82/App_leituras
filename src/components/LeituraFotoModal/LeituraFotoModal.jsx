@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Share2, Settings } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -26,6 +26,19 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [activeApto, setActiveApto] = useState(null);
   const [unidadesCarregadas, setUnidadesAtualizadas] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const toastTimeoutRef = useRef(null);
+
+  const exibirToastSucesso = () => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setShowToast(true);
+    toastTimeoutRef.current = setTimeout(() => {
+      setShowToast(false);
+      toastTimeoutRef.current = null;
+    }, 2500);
+  };
 
   const storageKey = useMemo(() => `unidades_${leitura?.id || 'default'}`, [leitura?.id]);
 
@@ -329,11 +342,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
-      if (synced) {
-        alert(`Leitura de ${unidadeId} salva e sincronizada!`);
-      } else {
-        alert(`Leitura de ${unidadeId} salva offline com sucesso! Será sincronizada quando o banco estiver disponível.`);
-      }
+      // Notificação Toast automática e não-bloqueante no topo da tela
+      exibirToastSucesso();
 
     } catch (error) {
       console.error('Erro ao salvar leitura:', error);
@@ -535,6 +545,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onSaveReading={handleSaveReading}
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
       />
+
+      {showToast && (
+        <div className="toast-success-top">
+          <CheckCircle size={18} />
+          <span>Salvo offline com sucesso!</span>
+        </div>
+      )}
     </div>
   );
 };
