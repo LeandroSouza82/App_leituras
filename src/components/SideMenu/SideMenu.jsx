@@ -1,9 +1,29 @@
 import React from 'react';
-import { X, Layers } from 'lucide-react';
+import { X, Layers, LogOut } from 'lucide-react';
+import { supabase } from '../../services/supabase';
 import './SideMenu.css';
 
 const SideMenu = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
+
+  const handleLogout = async () => {
+    if (!window.confirm('Deseja realmente sair da sua conta?')) return;
+
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+
+      sessionStorage.removeItem('leituras-alerta-aberto');
+      onClose();
+
+      // Redireciona para acionar o ciclo natural de autenticação (Splash -> Login)
+      window.location.href = '/';
+    } catch (error) {
+      console.error('[SideMenu] Erro ao fazer logout:', error);
+      window.location.href = '/';
+    }
+  };
 
   return (
     <div className="side-menu-overlay" onClick={onClose}>
@@ -31,11 +51,20 @@ const SideMenu = ({ isOpen, onClose }) => {
         <div className="side-menu-content">
           <div className="side-menu-section-title">Ações e Configurações</div>
           <ul className="side-menu-list">
-            {/* Itens do menu */}
+            {/* Outras opções de navegação */}
           </ul>
         </div>
 
         <footer className="side-menu-footer">
+          <button
+            type="button"
+            className="btn-side-menu-logout"
+            onClick={handleLogout}
+            title="Sair da conta"
+          >
+            <LogOut size={18} />
+            <span>Sair da conta</span>
+          </button>
           <p className="side-menu-version">Versão 1.0.1 • Fast Leituras</p>
         </footer>
       </aside>
