@@ -235,56 +235,58 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     try {
       const unidadeId = String(activeApto).trim();
-      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`;
+      // 1. CORREÇÃO CRÍTICA: Forçar maiúsculo para bater EXATAMENTE com o arquivo salvo no Android
+      const tipoServico = tipoMedicaoAtivo.toUpperCase();
 
-      // 1. Deleta o arquivo físico do disco
-      const files = await StorageService.listFiles(prefixoChave);
-      if (files.length > 0) {
-        await StorageService.deleteFile(files[0]);
+      // 2. BUSCA ABRANGENTE: Pega TODOS os arquivos dessa unidade
+      const files = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
+
+      let deletados = 0;
+      for (const file of files) {
+        // Verifica se o arquivo pertence a este serviço (ex: AGUA), ignorando maiúsculas/minúsculas
+        if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
+          await StorageService.deleteFile(file);
+          console.log('[ExcluirFoto] Fantasma destruído fisicamente:', file);
+          deletados++;
+        }
       }
 
-      // 2. Remove entradas órfãs do array localStorage['leituras_pendentes']
-      // Sem isso, o SideMenu continua mostrando pendências mesmo após a exclusão física.
+      // 3. Remove entradas órfãs do array localStorage['leituras_pendentes']
       try {
         const STORAGE_KEY = 'leituras_pendentes';
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const filaAtual = JSON.parse(raw);
           if (Array.isArray(filaAtual) && filaAtual.length > 0) {
-            // Remove itens que correspondem à unidade e serviço excluídos
             const filaFiltrada = filaAtual.filter((item) => {
-              const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId ||
-                                   String(item.unidadeId ?? '') === unidadeId;
-              const mesmoServico = (item.servico ?? item.tipoServico ?? '')
-                                    .toUpperCase() === tipoMedicaoAtivo.toUpperCase();
-              // Mantém na fila apenas itens que NÃO sejam desta unidade+serviço
+              const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
+              const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
               return !(mesmaUnidade && mesmoServico);
             });
             localStorage.setItem(STORAGE_KEY, JSON.stringify(filaFiltrada));
-            console.log(`[ExcluirFoto] Fila pendente atualizada: ${filaAtual.length} → ${filaFiltrada.length} itens.`);
           }
         }
       } catch (storageErr) {
-        console.warn('[ExcluirFoto] Não foi possível limpar fila pendente do localStorage:', storageErr);
+        console.warn('[ExcluirFoto] Erro ao limpar pendências:', storageErr);
       }
 
-      // 3. Remove do Supabase (tentativa; falha não é bloqueante)
+      // 4. Tenta remover do Supabase (falha não bloqueia)
       if (supabase) {
         try {
-          await supabase
-            .from('leituras_detalhes')
-            .delete()
-            .match({
-              unidade_id: unidadeId,
-              servico: tipoMedicaoAtivo.toUpperCase(),
-            });
+          await supabase.from('leituras_detalhes').delete().match({
+            unidade_id: unidadeId,
+            servico: tipoServico,
+          });
         } catch (supaErr) {
           console.error("Erro ao deletar no Supabase:", supaErr);
         }
       }
 
+      // 5. Limpa variáveis de valor digitado
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
+      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
 
+      // 6. Atualiza a Tela (UI)
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
@@ -305,6 +307,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       });
 
       setIsPreviewOpen(false);
+
+      // Feedback opcional para você ver que funcionou:
+      console.log(`Sucesso: ${deletados} arquivo(s) removido(s) do aparelho.`);
+
     } catch (error) {
       alert('Erro ao excluir foto: ' + error.message);
     }
