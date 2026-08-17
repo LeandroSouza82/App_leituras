@@ -11,11 +11,14 @@ import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
 import { StorageService } from '../../services/storageService';
 import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
+import { Network } from '@capacitor/network';
+import { salvarLeituraOffline } from '../../services/syncService';
 import './LeituraFotoModal.css';
 
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 1. DECLARAÇÃO DE TODOS OS HOOKS NO TOPO ABSOLUTO
   const [fotosCapturadas, setFotosCapturadas] = useState({});
+  const [concluidosMemoria, setConcluidosMemoria] = useState({});
   const [leiturasValores, setLeiturasValores] = useState({});
   const [exportando, setExportando] = useState(false);
   const [torreAtiva, setTorreAtiva] = useState(null);
@@ -166,10 +169,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return unidadesPorTorre[torreAtiva] || [];
   }, [torreAtiva, unidadesPorTorre, listaCompleta]);
 
-  // Contador de conclusões
+  // Contador de conclusões (considera arquivo físico OU registro de conclusão persistente)
   const unidadesConcluidasCount = useMemo(() => {
-    return unidadesExibidas.filter(apto => fotosCapturadas[apto]?.[tipoMedicaoAtivo]).length;
-  }, [unidadesExibidas, fotosCapturadas, tipoMedicaoAtivo]);
+    return unidadesExibidas.filter(apto => 
+      Boolean(fotosCapturadas[apto]?.[tipoMedicaoAtivo] || concluidosMemoria[apto]?.[tipoMedicaoAtivo])
+    ).length;
+  }, [unidadesExibidas, fotosCapturadas, concluidosMemoria, tipoMedicaoAtivo]);
 
   // 2. FUNÇÕES AUXILIARES E HANDLERS
   const verificarFotosSalvas = async () => {
@@ -215,15 +220,38 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
       setFotosCapturadas(capturadas);
       setLeiturasValores(valoresSalvos);
+
+      // Carrega a memória persistente de unidades concluídas salvas no localStorage
+      const concluidosSalvos = {};
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(`concluido_${leitura.id}_`)) {
+            // Formato: concluido_{leitura.id}_{unidadeId}_{tipoMedicao}
+            const partes = key.replace(`concluido_${leitura.id}_`, '').split('_');
+            if (partes.length >= 2) {
+              const unidade = partes[0];
+              const servico = partes[1].toLowerCase();
+              if (!concluidosSalvos[unidade]) concluidosSalvos[unidade] = {};
+              concluidosSalvos[unidade][servico] = true;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[LeituraFotoModal] Erro ao ler memória de concluídos do localStorage:', e);
+      }
+      setConcluidosMemoria(concluidosSalvos);
+
     } catch (ignored) {
       setFotosCapturadas({});
       setLeiturasValores({});
+      setConcluidosMemoria({});
     }
   };
 
   const handleUnitClick = (apto, thumbnail) => {
     setActiveApto(apto);
-    if (thumbnail) {
+    if (thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]) {
       setIsPreviewOpen(true);
     } else {
       setIsCameraOpen(true);
@@ -251,21 +279,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
-      // 3. Remove entradas órfãs do array localStorage['leituras_pendentes']
+      // 3. Remove entradas órfãs do array localStorage['fila_sync_auto'] e ['leituras_pendentes']
       try {
-        const STORAGE_KEY = 'leituras_pendentes';
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const filaAtual = JSON.parse(raw);
-          if (Array.isArray(filaAtual) && filaAtual.length > 0) {
-            const filaFiltrada = filaAtual.filter((item) => {
-              const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
-              const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
-              return !(mesmaUnidade && mesmoServico);
-            });
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(filaFiltrada));
+        ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const filaAtual = JSON.parse(raw);
+            if (Array.isArray(filaAtual) && filaAtual.length > 0) {
+              const filaFiltrada = filaAtual.filter((item) => {
+                const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
+                const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
+                return !(mesmaUnidade && mesmoServico);
+              });
+              localStorage.setItem(key, JSON.stringify(filaFiltrada));
+            }
           }
-        }
+        });
       } catch (storageErr) {
         console.warn('[ExcluirFoto] Erro ao limpar pendências:', storageErr);
       }
@@ -282,15 +311,30 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
-      // 5. Limpa variáveis de valor digitado
+      // 5. Limpa variáveis de valor digitado e marcação de conclusão
+      const servicoKey = tipoMedicaoAtivo.toLowerCase();
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
+      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
+      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
 
       // 6. Atualiza a Tela (UI)
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
+          if (Object.keys(novo[unidadeId]).length === 0) {
+            delete novo[unidadeId];
+          }
+        }
+        return novo;
+      });
+
+      setConcluidosMemoria((prev) => {
+        const novo = { ...prev };
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][servicoKey];
+          delete novo[unidadeId][tipoServico];
           if (Object.keys(novo[unidadeId]).length === 0) {
             delete novo[unidadeId];
           }
@@ -321,69 +365,116 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(activeApto).trim();
       const fotoUrl = fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
-      if (!fotoUrl || !valor) {
-        throw new Error('Foto ou valor da leitura ausentes.');
+      if (!valor) {
+        throw new Error('Valor da leitura ausente.');
       }
 
+      const servicoKey = tipoMedicaoAtivo.toLowerCase();
+
+      // Grava valor digitado
       localStorage.setItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`, valor);
+
+      // ✅ MEMÓRIA VISUAL PERSISTENTE: Marca a unidade como concluída no localStorage
+      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
+
+      setConcluidosMemoria(prev => ({
+        ...prev,
+        [unidadeId]: { ...(prev[unidadeId] || {}), [servicoKey]: true }
+      }));
 
       setLeiturasValores(prev => ({
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
       }));
 
-      let synced = false;
+      // Busca arquivo local da foto no disco
+      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
+      const files = await StorageService.listFiles(prefixoChave);
+      const localFileName = files.length > 0 ? files[0] : null;
+
+      // Obtém usuário autenticado
+      let activeUserId = 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
       if (supabase) {
         try {
           const { data: { user } } = await supabase.auth.getUser();
-          const activeUserId = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
+          if (user?.id) activeUserId = user.id;
+        } catch {
+          // Mantém fallback seguro
+        }
+      }
 
-          // Converte temporariamente para Base64 apenas no momento exato de envio ao Supabase
-          const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
-          const files = await StorageService.listFiles(prefixoChave);
-          let fotoBase64ToSend = '';
-          if (files.length > 0) {
-            const rawData = await StorageService.readFile(files[0]);
-            fotoBase64ToSend = `data:image/jpeg;base64,${rawData}`;
-          }
+      const payload = {
+        unidade_id: unidadeId,
+        servico: tipoMedicaoAtivo.toUpperCase(),
+        leitura_atual: parseFloat(valor),
+        leiturista_id: activeUserId,
+        data_leitura: new Date().toISOString(),
+        fileName: localFileName
+      };
 
-          const payload = {
-            unidade_id: unidadeId,
-            servico: tipoMedicaoAtivo.toUpperCase(),
-            leitura_atual: parseFloat(valor),
-            foto_url: fotoBase64ToSend || fotoUrl,
-            leiturista_id: activeUserId,
-            data_leitura: new Date().toISOString()
-          };
+      // 1. Verifica status de conectividade em tempo real
+      let isOnline = false;
+      try {
+        const netStatus = await Network.getStatus();
+        isOnline = !!netStatus.connected;
+      } catch {
+        isOnline = navigator.onLine;
+      }
 
-          const { error } = await supabase
-            .from('leituras_detalhes')
-            .insert([payload]);
+      // 2. SE ONLINE: Tenta envio direto ao Supabase (Storage + DB)
+      let syncedDirectly = false;
+      if (isOnline && supabase) {
+        try {
+          let fotoUrlSupabase = fotoUrl;
 
-          // Limpa variável temporária para liberar RAM imediatamente
-          fotoBase64ToSend = null;
+          // Se tem arquivo local, faz upload para o Storage do Supabase
+          if (localFileName) {
+            const rawData = await StorageService.readFile(localFileName);
+            if (rawData) {
+              const byteCharacters = atob(rawData);
+              const byteNumbers = new Uint8Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const blob = new Blob([byteNumbers], { type: 'image/jpeg' });
+              const remotePath = `leituras/${Date.now()}_${localFileName}`;
 
-          if (error) {
-            console.error("Erro detalhado no Supabase:", error);
-            throw error;
-          }
-          synced = true;
+              const { error: uploadError } = await supabase.storage
+                .from('fotos_leituras')
+                .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
 
-          // ✅ LIMPEZA IMEDIATA: deleta o arquivo local após upload bem-sucedido.
-          // Sem isso, obterTotalPendentes() encontraria o arquivo no disco e
-          // o SideMenu mostraria o botão ativo mesmo após tudo enviado.
-          if (files.length > 0) {
-            try {
-              await StorageService.deleteFile(files[0]);
-              console.log('[LeituraFotoModal] Foto local deletada após sync direto:', files[0]);
-            } catch (delErr) {
-              // Não crítico: o syncService tentará deletar novamente na próxima sincronização
-              console.warn('[LeituraFotoModal] Não foi possível deletar foto local:', files[0], delErr);
+              if (!uploadError) {
+                const { data: publicUrlData } = supabase.storage
+                  .from('fotos_leituras')
+                  .getPublicUrl(remotePath);
+                fotoUrlSupabase = publicUrlData?.publicUrl || fotoUrl;
+              }
             }
           }
-        } catch (supabaseError) {
-          console.warn('Falha na sincronização imediata:', supabaseError.message);
+
+          const { error: dbError } = await supabase
+            .from('leituras_detalhes')
+            .insert([{
+              ...payload,
+              foto_url: fotoUrlSupabase || ''
+            }]);
+
+          if (!dbError) {
+            syncedDirectly = true;
+            console.log('[LeituraFotoModal] Leitura sincronizada diretamente com o Supabase. Foto física preservada no disco.');
+          } else {
+            console.warn('[LeituraFotoModal] Erro no insert do DB, salvando na fila offline:', dbError.message);
+          }
+        } catch (syncErr) {
+          console.warn('[LeituraFotoModal] Falha no sync direto, direcionando para fila offline:', syncErr.message);
         }
+      }
+
+      // 3. SE OFFLINE ou se o envio direto falhou por instabilidade:
+      // Enfileira automaticamente via salvarLeituraOffline
+      if (!syncedDirectly) {
+        await salvarLeituraOffline(payload, null, localFileName);
+        console.log('[LeituraFotoModal] Leitura salva na fila offline para sincronização automática em background.');
       }
 
       // Notificação Toast automática e não-bloqueante no topo da tela
@@ -395,6 +486,94 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
+  const handleRetakeFoto = async () => {
+    try {
+      const unidadeId = String(activeApto).trim();
+      const tipoServico = tipoMedicaoAtivo.toUpperCase();
+      const servicoKey = tipoMedicaoAtivo.toLowerCase();
+
+      // 1. Deleta o arquivo físico antigo do disco
+      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}`;
+      const files = await StorageService.listFiles(prefixoChave);
+      for (const file of files) {
+        await StorageService.deleteFile(file);
+      }
+
+      // 2. Limpa da fila offline e localStorage
+      try {
+        ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const filaAtual = JSON.parse(raw);
+            if (Array.isArray(filaAtual)) {
+              const filaFiltrada = filaAtual.filter((item) => {
+                const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId;
+                const mesmoServico = (item.servico ?? '').toUpperCase() === tipoServico;
+                return !(mesmaUnidade && mesmoServico);
+              });
+              localStorage.setItem(key, JSON.stringify(filaFiltrada));
+            }
+          }
+        });
+      } catch (err) {
+        console.warn('[Retake] Erro ao limpar fila:', err);
+      }
+
+      // 3. Limpa no Supabase se possível (sem travar a UI se offline)
+      if (supabase) {
+        try {
+          await supabase.from('leituras_detalhes').delete().match({
+            unidade_id: unidadeId,
+            servico: tipoServico,
+          });
+        } catch (supaErr) {
+          console.warn('[Retake] Erro ao deletar no Supabase:', supaErr?.message);
+        }
+      }
+
+      // 4. Limpa chaves e memórias
+      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
+      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
+      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
+      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
+
+      setFotosCapturadas((prev) => {
+        const novo = { ...prev };
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][tipoMedicaoAtivo];
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
+        }
+        return novo;
+      });
+
+      setConcluidosMemoria((prev) => {
+        const novo = { ...prev };
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][servicoKey];
+          delete novo[unidadeId][tipoServico];
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
+        }
+        return novo;
+      });
+
+      setLeiturasValores((prev) => {
+        const novo = { ...prev };
+        if (novo[unidadeId]) {
+          delete novo[unidadeId][tipoMedicaoAtivo];
+        }
+        return novo;
+      });
+
+      // 5. Fecha o preview e abre a câmera para nova foto
+      setIsPreviewOpen(false);
+      setIsCameraOpen(true);
+    } catch (err) {
+      console.error('[Retake] Erro ao refazer foto:', err);
+      setIsPreviewOpen(false);
+      setIsCameraOpen(true);
+    }
+  };
+
   const handleCapturePhoto = async (photoData) => {
     if (!activeApto || isProcessing) return;
 
@@ -403,6 +582,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const unidadeId = String(activeApto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
+      const servicoKey = tipoMedicaoAtivo.toLowerCase();
 
       // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
       const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
@@ -416,7 +596,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 3. Limpeza imediata da variável Base64 da memória RAM
       stampedBase64 = null;
 
-      // 4. Sucesso: Atualiza estado visual usando a URI convertida (sem Base64 no state)
+      // 4. Grava marcação de conclusão persistente
+      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
+
+      setConcluidosMemoria((prev) => ({
+        ...prev,
+        [unidadeId]: {
+          ...(prev[unidadeId] || {}),
+          [servicoKey]: true
+        }
+      }));
+
+      // 5. Sucesso: Atualiza estado visual usando a URI convertida (sem Base64 no state)
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeId]: {
@@ -516,7 +707,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             {unidadesExibidas.map((apto) => {
               const status = fotosCapturadas[apto] || {};
               const thumbnail = status[tipoMedicaoAtivo];
-              const concluido = Boolean(thumbnail);
+              const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
 
               return (
                 <button
@@ -528,7 +719,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   <span className="apto-number">{apto}</span>
                   {concluido ? (
                     <div className="concluido-container">
-                      {typeof thumbnail === 'string' && <img src={thumbnail} alt="Preview" className="unit-miniature" />}
+                      {thumbnail ? (
+                        <img src={thumbnail} alt="Preview" className="unit-miniature" />
+                      ) : (
+                        <div className="unit-sync-done-icon">
+                          <CheckCircle size={22} color="#16a34a" />
+                        </div>
+                      )}
                       <div className="concluido-label">
                         <CheckCircle size={12} />
                         ✓ {tipoMedicaoAtivo.toUpperCase()} OK
@@ -584,7 +781,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onClose={() => setIsPreviewOpen(false)}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo]}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
-        onRetake={() => { setIsPreviewOpen(false); setIsCameraOpen(true); }}
+        onRetake={handleRetakeFoto}
         onDelete={handleExcluirFoto}
         onSaveReading={handleSaveReading}
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}

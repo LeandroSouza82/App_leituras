@@ -159,7 +159,6 @@ const Header = ({
       <SideMenu
         isOpen={isSideMenuOpen}
         onClose={() => setIsSideMenuOpen(false)}
-        onSync={onSync}
       />
     </header>
   );

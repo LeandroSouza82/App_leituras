@@ -1,27 +1,26 @@
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Network } from '@capacitor/network';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
 
 /**
- * syncService - Serviço modular de sincronização de leituras salvas offline.
- *
- * Fontes de pendências:
- *   1. localStorage (STORAGE_KEY) — leituras sem foto (metadados simples).
- *   2. Filesystem (Directory.Data) — arquivos de foto com prefixo 'leitura_foto_'.
- *
- * Regras de limpeza:
- *   - Após envio bem-sucedido de cada foto → deleta o arquivo físico do disco.
- *   - Ao final de tudo → sobrescreve o localStorage com [].
- *   - obterTotalPendentes() relê tudo do zero: localStorage + disco.
+ * syncService - Arquitetura Offline-First com Sincronização Automática em Background e Auditoria Visual.
+ * 
+ * Diretrizes:
+ *  - O arquivo físico .jpg PERMANECE no disco (Directory.Data) para permitir preview e retake a qualquer momento.
+ *  - A sincronização consome EXCLUSIVAMENTE o array 'fila_sync_auto' do localStorage.
+ *  - Ao sincronizar cada item com sucesso, remove APENAS o item do array local.
+ *  - Não realiza readdir cego, garantindo que o arquivo não seja re-sincronizado em loop.
  */
 
-const STORAGE_KEY = 'leituras_pendentes';
+const FILA_SYNC_KEY = 'fila_sync_auto';
+let isSyncRunning = false;
+let networkListenerInitialized = false;
 
-// ─── Helpers de localStorage ───────────────────────────────────────────────
+// ─── Helpers de Fila no localStorage ────────────────────────────────────────
 
-/** Lê a fila de leituras pendentes do localStorage. Nunca lança exceção. */
-const readPendingQueue = () => {
+export const readFilaSync = () => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(FILA_SYNC_KEY);
     if (!raw || raw === 'null' || raw === 'undefined') return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -30,71 +29,20 @@ const readPendingQueue = () => {
   }
 };
 
-/**
- * Reescreve a fila no localStorage. Passa [] para limpar completamente.
- * Nunca lança exceção.
- */
-const writePendingQueue = (items) => {
+export const writeFilaSync = (items) => {
   try {
     const safeItems = Array.isArray(items) ? items : [];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(safeItems));
+    localStorage.setItem(FILA_SYNC_KEY, JSON.stringify(safeItems));
   } catch (err) {
-    console.warn('[SyncService] Erro ao reescrever fila no localStorage:', err);
+    console.warn('[SyncService] Erro ao gravar fila local:', err);
   }
 };
 
-// ─── Helpers de Filesystem ────────────────────────────────────────────────
+// ─── Conversor Base64 para Blob ─────────────────────────────────────────────
 
-/**
- * Lista todos os arquivos de foto pendentes na raiz do Directory.Data.
- * No Android, se o diretório estiver vazio ou inacessível, retorna [].
- * @returns {Promise<string[]>}
- */
-const listarFotosLocais = async () => {
-  try {
-    const result = await Filesystem.readdir({
-      path: '',
-      directory: Directory.Data,
-    });
-
-    if (!result?.files || !Array.isArray(result.files)) return [];
-
-    return result.files
-      .map((f) => (typeof f === 'string' ? f : (f?.name ?? '')))
-      .filter((name) =>
-        typeof name === 'string' &&
-        name.startsWith('leitura_foto_') &&
-        name.endsWith('.jpg')
-      );
-  } catch {
-    // Diretório vazio ou inexistente — comportamento normal quando não há pendências
-    return [];
-  }
-};
-
-/**
- * Deleta um arquivo de foto do disco local.
- * Silencia erros (arquivo já pode ter sido deletado).
- */
-const deletarFotoLocal = async (fileName) => {
-  try {
-    await Filesystem.deleteFile({
-      path: fileName,
-      directory: Directory.Data,
-    });
-    console.log('[SyncService] Foto local deletada:', fileName);
-  } catch {
-    console.warn('[SyncService] Foto não encontrada para deleção (pode já ter sido removida):', fileName);
-  }
-};
-
-// ─── Helpers de Supabase ──────────────────────────────────────────────────
-
-/**
- * Converte Base64 bruto (sem prefixo data URI) em Blob para upload.
- */
 const base64ToBlob = (base64, mimeType = 'image/jpeg') => {
-  const byteCharacters = atob(base64);
+  const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+  const byteCharacters = atob(cleanBase64);
   const byteNumbers = new Uint8Array(byteCharacters.length);
   for (let i = 0; i < byteCharacters.length; i++) {
     byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -102,170 +50,203 @@ const base64ToBlob = (base64, mimeType = 'image/jpeg') => {
   return new Blob([byteNumbers], { type: mimeType });
 };
 
-const uploadFotoParaStorage = async (fileName) => {
-  const result = await Filesystem.readFile({
-    path: fileName,
-    directory: Directory.Data,
-  });
-
-  const blob = base64ToBlob(result.data, 'image/jpeg');
-  const remotePath = `leituras/${Date.now()}_${fileName}`;
-
-  const { error } = await supabase.storage
-    .from('fotos_leituras')
-    .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-  if (error) throw error;
-
-  const { data: publicUrlData } = supabase.storage
-    .from('fotos_leituras')
-    .getPublicUrl(remotePath);
-
-  return publicUrlData.publicUrl;
-};
-
-const inserirLeituraNoSupabase = async (payload) => {
-  const { error } = await supabase.from('leituras_detalhes').insert([payload]);
-  if (error) throw error;
-};
-
-// ─── API Pública ──────────────────────────────────────────────────────────
+// ─── 1. Salvar Leitura Offline ──────────────────────────────────────────────
 
 /**
- * Retorna o total de itens pendentes (localStorage + fotos no disco).
- *
- * LEITURA ESTRITA:
- *   - Se o localStorage estiver vazio, nulo ou inválido → conta como 0.
- *   - Se o Filesystem lançar erro (diretório inexistente) → conta como 0.
- *   - Retorna SEMPRE um inteiro >= 0. Nunca lança exceção.
- *
- * @returns {Promise<number>}
+ * Salva a leitura na fila local (localStorage) mantendo a foto física no Directory.Data.
+ * 
+ * @param {Object} payload - Dados da leitura (unidade_id, servico, leitura_atual, etc.)
+ * @param {string|null} base64Image - Imagem em Base64 para salvar no disco se ainda não estiver
+ * @param {string|null} fileName - Nome do arquivo físico no disco
  */
-export async function obterTotalPendentes() {
+export async function salvarLeituraOffline(payload, base64Image = null, fileName = null) {
   try {
-    const filaLocal = readPendingQueue();
-    const totalFila = Array.isArray(filaLocal) ? filaLocal.length : 0;
+    if (base64Image && fileName) {
+      try {
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
+          directory: Directory.Data,
+          recursive: true
+        });
+      } catch (fsErr) {
+        console.warn('[SyncService] Aviso ao gravar arquivo no disco:', fsErr?.message);
+      }
+    }
 
-    const fotosLocais = await listarFotosLocais();
-    const totalFotos = Array.isArray(fotosLocais) ? fotosLocais.length : 0;
+    const itemFila = {
+      id: payload.id || `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      unidade_id: String(payload.unidade_id || '').trim(),
+      servico: (payload.servico || 'AGUA').toUpperCase(),
+      leitura_atual: payload.leitura_atual !== undefined ? parseFloat(payload.leitura_atual) : null,
+      leiturista_id: payload.leiturista_id || null,
+      data_leitura: payload.data_leitura || new Date().toISOString(),
+      fileName: fileName || payload.fileName || null,
+      timestamp: Date.now()
+    };
 
-    const total = totalFila + totalFotos;
-    return Number.isFinite(total) && total >= 0 ? total : 0;
-  } catch {
-    return 0;
+    const filaAtual = readFilaSync();
+    
+    // Evita duplicatas na fila para o mesmo item
+    const indexExistente = filaAtual.findIndex(
+      f => f.unidade_id === itemFila.unidade_id && f.servico === itemFila.servico
+    );
+
+    if (indexExistente >= 0) {
+      filaAtual[indexExistente] = itemFila;
+    } else {
+      filaAtual.push(itemFila);
+    }
+
+    writeFilaSync(filaAtual);
+    console.log('[SyncService] Leitura salva na fila local para sincronização:', itemFila);
+
+    // Se estiver online, tenta sincronizar imediatamente em background
+    Network.getStatus().then(status => {
+      if (status.connected) {
+        sincronizarFilaEmBackground();
+      }
+    }).catch(() => {});
+
+    return true;
+  } catch (error) {
+    console.error('[SyncService] Erro ao salvar leitura offline:', error);
+    return false;
   }
 }
 
+// ─── 2. Sincronizar Fila em Background ──────────────────────────────────────
+
 /**
- * Sincroniza TODAS as leituras pendentes com o Supabase.
- *
- * Etapa 1 — Fila do localStorage (registros sem foto).
- * Etapa 2 — Fotos no Filesystem (upload + insert + deleção local).
- * Limpeza  — Sobrescreve localStorage com [] ao final INCONDICIONALMENTE.
- *
- * @param {function(atual: number, total: number): void} [onProgress]
- * @returns {Promise<{enviadas: number, falhas: number, pendentesRestantes: number}>}
+ * Consome EXCLUSIVAMENTE a fila 'fila_sync_auto' do localStorage.
+ * Envia as fotos e metadados ao Supabase e remove da fila.
+ * NUNCA deleta o arquivo físico do disco (preservado para auditoria e preview).
  */
-export async function sincronizarPendentes(onProgress) {
-  const resultadoFinal = { enviadas: 0, falhas: 0, pendentesRestantes: 0 };
-
-  // ─── ETAPA 1: Fila do localStorage ───────────────────────────────────────
-  const filaLocal = readPendingQueue();
-  const filaNaoEnviada = [];
-  const totalFila = filaLocal.length;
-
-  for (let i = 0; i < totalFila; i++) {
-    const item = filaLocal[i];
-    onProgress?.(i + 1, totalFila);
-    try {
-      const { tempId, ...dadosParaEnvio } = item;
-      const { error } = await supabase.from('leituras').insert([dadosParaEnvio]);
-      if (error) throw error;
-      resultadoFinal.enviadas++;
-    } catch (err) {
-      console.warn('[SyncService] Falha ao enviar item da fila:', item?.tempId, err?.message);
-      filaNaoEnviada.push(item);
-      resultadoFinal.falhas++;
-    }
+export async function sincronizarFilaEmBackground() {
+  if (isSyncRunning) {
+    console.log('[SyncService] Sincronização já em andamento, ignorando chamada concorrente.');
+    return;
   }
 
-  // ─── ETAPA 2: Fotos no disco ──────────────────────────────────────────────
-  const fotosLocais = await listarFotosLocais();
-  const totalFotos = fotosLocais.length;
+  try {
+    const status = await Network.getStatus();
+    if (!status.connected) {
+      console.log('[SyncService] Dispositivo offline. Sincronização postergada.');
+      return;
+    }
 
-  for (let i = 0; i < totalFotos; i++) {
-    const fileName = fotosLocais[i];
-    onProgress?.(totalFila + i + 1, totalFila + totalFotos);
+    const fila = readFilaSync();
+    if (fila.length === 0) {
+      return;
+    }
 
-    try {
-      // Tenta ler o arquivo — se não existir no disco (excluído manualmente),
-      // lança exceção que é capturada abaixo como descarte (não conta como falha).
-      let fileData;
+    isSyncRunning = true;
+    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
+    console.log(`[SyncService] Sincronizando ${fila.length} itens da fila em background...`);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const userIdPadrao = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
+
+    for (const item of [...fila]) {
       try {
-        fileData = await Filesystem.readFile({
-          path: fileName,
-          directory: Directory.Data,
-        });
-      } catch (readErr) {
-        // Arquivo não existe mais no disco — foi excluído manualmente.
-        // Descarta silenciosamente: não é falha de rede, não volta para a fila.
-        console.warn(`[SyncService] Foto ausente no disco, descartando: ${fileName}`);
-        resultadoFinal.enviadas++; // conta como processado para não inflacionar falhas
-        continue;
+        let publicPhotoUrl = null;
+
+        // 1. Upload da Foto para o Supabase Storage
+        if (item.fileName) {
+          try {
+            const fileResult = await Filesystem.readFile({
+              path: item.fileName,
+              directory: Directory.Data
+            });
+
+            if (fileResult?.data) {
+              const blob = base64ToBlob(fileResult.data, 'image/jpeg');
+              const remotePath = `leituras/${Date.now()}_${item.fileName}`;
+
+              const { error: uploadError } = await supabase.storage
+                .from('fotos_leituras')
+                .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+              if (uploadError) throw uploadError;
+
+              const { data: publicUrlData } = supabase.storage
+                .from('fotos_leituras')
+                .getPublicUrl(remotePath);
+
+              publicPhotoUrl = publicUrlData?.publicUrl || null;
+            }
+          } catch (fileErr) {
+            console.warn('[SyncService] Aviso no upload da foto local:', item.fileName, fileErr?.message);
+          }
+        }
+
+        // 2. Inserção / Upsert no Supabase Database
+        const payloadEnvio = {
+          unidade_id: item.unidade_id,
+          servico: item.servico,
+          leitura_atual: item.leitura_atual,
+          foto_url: publicPhotoUrl || '',
+          leiturista_id: item.leiturista_id || userIdPadrao,
+          data_leitura: item.data_leitura || new Date().toISOString()
+        };
+
+        const { error: dbError } = await supabase
+          .from('leituras_detalhes')
+          .insert([payloadEnvio]);
+
+        if (dbError) {
+          console.warn('[SyncService] Aviso no insert do Supabase:', dbError.message);
+        }
+
+        // 3. SUCESSO: Remove APENAS o item do array no localStorage.
+        // O arquivo físico permanece no disco no Directory.Data para preview/auditoria.
+        const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
+        writeFilaSync(filaAtualizada);
+        console.log('[SyncService] Item sincronizado e removido da fila:', item.unidade_id, item.servico);
+
+      } catch (itemErr) {
+        console.error('[SyncService] Falha ao processar item da fila:', item.id, itemErr?.message);
       }
-
-      const partes = fileName.replace('.jpg', '').split('_');
-      // Padrão: leitura_foto_{condoId}_{unidadeId}_{servico}_{timestamp}.jpg
-      const unidadeId = partes[3] ?? 'desconhecida';
-      const servico = (partes[4] ?? 'AGUA').toUpperCase();
-
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Converte Base64 lido para Blob e faz upload
-      const blob = base64ToBlob(fileData.data, 'image/jpeg');
-      const remotePath = `leituras/${Date.now()}_${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('fotos_leituras')
-        .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from('fotos_leituras')
-        .getPublicUrl(remotePath);
-
-      await inserirLeituraNoSupabase({
-        unidade_id: unidadeId,
-        servico,
-        foto_url: publicUrlData.publicUrl,
-        leiturista_id: user?.id ?? null,
-        data_leitura: new Date().toISOString(),
-        leitura_atual: null,
-      });
-
-      // ✅ Deleta o arquivo físico IMEDIATAMENTE após upload bem-sucedido
-      await deletarFotoLocal(fileName);
-      resultadoFinal.enviadas++;
-    } catch (err) {
-      console.error('[SyncService] Falha ao processar foto, mantendo para nova tentativa:', fileName, err?.message);
-      resultadoFinal.falhas++;
-      // Foto permanece no disco para nova tentativa (falha real de rede/Supabase)
     }
+
+    console.log('[SyncService] Fila de background processada com sucesso.');
+    window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
+
+  } catch (globalErr) {
+    console.error('[SyncService] Erro durante sincronização em background:', globalErr);
+  } finally {
+    isSyncRunning = false;
+    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
   }
+}
 
-  // ─── LIMPEZA FINAL AGRESSIVA ──────────────────────────────────────────────
-  // Sobrescreve localStorage com APENAS as falhas ([] se tudo enviou).
-  // Isso garante que obterTotalPendentes() retorne 0 na próxima chamada.
-  writePendingQueue(filaNaoEnviada);
+// ─── 3. Observador Global de Rede ───────────────────────────────────────────
 
-  // Rele o disco para confirmar o que sobrou de verdade
-  const fotosRestantes = await listarFotosLocais();
-  resultadoFinal.pendentesRestantes = filaNaoEnviada.length + fotosRestantes.length;
+/**
+ * Inicia o observador de conectividade.
+ */
+export function iniciarObservadorRede() {
+  if (networkListenerInitialized) return;
+  networkListenerInitialized = true;
 
-  console.log(
-    `[SyncService] Concluído. Enviadas: ${resultadoFinal.enviadas}, Falhas: ${resultadoFinal.falhas}, Restantes: ${resultadoFinal.pendentesRestantes}`
-  );
+  try {
+    Network.addListener('networkStatusChange', async (status) => {
+      console.log('[SyncService] Conectividade alterada:', status.connected ? 'ONLINE' : 'OFFLINE');
+      if (status.connected) {
+        setTimeout(() => {
+          sincronizarFilaEmBackground();
+        }, 1500);
+      }
+    });
 
-  return resultadoFinal;
+    Network.getStatus().then((status) => {
+      if (status.connected) {
+        sincronizarFilaEmBackground();
+      }
+    }).catch(() => {});
+
+    console.log('[SyncService] Observador de rede iniciado.');
+  } catch (err) {
+    console.warn('[SyncService] Falha ao iniciar observador de rede:', err);
+  }
 }

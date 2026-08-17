@@ -20,6 +20,8 @@ import Login from './components/Login';
 import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
+import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
+import { iniciarObservadorRede } from './services/syncService';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -88,6 +90,9 @@ const MainApp = ({ onLogout }) => {
   };
 
   useEffect(() => {
+    // Inicializa o observador de conectividade para sincronização automática
+    iniciarObservadorRede();
+
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
 
@@ -310,6 +315,7 @@ const MainApp = ({ onLogout }) => {
 
         <BottomNavbar activeTab={abaAtiva} onChange={setAbaAtiva} />
       </div>
+      <AutoSyncIndicator />
       <Toast {...toast} onClose={dismissToast} />
     </>
   );

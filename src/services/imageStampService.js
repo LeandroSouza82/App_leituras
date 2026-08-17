@@ -75,8 +75,8 @@ export const ImageStampService = {
           ctx.textBaseline = 'top';
           ctx.fillText(stampText, posX + padding, posY + padding / 2);
 
-          // 7. Exporta com compressão otimizada (0.6)
-          const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          // 7. Exporta com compressão máxima otimizada (0.55) para economia de storage e memória
+          const stampedDataUrl = canvas.toDataURL('image/jpeg', 0.55);
           const rawBase64 = stampedDataUrl.split(',')[1];
 
           // 8. Limpeza agressiva de memória do Canvas e Image para evitar vazamentos/OOM
