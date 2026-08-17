@@ -337,6 +337,19 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             throw error;
           }
           synced = true;
+
+          // ✅ LIMPEZA IMEDIATA: deleta o arquivo local após upload bem-sucedido.
+          // Sem isso, obterTotalPendentes() encontraria o arquivo no disco e
+          // o SideMenu mostraria o botão ativo mesmo após tudo enviado.
+          if (files.length > 0) {
+            try {
+              await StorageService.deleteFile(files[0]);
+              console.log('[LeituraFotoModal] Foto local deletada após sync direto:', files[0]);
+            } catch (delErr) {
+              // Não crítico: o syncService tentará deletar novamente na próxima sincronização
+              console.warn('[LeituraFotoModal] Não foi possível deletar foto local:', files[0], delErr);
+            }
+          }
         } catch (supabaseError) {
           console.warn('Falha na sincronização imediata:', supabaseError.message);
         }
