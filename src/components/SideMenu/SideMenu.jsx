@@ -14,11 +14,10 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
 
   const toastTimeoutRef = useRef(null);
 
-  // Reset obrigatório de TODOS os estados transitórios ao abrir o menu
-  // e leitura segura de pendências logo em seguida
+  // ─── Ciclo de vida: abertura e fechamento do menu ───────────────────────────
   useEffect(() => {
     if (isOpen) {
-      // 1. Zera estados transitórios INCONDICIONALMENTE ao abrir
+      // ABERTURA: zera TODOS os estados visuais transitórios antes de consultar o disco
       setSyncFinished(false);
       setSyncError(false);
       setShowSuccessToast(false);
@@ -26,13 +25,13 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
       setResultado(null);
       setProgress({ atual: 0, total: 0 });
 
-      // Limpa qualquer timeout de Toast pendente de sessão anterior
+      // Cancela qualquer Toast pendente de sessão anterior
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
         toastTimeoutRef.current = null;
       }
 
-      // 2. Somente APÓS resetar, lê o total real de pendências
+      // Só depois de limpar, lê o total real de pendências do disco/localStorage
       const verificarPendencias = async () => {
         try {
           const total = await obterTotalPendentes();
@@ -42,8 +41,23 @@ const SideMenu = ({ isOpen, onClose, onSync }) => {
         }
       };
       verificarPendencias();
+    } else {
+      // FECHAMENTO: força reset dos estados visuais de conclusão
+      // Isso é necessário no Android onde o componente NÃO desmonta ao fechar,
+      // e o estado persiste entre sessões de abertura.
+      setSyncFinished(false);
+      setSyncError(false);
+      setShowSuccessToast(false);
+      setProgress({ atual: 0, total: 0 });
+      setResultado(null);
+
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
     }
   }, [isOpen]);
+
 
   if (!isOpen) return null;
 
