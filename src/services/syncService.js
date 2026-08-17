@@ -198,6 +198,22 @@ export async function sincronizarPendentes(onProgress) {
     onProgress?.(totalFila + i + 1, totalFila + totalFotos);
 
     try {
+      // Tenta ler o arquivo — se não existir no disco (excluído manualmente),
+      // lança exceção que é capturada abaixo como descarte (não conta como falha).
+      let fileData;
+      try {
+        fileData = await Filesystem.readFile({
+          path: fileName,
+          directory: Directory.Data,
+        });
+      } catch (readErr) {
+        // Arquivo não existe mais no disco — foi excluído manualmente.
+        // Descarta silenciosamente: não é falha de rede, não volta para a fila.
+        console.warn(`[SyncService] Foto ausente no disco, descartando: ${fileName}`);
+        resultadoFinal.enviadas++; // conta como processado para não inflacionar falhas
+        continue;
+      }
+
       const partes = fileName.replace('.jpg', '').split('_');
       // Padrão: leitura_foto_{condoId}_{unidadeId}_{servico}_{timestamp}.jpg
       const unidadeId = partes[3] ?? 'desconhecida';
@@ -205,12 +221,24 @@ export async function sincronizarPendentes(onProgress) {
 
       const { data: { user } } = await supabase.auth.getUser();
 
-      const fotoPublicUrl = await uploadFotoParaStorage(fileName);
+      // Converte Base64 lido para Blob e faz upload
+      const blob = base64ToBlob(fileData.data, 'image/jpeg');
+      const remotePath = `leituras/${Date.now()}_${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('fotos_leituras')
+        .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('fotos_leituras')
+        .getPublicUrl(remotePath);
 
       await inserirLeituraNoSupabase({
         unidade_id: unidadeId,
         servico,
-        foto_url: fotoPublicUrl,
+        foto_url: publicUrlData.publicUrl,
         leiturista_id: user?.id ?? null,
         data_leitura: new Date().toISOString(),
         leitura_atual: null,
@@ -220,9 +248,9 @@ export async function sincronizarPendentes(onProgress) {
       await deletarFotoLocal(fileName);
       resultadoFinal.enviadas++;
     } catch (err) {
-      console.error('[SyncService] Falha ao processar foto, pulando:', fileName, err?.message);
+      console.error('[SyncService] Falha ao processar foto, mantendo para nova tentativa:', fileName, err?.message);
       resultadoFinal.falhas++;
-      // Foto permanece no disco para nova tentativa
+      // Foto permanece no disco para nova tentativa (falha real de rede/Supabase)
     }
   }
 

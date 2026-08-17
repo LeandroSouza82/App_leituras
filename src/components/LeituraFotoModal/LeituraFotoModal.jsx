@@ -237,13 +237,38 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(activeApto).trim();
       const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`;
 
-      // Localiza o arquivo exato na raiz antes de deletar via StorageService
+      // 1. Deleta o arquivo físico do disco
       const files = await StorageService.listFiles(prefixoChave);
-
       if (files.length > 0) {
         await StorageService.deleteFile(files[0]);
       }
 
+      // 2. Remove entradas órfãs do array localStorage['leituras_pendentes']
+      // Sem isso, o SideMenu continua mostrando pendências mesmo após a exclusão física.
+      try {
+        const STORAGE_KEY = 'leituras_pendentes';
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const filaAtual = JSON.parse(raw);
+          if (Array.isArray(filaAtual) && filaAtual.length > 0) {
+            // Remove itens que correspondem à unidade e serviço excluídos
+            const filaFiltrada = filaAtual.filter((item) => {
+              const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId ||
+                                   String(item.unidadeId ?? '') === unidadeId;
+              const mesmoServico = (item.servico ?? item.tipoServico ?? '')
+                                    .toUpperCase() === tipoMedicaoAtivo.toUpperCase();
+              // Mantém na fila apenas itens que NÃO sejam desta unidade+serviço
+              return !(mesmaUnidade && mesmoServico);
+            });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(filaFiltrada));
+            console.log(`[ExcluirFoto] Fila pendente atualizada: ${filaAtual.length} → ${filaFiltrada.length} itens.`);
+          }
+        }
+      } catch (storageErr) {
+        console.warn('[ExcluirFoto] Não foi possível limpar fila pendente do localStorage:', storageErr);
+      }
+
+      // 3. Remove do Supabase (tentativa; falha não é bloqueante)
       if (supabase) {
         try {
           await supabase
