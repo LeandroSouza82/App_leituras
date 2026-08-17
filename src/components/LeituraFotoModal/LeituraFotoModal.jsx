@@ -424,6 +424,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 2. SE ONLINE: Tenta envio direto ao Supabase (Storage + DB)
       let syncedDirectly = false;
       if (isOnline && supabase) {
+        window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
         try {
           let fotoUrlSupabase = fotoUrl;
 
@@ -462,11 +463,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           if (!dbError) {
             syncedDirectly = true;
             console.log('[LeituraFotoModal] Leitura sincronizada diretamente com o Supabase. Foto física preservada no disco.');
+            window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
           } else {
             console.warn('[LeituraFotoModal] Erro no insert do DB, salvando na fila offline:', dbError.message);
           }
         } catch (syncErr) {
           console.warn('[LeituraFotoModal] Falha no sync direto, direcionando para fila offline:', syncErr.message);
+        } finally {
+          window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
         }
       }
 
@@ -475,10 +479,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       if (!syncedDirectly) {
         await salvarLeituraOffline(payload, null, localFileName);
         console.log('[LeituraFotoModal] Leitura salva na fila offline para sincronização automática em background.');
+        
+        // ✅ Feedback visual: exibe o toast verde APENAS se estiver offline
+        if (!isOnline) {
+          exibirToastSucesso();
+        }
       }
-
-      // Notificação Toast automática e não-bloqueante no topo da tela
-      exibirToastSucesso();
 
     } catch (error) {
       console.error('Erro ao salvar leitura:', error);
