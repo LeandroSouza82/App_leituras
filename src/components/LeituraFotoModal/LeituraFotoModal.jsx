@@ -406,7 +406,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const payload = {
         unidade_id: unidadeId,
         servico: tipoMedicaoAtivo.toUpperCase(),
-        leitura_atual: parseFloat(valor),
+        leitura_atual: parseFloat(String(valor).replace(',', '.')),
         leiturista_id: activeUserId,
         data_leitura: new Date().toISOString(),
         fileName: localFileName

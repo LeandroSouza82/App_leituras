@@ -1,17 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Trash2, CheckCircle2, Save } from 'lucide-react';
+import { X, RefreshCw, Trash2, Save } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
 const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDelete, onSaveReading, initialValue = '' }) => {
-  const [leituraValor, setLeituraValor] = useState(initialValue);
+  const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Garante que o campo esteja limpo ou sincronizado com o valor inicial ao abrir/mudar de unidade
+  const formatarComMascara = (val) => {
+    if (!val) return '';
+    let num = String(val).replace(/\D/g, '');
+    if (!num) return '';
+    num = parseInt(num, 10).toString();
+    num = num.padStart(4, '0');
+    const intPart = num.slice(0, -3);
+    const decPart = num.slice(-3);
+    return `${intPart},${decPart}`;
+  };
+
+  const handleInputChange = (e) => {
+    let num = e.target.value.replace(/\D/g, '');
+    if (!num) {
+      setLeituraValor('');
+      return;
+    }
+    num = parseInt(num, 10).toString();
+    num = num.padStart(4, '0');
+    const intPart = num.slice(0, -3);
+    const decPart = num.slice(-3);
+    setLeituraValor(`${intPart},${decPart}`);
+  };
+
+  // Garante sincronização com o valor inicial formatado ao abrir
   useEffect(() => {
     if (isOpen) {
-      setLeituraValor(initialValue);
+      setLeituraValor(initialValue ? formatarComMascara(initialValue) : '');
     }
   }, [isOpen, initialValue]);
 
@@ -23,7 +47,6 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
     setIsSaving(true);
     try {
       await onSaveReading(leituraValor);
-      // Limpeza imediata após o salvamento bem-sucedido
       setLeituraValor('');
       onClose();
     } catch (error) {
@@ -53,12 +76,12 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
             <label htmlFor="leitura-atual">Lançar Leitura Atual</label>
             <input
               id="leitura-atual"
-              type="number"
-              step="any"
-              inputMode="decimal"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={leituraValor}
-              onChange={(e) => setLeituraValor(e.target.value)}
-              placeholder="0.000"
+              onChange={handleInputChange}
+              placeholder="0,000"
               className="reading-input-field"
             />
           </div>
