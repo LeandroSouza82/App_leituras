@@ -12,6 +12,7 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
+import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
 
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
@@ -28,6 +29,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [unidadesCarregadas, setUnidadesAtualizadas] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const toastTimeoutRef = useRef(null);
 
   const exibirToastSucesso = () => {
@@ -490,11 +492,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleDispararCamera = async (aptoAlvo) => {
+  // Abre a câmera customizada in-app (CustomCamera) em vez da câmera nativa do SO
+  const handleDispararCamera = (aptoAlvo) => {
     const apto = aptoAlvo || activeApto;
     if (!apto || isProcessing) return;
-
     setActiveApto(apto);
+    setCustomCameraOpen(true);
+  };
+
+  // Callback chamado pelo CustomCamera após captura bem-sucedida (base64 comprimido)
+  const handleCameraCapture = async (base64) => {
+    setCustomCameraOpen(false);
+
+    const apto = activeApto;
+    if (!apto) return;
 
     try {
       setIsProcessing(true);
@@ -502,29 +513,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
-      const unitLabel = `${apto} - ${tipoServico}`;
-
-      // 1. Abre a câmera nativa do SO diretamente
-      const photo = await CameraService.capturarFoto(unitLabel);
-
-      if (!photo?.webPath && !photo?.path) {
-        // Usuário cancelou no SO
-        return;
-      }
 
       // Nome exclusivo baseado em timestamp e ID (Salvamento Plano na Raiz)
       const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
 
-      // 2. Aplica o carimbo de data e hora via HTML5 Canvas usando a URI webPath
-      let stampedBase64 = await ImageStampService.applyTimestamp(photo.webPath || photo.base64);
+      // 1. Aplica carimbo de data/hora via Canvas (já aceita base64 puro)
+      let stampedBase64 = await ImageStampService.applyTimestamp(
+        `data:image/jpeg;base64,${base64}`
+      );
 
-      // 3. Salvamento Direto na Raiz do Directory.Data via Flat Storage
+      // 2. Salva no Directory.Data e obtém webUrl (sem manter base64 no state)
       const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
 
-      // 4. Limpeza imediata da variável Base64 da memória RAM
+      // 3. Limpeza imediata do base64 da RAM
       stampedBase64 = null;
 
-      // 5. Grava marcação de conclusão persistente
+      // 4. Grava marcação de conclusão persistente
       localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
 
       setConcluidosMemoria((prev) => ({
@@ -535,7 +539,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }));
 
-      // 6. Atualiza estado visual usando a URI convertida (sem Base64 no state)
+      // 5. Atualiza estado visual usando URI convertida (sem base64 no state)
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeId]: {
@@ -544,20 +548,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }));
 
-      // 7. Salto direto para o modal de preview e digitação da leitura
+      // 6. Abre PreviewFotoModal para digitação da leitura
       setIsPreviewOpen(true);
-      console.log('[FileSystem] Foto capturada e direcionada diretamente para PreviewFotoModal:', savedFile.path);
+      console.log('[CustomCamera] Foto persistida e direcionada para PreviewFotoModal:', savedFile.path);
 
     } catch (error) {
-      const msg = String(error?.message || '');
-      if (
-        !msg.toLowerCase().includes('cancel') &&
-        !msg.toLowerCase().includes('cancelled') &&
-        !msg.toLowerCase().includes('user cancelled')
-      ) {
-        console.error('[Camera] Erro ao capturar evidência:', error);
-        alert('❌ Erro ao acessar a câmera: ' + msg);
-      }
+      console.error('[CustomCamera] Erro ao processar foto capturada:', error);
+      alert('❌ Erro ao processar foto: ' + (error?.message || error));
     } finally {
       setIsProcessing(false);
     }
@@ -641,7 +638,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         return novo;
       });
 
-      // 5. Fecha o preview e dispara diretamente a câmera nativa para a nova captura
+      // 5. Fecha o preview e abre a câmera customizada in-app para nova captura
       setIsPreviewOpen(false);
       handleDispararCamera(unidadeId);
     } catch (err) {
@@ -808,6 +805,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           <CheckCircle size={18} />
           <span>Salvo offline com sucesso!</span>
         </div>
+      )}
+      {/* Câmera customizada in-app — renderizada fora dos modais para z-index correto */}
+      {customCameraOpen && (
+        <CustomCamera
+          onCapture={handleCameraCapture}
+          onClose={() => setCustomCameraOpen(false)}
+        />
       )}
     </div>
   );

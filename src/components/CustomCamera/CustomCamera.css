@@ -1,0 +1,140 @@
+﻿/* ================================================================
+   CustomCamera — UI in-app sobre o CameraPreview nativo
+   O preview fica atrás (toBack: true). Este layer fica na frente.
+   ================================================================ */
+
+/* Quando a câmera está ativa, o body e o root precisam ser
+   transparentes para o preview nativo aparecer atrás da WebView. */
+body.camera-preview-active,
+body.camera-preview-active #root {
+  background: transparent !important;
+}
+
+/* Container fullscreen que cobre toda a tela por cima do preview */
+.custom-camera-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* Transparente: a câmera nativa aparece atrás */
+  background: transparent;
+  pointer-events: none; /* deixa cliques passarem para câmera nativa... */
+}
+
+/* ...exceto nos controles que precisam de interação */
+.custom-camera-root button,
+.custom-camera-root footer,
+.cam-loading {
+  pointer-events: all;
+}
+
+/* ── Botão virar câmera (canto superior direito) ── */
+.cam-btn-flip {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+/* ── Loading ── */
+.cam-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.cam-loading span {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ── Rodapé ── */
+.cam-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px 32px 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* Gradiente escuro suave para contrastar com o preview */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.70) 0%, transparent 100%);
+}
+
+/* ── Botão base ── */
+.cam-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #ffffff;
+  background: rgba(15, 15, 20, 0.80);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s;
+}
+
+.cam-btn:active {
+  transform: scale(0.90);
+}
+
+.cam-btn:disabled {
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+
+/* ── Botão fechar e virar (tamanho médio) ── */
+.cam-btn-close,
+.cam-btn-flip {
+  width: 52px;
+  height: 52px;
+}
+
+.cam-btn-close:hover,
+.cam-btn-flip:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Botão capturar (gigante central) ── */
+.cam-btn-capture {
+  width: 80px;
+  height: 80px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f0f14;
+  border: 4px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.25), 0 6px 24px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cam-btn-capture:hover:not(:disabled) {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.35), 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+.cam-btn-capture.capturing {
+  animation: pulse-capture 0.6s ease infinite alternate;
+}
+
+@keyframes pulse-capture {
+  from { transform: scale(1.00); opacity: 1; }
+  to   { transform: scale(1.08); opacity: 0.75; }
+}
+
+/* ── Placeholder de simetria (mesmo tamanho do botão fechar) ── */
+.cam-btn-placeholder {
+  width: 52px;
+  height: 52px;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
