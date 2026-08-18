@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Browser } from '@capacitor/browser';
 import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed, Camera as CameraIcon } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
@@ -105,7 +106,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     );
   };
 
-  const handleOpenMaps = (e) => {
+  const handleOpenMaps = async (e) => {
     e.stopPropagation();
     if (!leitura) return;
 
@@ -127,8 +128,8 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     // Monta a URL da Search API do Google Maps com segurança
     const urlMapas = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(termoBusca)}`;
 
-    // Abre em nova aba com flags de segurança
-    window.open(urlMapas, '_blank', 'noopener,noreferrer');
+    // Abre no app nativo (Android/iOS) ou browser padrão via Capacitor
+    await Browser.open({ url: urlMapas });
   };
 
   return (
