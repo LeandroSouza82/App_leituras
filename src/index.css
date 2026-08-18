@@ -35,23 +35,18 @@ body.camera-active .app-container {
   background-color: transparent !important;
 }
 
-/* Oculta os elementos da interface do app (header azul, cards, lista, navbars) durante a câmera */
-body.camera-active .app-shell > header,
-body.camera-active .app-shell > main,
-body.camera-active .app-shell > nav,
-body.camera-active .app-header,
-body.camera-active .app-header-compact,
-body.camera-active .header,
-body.camera-active .bottom-navbar,
-body.camera-active .bottom-nav,
-body.camera-active .alerta-banner,
-body.camera-active .stats-grid,
-body.camera-active .list-card,
-body.camera-active .container,
-body.camera-active .auto-sync-indicator {
+/* Oculta 100% da interface do app (header azul, cards, lista, navbars) durante a câmera */
+body.camera-active .app-shell > * {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+/* Garante que o container da câmera seja o ÚNICO visível com prioridade máxima */
+body.camera-active .custom-camera-root,
+body.camera-active .custom-camera-root * {
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 button,
