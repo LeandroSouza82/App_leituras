@@ -24,13 +24,34 @@ body {
   background-color: var(--bg-app);
 }
 
-/* Ativa fundo transparente enquanto o CameraPreview nativo está rodando.
-   Sem isso, o html/body/root brancos bloqueiam o feed da câmera atrás da WebView. */
+/* Ativa fundo transparente e oculta a interface base quando a câmera nativa está aberta.
+   Isso desobstrui 100% da lente nativa do Android que renderiza atrás da WebView. */
 html.camera-active,
 body.camera-active,
-body.camera-active #root {
+body.camera-active #root,
+body.camera-active .app-shell,
+body.camera-active .app-container {
   background: transparent !important;
   background-color: transparent !important;
+}
+
+/* Oculta os elementos da interface do app (header azul, cards, lista, navbars) durante a câmera */
+body.camera-active .app-shell > header,
+body.camera-active .app-shell > main,
+body.camera-active .app-shell > nav,
+body.camera-active .app-header,
+body.camera-active .app-header-compact,
+body.camera-active .header,
+body.camera-active .bottom-navbar,
+body.camera-active .bottom-nav,
+body.camera-active .alerta-banner,
+body.camera-active .stats-grid,
+body.camera-active .list-card,
+body.camera-active .container,
+body.camera-active .auto-sync-indicator {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 button,

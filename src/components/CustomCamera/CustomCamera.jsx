@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CameraPreview } from "@capacitor-community/camera-preview";
 import { Capacitor } from "@capacitor/core";
-import { X, Camera, RefreshCw, Eye } from "lucide-react";
+import { X, Camera, Eye } from "lucide-react";
 import "./CustomCamera.css";
 
 /**
- * Gera uma imagem simulada de alta qualidade de um medidor/hidrômetro em Base64
- * para permitir testes completos no navegador sem hardware nativo.
+ * Gera uma imagem simulada de medidor/hidrômetro em Base64
+ * para permitir testes no navegador sem necessidade de hardware físico.
  */
 const gerarFotoMockBase64 = () => {
   const canvas = document.createElement("canvas");
@@ -18,7 +18,7 @@ const gerarFotoMockBase64 = () => {
   ctx.fillStyle = "#1e293b";
   ctx.fillRect(0, 0, 800, 600);
 
-  // Corpo do medidor (círculo principal)
+  // Corpo do medidor
   ctx.beginPath();
   ctx.arc(400, 300, 220, 0, Math.PI * 2);
   ctx.fillStyle = "#0f172a";
@@ -69,13 +69,12 @@ const gerarFotoMockBase64 = () => {
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Retorna base64 puro (sem prefixo data:)
   const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
   return dataUrl.split(",")[1];
 };
 
 /**
- * CustomCamera — câmera in-app estilo uCondo com suporte a Preview Nativo e Simulador Web.
+ * CustomCamera — câmera in-app com UI uCondo minimalista (Fechar + Capturar).
  *
  * Props:
  *   onCapture(base64: string) — chamado após captura bem-sucedida
@@ -92,8 +91,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
     stoppedRef.current = false;
 
     if (!isNative) {
-      // No Browser / Web: Simulador ativo imediatamente
-      console.log("[CustomCamera] Rodando em ambiente Web. Simulador de câmera ativo.");
+      console.log("[CustomCamera] Ambiente Web detectado. Simulador ativo.");
       setIsReady(true);
       return;
     }
@@ -114,7 +112,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
         setIsReady(true);
       } catch (err) {
         if (err?.message === "camera already started" || err?.message?.includes("already started")) {
-          console.log("[CustomCamera] Câmera já estava rodando em background. Prosseguindo.");
+          console.log("[CustomCamera] Câmera já estava rodando. Prosseguindo.");
           setIsReady(true);
           return;
         }
@@ -134,7 +132,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
         try {
           CameraPreview.stop().catch(() => {});
         } catch (e) {
-          /* ignora erros de stop */
+          /* ignora erros no stop */
         }
       }
     };
@@ -175,7 +173,11 @@ const CustomCamera = ({ onCapture, onClose }) => {
   };
 
   // ─── Captura ─────────────────────────────────────────────────────────────
-  const handleCapture = async () => {
+  const handleCapture = async (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     if (!isReady || isCapturing) return;
     setIsCapturing(true);
 
@@ -183,8 +185,8 @@ const CustomCamera = ({ onCapture, onClose }) => {
       let base64 = "";
 
       if (!isNative) {
-        // Modo Web Mock: Gera imagem simulada
-        await new Promise((resolve) => setTimeout(resolve, 200)); // feedback visual
+        // Modo Web Mock
+        await new Promise((resolve) => setTimeout(resolve, 200));
         base64 = gerarFotoMockBase64();
       } else {
         // Modo Nativo Android/iOS
@@ -204,20 +206,6 @@ const CustomCamera = ({ onCapture, onClose }) => {
     }
   };
 
-  // ─── Virar câmera ────────────────────────────────────────────────────────
-  const handleFlip = async () => {
-    if (!isReady || isCapturing) return;
-    if (!isNative) {
-      alert("Troca de câmera simulada (Modo Web)");
-      return;
-    }
-    try {
-      await CameraPreview.flip();
-    } catch (err) {
-      console.error("[CustomCamera] Erro ao virar câmera:", err);
-    }
-  };
-
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="custom-camera-root" id="custom-camera-preview">
@@ -234,15 +222,15 @@ const CustomCamera = ({ onCapture, onClose }) => {
         </div>
       )}
 
-      {/* Botão virar câmera — canto superior direito */}
+      {/* Botão Fechar (X) no topo esquerdo com alto contraste */}
       <button
         type="button"
-        className="cam-btn cam-btn-flip"
-        onClick={handleFlip}
-        disabled={!isReady || isCapturing}
-        title="Virar câmera"
+        className="cam-btn cam-btn-close"
+        onClick={stopAndClose}
+        disabled={isCapturing}
+        title="Fechar Câmera"
       >
-        <RefreshCw size={22} />
+        <X size={26} />
       </button>
 
       {/* Indicador de carregamento no ambiente nativo */}
@@ -252,18 +240,8 @@ const CustomCamera = ({ onCapture, onClose }) => {
         </div>
       )}
 
-      {/* Rodapé: X | Capturar | espaço simétrico */}
+      {/* Rodapé centralizado com o botão gigante de captura */}
       <footer className="cam-footer">
-        <button
-          type="button"
-          className="cam-btn cam-btn-close"
-          onClick={stopAndClose}
-          disabled={isCapturing}
-          title="Fechar"
-        >
-          <X size={24} />
-        </button>
-
         <button
           type="button"
           className={`cam-btn cam-btn-capture${isCapturing ? " capturing" : ""}`}
@@ -271,10 +249,8 @@ const CustomCamera = ({ onCapture, onClose }) => {
           disabled={!isReady || isCapturing}
           title="Capturar foto"
         >
-          <Camera size={36} />
+          <Camera size={38} />
         </button>
-
-        <div className="cam-btn cam-btn-placeholder" aria-hidden="true" />
       </footer>
     </div>
   );
