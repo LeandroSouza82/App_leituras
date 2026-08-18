@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import { Bell, Menu, Share2 } from 'lucide-react';
 import './Header.css';
-import { gerarRelatorioExcel } from '../../utils/exportExcel';
+import { gerarRelatorioLeiturasExcel } from '../../services/relatorioExcelService';
 import ListaCondominiosModal from '../ListaCondominiosModal/ListaCondominiosModal';
 import SideMenu from '../SideMenu/SideMenu';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
-import { Capacitor } from '@capacitor/core';
 
 const formatCurrency = (value) =>
   value.toLocaleString('pt-BR', {
@@ -41,56 +38,7 @@ const Header = ({
 
   const handleExportClick = async () => {
     try {
-      const arquivo = gerarRelatorioExcel(leituras, title);
-      const fileName = arquivo.name;
-
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const buffer = await arquivo.arrayBuffer();
-          const base64Data = btoa(
-            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-          );
-
-          const result = await Filesystem.writeFile({
-            path: fileName,
-            data: base64Data,
-            directory: Directory.Cache,
-          });
-
-          await Share.share({
-            title: 'Relatório de Leituras',
-            text: `Segue o relatório de faturamento - ${title}`,
-            url: result.uri,
-            dialogTitle: 'Exportar Planilha Excel',
-          });
-        } catch (nativeError) {
-          console.error('Erro no ambiente nativo:', nativeError);
-          alert(`Erro Mobile: ${nativeError.message}`);
-        }
-      } else {
-        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
-          try {
-            await navigator.share({
-              files: [arquivo],
-              title: 'Relatório de Leituras',
-            });
-            return;
-          } catch (err) {
-            console.warn('Share API failed, falling back to download');
-          }
-        }
-
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(arquivo);
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-
-        setTimeout(() => {
-          link.remove();
-          URL.revokeObjectURL(link.href);
-        }, 100);
-      }
+      await gerarRelatorioLeiturasExcel(leituras || [], mesAnoFormatado || title, 1650);
     } catch (error) {
       console.error('Erro na exportação:', error);
       alert('Erro ao exportar Excel: ' + error.message);

@@ -13,9 +13,9 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
     let num = String(val).replace(/\D/g, '');
     if (!num) return '';
     num = parseInt(num, 10).toString();
-    num = num.padStart(4, '0');
-    const intPart = num.slice(0, -3);
-    const decPart = num.slice(-3);
+    num = num.padStart(5, '0');
+    const intPart = num.slice(0, -4);
+    const decPart = num.slice(-4);
     return `${intPart},${decPart}`;
   };
 
@@ -26,9 +26,9 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
       return;
     }
     num = parseInt(num, 10).toString();
-    num = num.padStart(4, '0');
-    const intPart = num.slice(0, -3);
-    const decPart = num.slice(-3);
+    num = num.padStart(5, '0');
+    const intPart = num.slice(0, -4);
+    const decPart = num.slice(-4);
     setLeituraValor(`${intPart},${decPart}`);
   };
 
@@ -81,7 +81,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
               pattern="[0-9]*"
               value={leituraValor}
               onChange={handleInputChange}
-              placeholder="0,000"
+              placeholder="0,0000"
               className="reading-input-field"
             />
           </div>

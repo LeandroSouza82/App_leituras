@@ -23,6 +23,8 @@
     "@capawesome/capacitor-file-picker": "^8.0.4",
     "@ionic/pwa-elements": "^3.4.0",
     "@supabase/supabase-js": "^2.112.3",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -32,7 +34,10 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
+    "@types/file-saver": "^2.0.7",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vite-plugin-qrcode": "^0.4.1"
   }
 }
