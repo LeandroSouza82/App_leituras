@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CameraPreview } from "@capacitor-community/camera-preview";
 import { Capacitor } from "@capacitor/core";
-import { X, Camera, Eye } from "lucide-react";
+import { X, Camera, Eye, Zap } from "lucide-react";
 import "./CustomCamera.css";
 
 /**
@@ -75,7 +75,7 @@ const gerarFotoMockBase64 = () => {
 };
 
 /**
- * CustomCamera — câmera in-app com UI uCondo minimalista (Fechar + Capturar),
+ * CustomCamera — câmera in-app com UI uCondo minimalista (Fechar + Capturar + Lanterna/Torch),
  * renderizada via Portal no document.body para isolamento absoluto de estilos e toques.
  *
  * Props:
@@ -85,6 +85,7 @@ const gerarFotoMockBase64 = () => {
 const CustomCamera = ({ onCapture, onClose }) => {
   const [isReady, setIsReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isFlashOn, setIsFlashOn] = useState(false);
   const isNative = Capacitor.isNativePlatform();
   const stoppedRef = useRef(false);
 
@@ -132,6 +133,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
       document.body.classList.remove("camera-active");
       if (isNative) {
         try {
+          CameraPreview.setFlashMode({ flashMode: "off" }).catch(() => {});
           CameraPreview.stop().catch(() => {});
         } catch (e) {
           /* ignora erros no stop */
@@ -148,6 +150,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
     document.body.classList.remove("camera-active");
     if (isNative) {
       try {
+        CameraPreview.setFlashMode({ flashMode: "off" }).catch(() => {});
         CameraPreview.stop().catch(() => {});
       } catch (e) {
         /* ignora */
@@ -162,6 +165,9 @@ const CustomCamera = ({ onCapture, onClose }) => {
     document.body.classList.remove("camera-active");
     if (isNative) {
       try {
+        await CameraPreview.setFlashMode({ flashMode: "off" });
+      } catch (_) {}
+      try {
         await CameraPreview.stop();
       } catch (_) {
         /* já parada */
@@ -172,6 +178,27 @@ const CustomCamera = ({ onCapture, onClose }) => {
   const stopAndClose = async () => {
     await stopCamera();
     onClose();
+  };
+
+  // ─── Controle de Flash / Lanterna ─────────────────────────────────────────
+  const toggleFlash = async () => {
+    if (!isReady || isCapturing) return;
+    const nextState = !isFlashOn;
+    setIsFlashOn(nextState);
+
+    if (!isNative) {
+      console.log("[CustomCamera] Lanterna simulada (Modo Web):", nextState ? "LIGADA ⚡" : "DESLIGADA");
+      return;
+    }
+
+    try {
+      // 'torch' mantém a luz da lanterna acesa continuamente para iluminar o medidor escuro
+      await CameraPreview.setFlashMode({ flashMode: nextState ? "torch" : "off" });
+    } catch (err) {
+      console.error("[CustomCamera] Erro ao alternar flash:", err);
+      alert("Este dispositivo pode não suportar o controle de lanterna.");
+      setIsFlashOn(false);
+    }
   };
 
   // ─── Captura ─────────────────────────────────────────────────────────────
@@ -194,6 +221,14 @@ const CustomCamera = ({ onCapture, onClose }) => {
         // Modo Nativo Android/iOS
         const result = await CameraPreview.capture({ quality: 60, width: 800 });
         base64 = result?.value;
+
+        // Desliga a lanterna automaticamente após a captura da foto
+        if (isFlashOn) {
+          try {
+            await CameraPreview.setFlashMode({ flashMode: "off" });
+          } catch (_) {}
+          setIsFlashOn(false);
+        }
       }
 
       if (!base64) throw new Error("Captura retornou vazia.");
@@ -233,6 +268,21 @@ const CustomCamera = ({ onCapture, onClose }) => {
         title="Fechar Câmera"
       >
         <X size={26} />
+      </button>
+
+      {/* Botão Flash / Lanterna (Raio) no topo direito */}
+      <button
+        type="button"
+        className={`cam-btn cam-btn-flash ${isFlashOn ? "flash-active" : ""}`}
+        onClick={toggleFlash}
+        disabled={!isReady || isCapturing}
+        title={isFlashOn ? "Desativar Lanterna" : "Ativar Lanterna"}
+      >
+        <Zap
+          size={24}
+          color={isFlashOn ? "#facc15" : "#ffffff"}
+          fill={isFlashOn ? "#facc15" : "none"}
+        />
       </button>
 
       {/* Indicador de carregamento no ambiente nativo */}

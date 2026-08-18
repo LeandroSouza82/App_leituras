@@ -45,6 +45,28 @@ body.camera-active #root {
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* ── Botão Flash / Lanterna no topo direito ── */
+.cam-btn-flash {
+  position: absolute;
+  top: 24px;
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  z-index: 100000;
+  pointer-events: auto !important;
+  transition: all 0.2s ease;
+}
+
+.cam-btn-flash:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.cam-btn-flash.flash-active {
+  background: rgba(250, 204, 21, 0.25);
+  border: 2px solid #facc15;
+  box-shadow: 0 0 16px rgba(250, 204, 21, 0.5);
+}
+
 /* ── Loading ── */
 .cam-loading {
   position: absolute;
@@ -149,7 +171,8 @@ body.camera-active #root {
 .web-sim-badge {
   position: absolute;
   top: 24px;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   background: rgba(30, 136, 229, 0.85);
   color: #fff;
   padding: 6px 14px;
@@ -159,6 +182,7 @@ body.camera-active #root {
   letter-spacing: 0.05em;
   backdrop-filter: blur(6px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  white-space: nowrap;
 }
 
 .camera-viewfinder-frame {
