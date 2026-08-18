@@ -1,13 +1,14 @@
-﻿/* ================================================================
+/* ================================================================
    CustomCamera — UI in-app sobre o CameraPreview nativo
    O preview fica atrás (toBack: true). Este layer fica na frente.
    ================================================================ */
 
 /* Quando a câmera está ativa, o body e o root precisam ser
    transparentes para o preview nativo aparecer atrás da WebView. */
-body.camera-preview-active,
-body.camera-preview-active #root {
+body.camera-active,
+body.camera-active #root {
   background: transparent !important;
+  background-color: transparent !important;
 }
 
 /* Container fullscreen que cobre toda a tela por cima do preview */

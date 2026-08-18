@@ -663,7 +663,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   if (!isOpen || !leitura) return null;
 
   return (
-    <div className="foto-modal-overlay" onClick={onClose}>
+    <div
+      className="foto-modal-overlay"
+      onClick={onClose}
+      style={customCameraOpen ? { visibility: 'hidden' } : undefined}
+    >
       <div className="foto-modal-container" onClick={(e) => e.stopPropagation()}>
         <header className="foto-modal-header">
           <div className="foto-modal-title">

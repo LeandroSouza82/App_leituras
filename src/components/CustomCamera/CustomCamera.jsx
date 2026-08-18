@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CameraPreview } from "@capacitor-community/camera-preview";
 import { X, Camera, RefreshCw } from "lucide-react";
 import "./CustomCamera.css";
@@ -19,7 +19,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
   useEffect(() => {
     stoppedRef.current = false;
     // Deixa body transparente para o preview nativo aparecer atrás da WebView
-    document.body.classList.add("camera-preview-active");
+    document.body.classList.add("camera-active");
 
     const startCamera = async () => {
       try {
@@ -42,7 +42,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
 
     return () => {
       stopCamera();
-      document.body.classList.remove("camera-preview-active");
+      document.body.classList.remove("camera-active");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -54,7 +54,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
     try {
       await CameraPreview.stop();
     } catch (_) { /* já parada */ }
-    document.body.classList.remove("camera-preview-active");
+    document.body.classList.remove("camera-active");
   };
 
   const stopAndClose = async () => {
@@ -67,8 +67,9 @@ const CustomCamera = ({ onCapture, onClose }) => {
     if (!isReady || isCapturing) return;
     setIsCapturing(true);
     try {
-      // quality: 60, width: 800 — regra estrita de compressão do projeto
-      const result = await CameraPreview.capture({ quality: 60, width: 800 });
+      // quality: 60 — regra estrita de compressão do projeto
+      // width omitido: forçar redimensionamento nativo causa crash em alguns hardwares Android
+      const result = await CameraPreview.capture({ quality: 60 });
       const base64 = result?.value;
       if (!base64) throw new Error("Captura retornou vazia.");
 
