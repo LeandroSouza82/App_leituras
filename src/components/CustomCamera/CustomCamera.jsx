@@ -31,7 +31,12 @@ const CustomCamera = ({ onCapture, onClose }) => {
         });
         setIsReady(true);
       } catch (err) {
-        console.error("[CustomCamera] Erro ao iniciar câmera:", JSON.stringify(err));
+        if (err?.message === 'camera already started' || err?.message?.includes('already started')) {
+          console.log('[CustomCamera] Câmera já estava rodando em background. Ignorando erro e prosseguindo.');
+          setIsReady(true);
+          return;
+        }
+        console.error('[CustomCamera] Erro Crítico ao iniciar câmera:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
         // Erro na inicialização: tenta parar para liberar o hardware e fecha
         forceStop();
         onClose();
