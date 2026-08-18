@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Trash2, Save } from 'lucide-react';
+import { X, RefreshCw, Trash2, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
@@ -66,10 +66,35 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
         </header>
 
         <div className="preview-foto-body">
-          <div className="preview-img-container">
+          {/* Imagem com botões flutuantes sobrepostos */}
+          <div className="preview-img-wrapper">
             <Zoom>
               <img src={imageUri} alt="Preview do Medidor" className="preview-full-img" />
             </Zoom>
+
+            {/* Botões flutuantes estilo uCondo */}
+            <div className="preview-floating-actions">
+              <button
+                type="button"
+                className="btn-floating btn-floating-retake"
+                onClick={onRetake}
+                disabled={isSaving}
+                title="Refazer foto"
+              >
+                <RotateCcw size={16} />
+                <span>Alterar</span>
+              </button>
+              <button
+                type="button"
+                className="btn-floating btn-floating-delete"
+                onClick={onDelete}
+                disabled={isSaving}
+                title="Excluir foto"
+              >
+                <Trash2 size={16} />
+                <span>Excluir</span>
+              </button>
+            </div>
           </div>
 
           <div className="reading-input-container">
@@ -84,15 +109,6 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
               placeholder="0,0000"
               className="reading-input-field"
             />
-          </div>
-
-          <div className="footer-actions-row secondary-actions">
-            <button type="button" className="btn-refazer" onClick={onRetake} disabled={isSaving}>
-              <RefreshCw size={18} /> Refazer Foto
-            </button>
-            <button type="button" className="btn-excluir" onClick={onDelete} disabled={isSaving}>
-              <Trash2 size={18} /> Excluir
-            </button>
           </div>
         </div>
 
