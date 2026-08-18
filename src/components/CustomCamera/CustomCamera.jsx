@@ -84,9 +84,10 @@ const CustomCamera = ({ onCapture, onClose }) => {
     if (!isReady || isCapturing) return;
     setIsCapturing(true);
     try {
-      // quality: 60 — regra estrita de compressão do projeto
-      // width omitido: resize forçado causa crash em vários hardwares Android
-      const result = await CameraPreview.capture({ quality: 60 });
+      // quality: 60 + width: 800 — compressão nativa em hardware antes de serializar
+      // para base64. Sem width, a foto vem em resolução máxima nativa e estoura
+      // a RAM da WebView ao processar no Canvas (OOM crash).
+      const result = await CameraPreview.capture({ quality: 60, width: 800 });
       const base64 = result?.value;
       if (!base64) throw new Error("Captura retornou vazia.");
 

@@ -500,69 +500,51 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     setCustomCameraOpen(true);
   };
 
-  // Callback chamado pelo CustomCamera após captura bem-sucedida (base64 comprimido)
   const handleCameraCapture = async (base64) => {
-    // IMPORTANTE: NÃO fechar a câmera aqui ainda.
-    // Só fechamos após o processamento (stamp+salvar) ter sido concluído com sucesso.
-    // Se fecharmos antes e o processamento falhar, o usuário perde a tela de câmera
-    // sem conseguir tentar novamente, causando o "piscar e voltar".
     const apto = activeApto;
     if (!apto) return;
 
     try {
       setIsProcessing(true);
+      console.log('[Camera] Base64 recebido. Tamanho:', base64.length, 'chars');
 
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
-      const servicoKey = tipoMedicaoAtivo.toLowerCase();
+      const servicoKey  = tipoMedicaoAtivo.toLowerCase();
+      const fileName    = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
 
-      const fileName = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
+      // 1. Carimbo de data/hora via Canvas (base64 puro — o serviço adiciona o prefixo)
+      let stampedBase64 = await ImageStampService.applyTimestamp(base64);
+      console.log('[Camera] Carimbo aplicado com sucesso');
 
-      // 1. Aplica carimbo de data/hora via Canvas
-      let stampedBase64 = await ImageStampService.applyTimestamp(
-        `data:image/jpeg;base64,${base64}`
-      );
-
-      // 2. Salva no Directory.Data e obtém webUrl
+      // 2. Persistência no disco (Directory.Data)
       const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
+      console.log('[Camera] Foto salva no disco:', savedFile.path);
 
-      // 3. Limpeza imediata do base64 da RAM
+      // 3. Limpeza de RAM imediata
       stampedBase64 = null;
 
-      // 4. Processamento concluído com sucesso — só agora fecha a câmera
+      // 4. Sucesso total — só agora fecha a câmera e atualiza a UI
       setCustomCameraOpen(false);
-
-      // 5. Grava marcação de conclusão persistente
       localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
 
       setConcluidosMemoria((prev) => ({
         ...prev,
-        [unidadeId]: {
-          ...(prev[unidadeId] || {}),
-          [servicoKey]: true
-        }
+        [unidadeId]: { ...(prev[unidadeId] || {}), [servicoKey]: true }
       }));
 
-      // 6. Atualiza estado visual com URI do arquivo salvo (sem base64 no state)
       setFotosCapturadas((prev) => ({
         ...prev,
-        [unidadeId]: {
-          ...(prev[unidadeId] || {}),
-          [tipoMedicaoAtivo]: savedFile.webUrl
-        }
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: savedFile.webUrl }
       }));
 
-      // 7. Abre PreviewFotoModal para digitação da leitura
       setIsPreviewOpen(true);
 
     } catch (error) {
-      // Em caso de falha no processamento: mantém customCameraOpen=true (câmera continua
-      // aberta para nova tentativa) e exibe alerta com detalhe técnico para diagnóstico.
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
-      console.error('[handleCameraCapture] Falha no processamento pós-captura:', errMsg);
-      alert('⚠️ Falha ao processar a foto. Tente capturar novamente.\n(Detalhe: ' + errMsg + ')');
-      // Reabre explicitamente a câmera se foi fechada prematuramente
-      setCustomCameraOpen(true);
+      console.error('[Camera] Erro crítico no processamento pós-captura:', errMsg);
+      alert('⚠️ Erro ao processar a foto. Tente novamente.\n(Detalhe: ' + errMsg + ')');
+      setCustomCameraOpen(true); // mantém câmera aberta para nova tentativa
     } finally {
       setIsProcessing(false);
     }
