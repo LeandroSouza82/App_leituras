@@ -553,8 +553,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       console.log('[CustomCamera] Foto persistida e direcionada para PreviewFotoModal:', savedFile.path);
 
     } catch (error) {
-      console.error('[CustomCamera] Erro ao processar foto capturada:', error);
-      alert('❌ Erro ao processar foto: ' + (error?.message || error));
+      const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
+      console.error('[CustomCamera] Erro ao processar foto capturada:', errMsg, error);
+      alert('❌ Erro ao processar foto: ' + errMsg);
     } finally {
       setIsProcessing(false);
     }

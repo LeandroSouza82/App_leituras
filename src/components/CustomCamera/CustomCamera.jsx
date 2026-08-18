@@ -18,7 +18,6 @@ const CustomCamera = ({ onCapture, onClose }) => {
   // ─── Inicializa a câmera ao montar ───────────────────────────────────────
   useEffect(() => {
     stoppedRef.current = false;
-    // Deixa body transparente para o preview nativo aparecer atrás da WebView
     document.body.classList.add("camera-active");
 
     const startCamera = async () => {
@@ -32,22 +31,40 @@ const CustomCamera = ({ onCapture, onClose }) => {
         });
         setIsReady(true);
       } catch (err) {
-        console.error("[CustomCamera] Erro ao iniciar câmera:", err);
-        stopCamera();
+        console.error("[CustomCamera] Erro ao iniciar câmera:", JSON.stringify(err));
+        // Erro na inicialização: tenta parar para liberar o hardware e fecha
+        forceStop();
         onClose();
       }
     };
 
     startCamera();
 
+    // Cleanup incondicional: libera o hardware SEMPRE que o componente desmontar,
+    // não importa se stopCamera() já foi chamado antes. Sem isso, o hardware
+    // fica travado e impede reabertura da câmera.
     return () => {
-      stopCamera();
-      document.body.classList.remove("camera-active");
+      forceStop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * forceStop: para o hardware incondicionalmente (ignora stoppedRef).
+   * Usado APENAS no cleanup do useEffect para garantir liberação do hardware.
+   */
+  const forceStop = () => {
+    stoppedRef.current = true;
+    document.body.classList.remove("camera-active");
+    CameraPreview.stop().catch(() => { /* hardware já liberado */ });
+  };
+
+  /**
+   * stopCamera: parada controlada — respeitada stoppedRef para evitar dupla parada
+   * em fluxos normais (captura bem-sucedida, botão fechar).
+   */
   const stopCamera = async () => {
     if (stoppedRef.current) return;
     stoppedRef.current = true;
@@ -68,17 +85,24 @@ const CustomCamera = ({ onCapture, onClose }) => {
     setIsCapturing(true);
     try {
       // quality: 60 — regra estrita de compressão do projeto
-      // width omitido: forçar redimensionamento nativo causa crash em alguns hardwares Android
+      // width omitido: resize forçado causa crash em vários hardwares Android
       const result = await CameraPreview.capture({ quality: 60 });
       const base64 = result?.value;
       if (!base64) throw new Error("Captura retornou vazia.");
 
+      // Captura OK: para câmera e entrega base64 ao pai
       await stopCamera();
-      onCapture(base64); // entrega ao pai; stamp + salvar ocorrem lá
+      onCapture(base64);
     } catch (err) {
-      console.error("[CustomCamera] Erro ao capturar:", err);
-      setIsCapturing(false);
-      alert("❌ Erro ao capturar foto: " + (err?.message || err));
+      // IMPORTANTE: em caso de erro, NÃO fechar a câmera nem desmontar o componente.
+      // O usuário deve poder clicar novamente sem precisar reabrir o modal.
+      const errMsg = err?.message || JSON.stringify(err) || "Erro desconhecido";
+      console.error("[CustomCamera] Falha na captura:", errMsg, err);
+      setIsCapturing(false); // libera o botão para nova tentativa
+      alert(
+        "⚠️ Erro ao capturar foto. Tente novamente.\n" +
+        "(Detalhe técnico: " + errMsg + ")"
+      );
     }
   };
 
