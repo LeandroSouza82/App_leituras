@@ -49,7 +49,12 @@ const CustomCamera = ({ onCapture, onClose }) => {
     // não importa se stopCamera() já foi chamado antes. Sem isso, o hardware
     // fica travado e impede reabertura da câmera.
     return () => {
-      forceStop();
+      document.body.classList.remove("camera-active");
+      try {
+        CameraPreview.stop().catch(() => {});
+      } catch (e) {
+        /* ignora erros no stop */
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -63,7 +68,11 @@ const CustomCamera = ({ onCapture, onClose }) => {
   const forceStop = () => {
     stoppedRef.current = true;
     document.body.classList.remove("camera-active");
-    CameraPreview.stop().catch(() => { /* hardware já liberado */ });
+    try {
+      CameraPreview.stop().catch(() => {});
+    } catch (e) {
+      /* ignora erros no stop */
+    }
   };
 
   /**
