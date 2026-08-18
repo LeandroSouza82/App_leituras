@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CameraPreview } from "@capacitor-community/camera-preview";
 import { Capacitor } from "@capacitor/core";
 import { X, Camera, Eye } from "lucide-react";
@@ -74,7 +75,8 @@ const gerarFotoMockBase64 = () => {
 };
 
 /**
- * CustomCamera — câmera in-app com UI uCondo minimalista (Fechar + Capturar).
+ * CustomCamera — câmera in-app com UI uCondo minimalista (Fechar + Capturar),
+ * renderizada via Portal no document.body para isolamento absoluto de estilos e toques.
  *
  * Props:
  *   onCapture(base64: string) — chamado após captura bem-sucedida
@@ -96,7 +98,7 @@ const CustomCamera = ({ onCapture, onClose }) => {
       return;
     }
 
-    // No Ambiente Nativo: Ativa transparência no WebView
+    // No Ambiente Nativo: Ativa transparência e esconde app-shell
     document.documentElement.classList.add("camera-active");
     document.body.classList.add("camera-active");
 
@@ -206,8 +208,8 @@ const CustomCamera = ({ onCapture, onClose }) => {
     }
   };
 
-  // ─── Render ──────────────────────────────────────────────────────────────
-  return (
+  // ─── Conteúdo renderizado diretamente no body via Portal ──────────────────
+  const cameraContent = (
     <div className="custom-camera-root" id="custom-camera-preview">
       {/* Simulador visual de viewfinder para ambiente Web */}
       {!isNative && (
@@ -254,6 +256,11 @@ const CustomCamera = ({ onCapture, onClose }) => {
       </footer>
     </div>
   );
+
+  // Renderiza via Portal no body para garantir que nenhuma regra de ancestral afete a câmera
+  return typeof document !== "undefined"
+    ? createPortal(cameraContent, document.body)
+    : cameraContent;
 };
 
 export default CustomCamera;
