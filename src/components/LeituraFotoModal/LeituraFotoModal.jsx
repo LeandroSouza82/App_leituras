@@ -653,128 +653,130 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   if (!isOpen || !leitura) return null;
 
   return (
-    <div
-      className="foto-modal-overlay"
-      onClick={onClose}
-      style={customCameraOpen ? { visibility: 'hidden' } : undefined}
-    >
-      <div className="foto-modal-container" onClick={(e) => e.stopPropagation()}>
-        <header className="foto-modal-header">
-          <div className="foto-modal-title">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3>{leitura.nome}</h3>
-              <button
-                type="button"
-                className="btn-settings-units"
-                onClick={() => setIsManageModalOpen(true)}
-                title="Configurar Unidades"
-              >
-                <Settings size={18} />
+    <>
+      {/* 1. Modal de seleção das unidades do condomínio */}
+      {!customCameraOpen && (
+        <div className="foto-modal-overlay" onClick={onClose}>
+          <div className="foto-modal-container" onClick={(e) => e.stopPropagation()}>
+            <header className="foto-modal-header">
+              <div className="foto-modal-title">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3>{leitura.nome}</h3>
+                  <button
+                    type="button"
+                    className="btn-settings-units"
+                    onClick={() => setIsManageModalOpen(true)}
+                    title="Configurar Unidades"
+                  >
+                    <Settings size={18} />
+                  </button>
+                </div>
+                <p>Selecione a unidade para fotografar</p>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={onClose}>
+                <X size={20} />
               </button>
-            </div>
-            <p>Selecione a unidade para fotografar</p>
-          </div>
-          <button type="button" className="btn-close-modal" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </header>
+            </header>
 
-        <div className="modal-selectors">
-          <div className="selectors-top-row">
-            <div className="torre-filter-wrapper-select">
-              <select
-                className="select-torre-ap"
-                value={torreAtiva || ''}
-                onChange={(e) => setTorreAtiva(e.target.value)}
-              >
-                {torres.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+            <div className="modal-selectors">
+              <div className="selectors-top-row">
+                <div className="torre-filter-wrapper-select">
+                  <select
+                    className="select-torre-ap"
+                    value={torreAtiva || ''}
+                    onChange={(e) => setTorreAtiva(e.target.value)}
+                  >
+                    {torres.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="medicao-toggle-group-expand">
+                  {['agua', 'gas', 'energia'].map((tipo) => (
+                    <button
+                      key={tipo}
+                      type="button"
+                      className={`btn-medicao-toggle ${tipoMedicaoAtivo === tipo ? `active-${tipo}` : ''}`}
+                      onClick={() => setTipoMedicaoAtivo(tipo)}
+                    >
+                      {tipo.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <div className="medicao-toggle-group-expand">
-              {['agua', 'gas', 'energia'].map((tipo) => (
-                <button
-                  key={tipo}
-                  type="button"
-                  className={`btn-medicao-toggle ${tipoMedicaoAtivo === tipo ? `active-${tipo}` : ''}`}
-                  onClick={() => setTipoMedicaoAtivo(tipo)}
-                >
-                  {tipo.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+            <div className="foto-modal-body">
+              {unidadesCarregadas.length === 0 && (
+                <div className="no-units-notice">
+                  <p>Nenhuma unidade cadastrada para este condomínio.</p>
+                  <button type="button" onClick={() => setIsManageModalOpen(true)}>
+                    ⚙️ Configurar / Importar Unidades
+                  </button>
+                </div>
+              )}
+              <div className="apartamentos-grid">
+                {unidadesExibidas.map((apto) => {
+                  const status = fotosCapturadas[apto] || {};
+                  const thumbnail = status[tipoMedicaoAtivo];
+                  const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
 
-        <div className="foto-modal-body">
-          {unidadesCarregadas.length === 0 && (
-            <div className="no-units-notice">
-              <p>Nenhuma unidade cadastrada para este condomínio.</p>
-              <button type="button" onClick={() => setIsManageModalOpen(true)}>
-                ⚙️ Configurar / Importar Unidades
-              </button>
-            </div>
-          )}
-          <div className="apartamentos-grid">
-            {unidadesExibidas.map((apto) => {
-              const status = fotosCapturadas[apto] || {};
-              const thumbnail = status[tipoMedicaoAtivo];
-              const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
-
-              return (
-                <button
-                  key={apto}
-                  type="button"
-                  className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
-                  onClick={() => handleUnitClick(apto, thumbnail)}
-                >
-                  <span className="apto-number">{apto}</span>
-                  {concluido ? (
-                    <div className="concluido-container">
-                      {thumbnail ? (
-                        <img src={thumbnail} alt="Preview" className="unit-miniature" />
+                  return (
+                    <button
+                      key={apto}
+                      type="button"
+                      className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
+                      onClick={() => handleUnitClick(apto, thumbnail)}
+                    >
+                      <span className="apto-number">{apto}</span>
+                      {concluido ? (
+                        <div className="concluido-container">
+                          {thumbnail ? (
+                            <img src={thumbnail} alt="Preview" className="unit-miniature" />
+                          ) : (
+                            <div className="unit-sync-done-icon">
+                              <CheckCircle size={22} color="#16a34a" />
+                            </div>
+                          )}
+                          <div className="concluido-label">
+                            <CheckCircle size={12} />
+                            ✓ {tipoMedicaoAtivo.toUpperCase()} OK
+                          </div>
+                        </div>
                       ) : (
-                        <div className="unit-sync-done-icon">
-                          <CheckCircle size={22} color="#16a34a" />
+                        <div className="camera-placeholder">
+                          <CameraIcon size={20} />
+                          <span>Fotografar</span>
                         </div>
                       )}
-                      <div className="concluido-label">
-                        <CheckCircle size={12} />
-                        ✓ {tipoMedicaoAtivo.toUpperCase()} OK
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="camera-placeholder">
-                      <CameraIcon size={20} />
-                      <span>Fotografar</span>
-                    </div>
-                  )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <footer className="foto-modal-footer">
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn-exportar-csv"
+                  onClick={handleExportar}
+                  disabled={exportando || unidadesConcluidasCount === 0}
+                >
+                  <Share2 size={18} />
+                  {exportando ? 'Processando...' : `Salvar Leituras (${unidadesConcluidasCount}/${unidadesExibidas.length})`}
                 </button>
-              );
-            })}
+                <button type="button" className="btn-cancelar-foto" onClick={onClose}>
+                  Fechar
+                </button>
+              </div>
+            </footer>
           </div>
         </div>
+      )}
 
-        <footer className="foto-modal-footer">
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="button"
-              className="btn-exportar-csv"
-              onClick={handleExportar}
-              disabled={exportando || unidadesConcluidasCount === 0}
-            >
-              <Share2 size={18} />
-              {exportando ? 'Processando...' : `Salvar Leituras (${unidadesConcluidasCount}/${unidadesExibidas.length})`}
-            </button>
-            <button type="button" className="btn-cancelar-foto" onClick={onClose}>
-              Fechar
-            </button>
-          </div>
-        </footer>
-      </div>
-
+      {/* 2. Modal de Gerenciamento de Unidades */}
       <ModalGerenciarUnidades
         isOpen={isManageModalOpen}
         onClose={() => setIsManageModalOpen(false)}
@@ -783,6 +785,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onUnidadesAtualizadas={(novas) => setUnidadesAtualizadas(novas)}
       />
 
+      {/* 3. Modal de Revisão da Foto e Lançamento de Leitura */}
       <PreviewFotoModal
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}
@@ -794,20 +797,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
       />
 
+      {/* 4. Feedback Toast */}
       {showToast && (
         <div className="toast-success-top">
           <CheckCircle size={18} />
           <span>Salvo offline com sucesso!</span>
         </div>
       )}
-      {/* Câmera customizada in-app — renderizada fora dos modais para z-index correto */}
+
+      {/* 5. Câmera customizada in-app (Totalmente independente da árvore do modal) */}
       {customCameraOpen && (
         <CustomCamera
           onCapture={handleCameraCapture}
           onClose={() => setCustomCameraOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 };
 

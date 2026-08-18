@@ -3,8 +3,9 @@
    O preview fica atrás (toBack: true). Este layer fica na frente.
    ================================================================ */
 
-/* Quando a câmera está ativa, o body e o root precisam ser
+/* Quando a câmera está ativa, o html, body e o root precisam ser
    transparentes para o preview nativo aparecer atrás da WebView. */
+html.camera-active,
 body.camera-active,
 body.camera-active #root {
   background: transparent !important;
@@ -139,3 +140,50 @@ body.camera-active #root {
   box-shadow: none;
   pointer-events: none;
 }
+
+/* ── Simulador Web (Retícula e Badge) ── */
+.web-camera-simulator {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  pointer-events: none;
+}
+
+.web-sim-badge {
+  position: absolute;
+  top: 24px;
+  left: 20px;
+  background: rgba(30, 136, 229, 0.85);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.camera-viewfinder-frame {
+  width: 280px;
+  height: 280px;
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+}
+
+.camera-viewfinder-frame span {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+

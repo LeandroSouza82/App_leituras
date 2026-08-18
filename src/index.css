@@ -25,7 +25,8 @@ body {
 }
 
 /* Ativa fundo transparente enquanto o CameraPreview nativo está rodando.
-   Sem isso, o body/root brancos bloqueiam o feed da câmera atrás da WebView. */
+   Sem isso, o html/body/root brancos bloqueiam o feed da câmera atrás da WebView. */
+html.camera-active,
 body.camera-active,
 body.camera-active #root {
   background: transparent !important;
