@@ -667,6 +667,50 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
+  // Reset do estado ativo/temporário das unidades do condomínio atual (encerramento do ciclo)
+  const resetarEstadoLeiturasAtivas = async (condominioId) => {
+    if (!condominioId) return;
+
+    try {
+      // 1. Limpa o estado ativo dos cards em memória
+      setFotosCapturadas({});
+      setConcluidosMemoria({});
+      setLeiturasValores({});
+
+      // 2. Limpa cache e chaves locais temporárias relacionadas ao ciclo ativo deste condomínio
+      // (Preserva o banco de dados Supabase e registros sincronizados intactos)
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          if (
+            key.startsWith(`valor_${condominioId}_`) ||
+            key.startsWith(`concluido_${condominioId}_`) ||
+            key.startsWith(`temp_leituras_${condominioId}`) ||
+            key.startsWith(`fotos_temp_${condominioId}`)
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+      // 3. Remove arquivos temporários de fotos locais do ciclo para reiniciar os cards vazios
+      try {
+        const files = await StorageService.listFiles(`leitura_foto_${condominioId}_`);
+        for (const file of files) {
+          await StorageService.deleteFile(file);
+        }
+      } catch (fsErr) {
+        console.warn('[LeituraFotoModal] Aviso ao limpar fotos locais do ciclo:', fsErr);
+      }
+
+      console.log(`[Ciclo Encerrado] Estado ativo do condomínio ${condominioId} resetado.`);
+    } catch (e) {
+      console.warn('[LeituraFotoModal] Erro ao resetar estado ativo do condomínio:', e);
+    }
+  };
+
   const handleExportar = async () => {
     const apenasAtivo = window.confirm(
       `Deseja exportar apenas as leituras de ${tipoMedicaoAtivo.toUpperCase()}? (Clique em "Cancelar" para exportar TODOS os serviços consolidados)`
@@ -674,16 +718,32 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     setExportando(true);
     const servico = apenasAtivo ? tipoMedicaoAtivo : 'todos';
-    const sucesso = await LeituraService.exportarParaWhatsApp(
-      leitura,
-      servico,
-      listaCompleta,
-      leiturasValores
-    );
-    if (sucesso) {
-      alert('Dados exportados com sucesso!');
+    const condId = leitura?.id || leitura?.condominio_id;
+
+    try {
+      const sucesso = await LeituraService.exportarParaWhatsApp(
+        leitura,
+        servico,
+        listaCompleta,
+        leiturasValores
+      );
+
+      if (sucesso) {
+        // 1. Reseta o estado temporário ativo do condomínio
+        await resetarEstadoLeiturasAtivas(condId);
+
+        // 2. Notificação e feedback de conclusão do ciclo
+        alert('Leituras salvas e exportadas com sucesso! Condomínio finalizado e pronto para o próximo mês.');
+
+        // 3. Fecha o modal de apartamentos e retorna ao dashboard
+        onClose();
+      }
+    } catch (err) {
+      console.error('[Exportação] Erro ao processar salvamento das leituras:', err);
+      alert('Ocorreu um erro ao salvar as leituras. Tente novamente.');
+    } finally {
+      setExportando(false);
     }
-    setExportando(false);
   };
 
   // 3. TRAVA DE SEGURANÇA (APÓS TODOS OS HOOKS)
