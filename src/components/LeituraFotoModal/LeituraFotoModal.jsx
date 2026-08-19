@@ -58,7 +58,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const novasUnidades = await UCondoImportService.atualizarUnidadesCondominio(
         condId,
         buffer,
-        unidadesCarregadas
+        unidadesCarregadas,
+        leitura?.nome || ''
       );
 
       if (novasUnidades && novasUnidades.length > 0) {

@@ -24,11 +24,30 @@ export const ShareIntentService = {
           return;
         }
 
-        // Processa o arquivo recebido
-        const savedFile = await this.handleIncomingFile(fileUri);
+        let arrayBuffer;
+        try {
+          // Tenta buscar o arquivo via fetch (muito comum em Intents do Android)
+          const response = await fetch(fileUri);
+          const blob = await response.blob();
+          arrayBuffer = await blob.arrayBuffer();
+        } catch (e) {
+          console.error("Erro no fetch da URI, tentando Filesystem...", e);
+          // Fallback usando o Filesystem do Capacitor se necessário
+          const readFileResult = await Filesystem.readFile({ path: fileUri });
+          if (readFileResult && readFileResult.data) {
+            arrayBuffer = 'data:application/octet-stream;base64,' + readFileResult.data;
+          }
+        }
 
-        if (savedFile && onFileReceived) {
-          onFileReceived(savedFile);
+        let fileName = fileUri.substring(fileUri.lastIndexOf('/') + 1) || `shared_${Date.now()}.xlsx`;
+        fileName = decodeURIComponent(fileName.split('?')[0]);
+
+        if (arrayBuffer && onFileReceived) {
+          onFileReceived({
+            name: fileName,
+            data: arrayBuffer,
+            originalUri: fileUri
+          });
         }
       } catch (error) {
         console.error('[ShareIntent] Falha ao processar arquivo compartilhado:', error);
@@ -41,7 +60,16 @@ export const ShareIntentService = {
    */
   async handleIncomingFile(uri) {
     try {
-      // 1. Garante que a pasta de destino existe
+      // 1. Tenta ler o arquivo diretamente pelo caminho da URI (file:// ou path absoluto)
+      let fileData = null;
+      try {
+        const readDirect = await Filesystem.readFile({ path: uri });
+        if (readDirect && readDirect.data) {
+          fileData = readDirect.data;
+        }
+      } catch (_) {}
+
+      // 2. Garante que a pasta de destino existe
       const targetDir = 'planilhas_recebidas';
       try {
         await Filesystem.mkdir({
@@ -49,28 +77,38 @@ export const ShareIntentService = {
           directory: Directory.Data,
           recursive: true
         });
-        console.log('[ShareIntent] Diretório garantido:', targetDir);
-      } catch (ignored) {
-        // Ignora se a pasta já existir
+      } catch (ignored) {}
+
+      // 3. Extrai o nome do arquivo do URI ou gera um timestamp
+      let fileName = uri.substring(uri.lastIndexOf('/') + 1) || `shared_${Date.now()}.xlsx`;
+      fileName = decodeURIComponent(fileName.split('?')[0]);
+      if (!fileName.toLowerCase().endsWith('.xlsx') && !fileName.toLowerCase().endsWith('.xls') && !fileName.toLowerCase().endsWith('.csv')) {
+        fileName += '.xlsx';
       }
 
-      // 2. Extrai o nome original do arquivo do URI ou gera um timestamp
-      const fileName = `shared_${new Date().getTime()}.xlsx`;
-
-      // 3. Copia o arquivo usando a API do Filesystem
       const targetPath = `${targetDir}/${fileName}`;
-      const result = await Filesystem.copy({
-        from: uri,
-        to: targetPath,
-        toDirectory: Directory.Data
-      });
 
-      console.log('[ShareIntent] Arquivo salvo permanentemente em:', result.uri);
+      // Se temos os dados diretos, salva no Directory.Data
+      if (fileData) {
+        await Filesystem.writeFile({
+          path: targetPath,
+          data: fileData,
+          directory: Directory.Data
+        });
+      } else {
+        // Copia usando copy
+        await Filesystem.copy({
+          from: uri,
+          to: targetPath,
+          toDirectory: Directory.Data
+        });
+      }
+
+      console.log('[ShareIntent] Arquivo processado com sucesso em:', targetPath);
 
       return {
         name: fileName,
-        uri: result.uri,
-        path: `${targetDir}/${fileName}`,
+        path: targetPath,
         originalUri: uri
       };
     } catch (error) {

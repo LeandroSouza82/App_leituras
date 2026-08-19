@@ -21,6 +21,7 @@ import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
 import { UCondoImportService } from './services/ucondoImportService';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 
@@ -97,10 +98,49 @@ const MainApp = ({ onLogout }) => {
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
 
-    // Inicializa o serviço de recebimento de planilhas via Share/Open
-    ShareIntentService.init((fileData) => {
-      showToast(`Planilha "${fileData.name}" recebida com sucesso!`, 'success');
-      // Aqui você poderia redirecionar para a aba de cadastro ou abrir um modal de importação
+    // Inicializa o serviço de recebimento de planilhas via Share Intent (WhatsApp, Arquivos, etc.)
+    ShareIntentService.init(async (fileData) => {
+      try {
+        showToast(`Planilha recebida via compartilhamento! Processando...`, 'info');
+
+        // fileData.data já contém o ArrayBuffer ou Base64 correto!
+        if (fileData?.data) {
+          let condominiosExistentes = [];
+          if (supabase) {
+            try {
+              const { data: dbData } = await supabase.from('condominios').select('id, nome');
+              condominiosExistentes = dbData || [];
+            } catch (_) {}
+          }
+
+          const resultado = await UCondoImportService.processarPlanilhaCadastro(
+            fileData.name,
+            fileData.data,
+            condominiosExistentes
+          );
+
+          if (resultado?.cancelado) {
+            showToast('Importação da planilha compartilhada cancelada.', 'info');
+            return;
+          }
+
+          if (resultado?.tipo === 'atualizado') {
+            alert(`✅ ${resultado.totalUnidades} unidades sincronizadas com sucesso para o condomínio "${resultado.condominio.nome}"!`);
+            showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas!`, 'success');
+            await recarregarCondominios();
+            setAbaAtiva('leituras');
+          } else if (resultado?.tipo === 'criado') {
+            alert(`✅ Condomínio "${resultado.condominio.nome}" e ${resultado.totalUnidades} unidades criados com sucesso!`);
+            showToast(`Condomínio "${resultado.condominio.nome}" importado com sucesso!`, 'success');
+            await recarregarCondominios();
+            setAbaAtiva('leituras');
+          }
+        }
+      } catch (err) {
+        console.error('[ShareIntent] Erro ao processar planilha compartilhada:', err);
+        alert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
+        showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
+      }
     });
   }, []);
 

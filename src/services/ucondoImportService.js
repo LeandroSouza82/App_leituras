@@ -7,14 +7,35 @@ import { supabase } from './supabase';
  * Normaliza o nome do condomínio removendo acentos, múltiplos espaços,
  * caracteres invisíveis e convertendo para minúsculas para comparação 100% precisa.
  */
-export const normalizarNome = (nome) => {
-  if (!nome) return '';
-  return String(nome)
-    .trim()
+export const normalizarNome = (txt) => {
+  if (!txt) return '';
+  return String(txt)
     .toLowerCase()
     .normalize('NFD') // Separa os acentos das letras
     .replace(/[\u0300-\u036f]/g, '') // Remove os acentos
-    .replace(/\s+/g, ' '); // Transforma múltiplos espaços em um só
+    .replace(/[^a-z0-9]/g, ''); // Remove tudo que não for letra ou número (espaços, hífens, acentos)
+};
+
+/**
+ * Calcula a distância de Levenshtein (edições necessárias) entre duas strings.
+ * Útil para Fuzzy Match (ex: rogerioloch vs rogeriolock).
+ */
+export const calcularDistanciaLevenstein = (a, b) => {
+  if (!a || !a.length) return (b || '').length;
+  if (!b || !b.length) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+      }
+    }
+  }
+  return matrix[b.length][a.length];
 };
 
 /**
@@ -31,16 +52,39 @@ export const UCondoImportService = {
     if (!nomeArquivo) return '';
     let limpo = String(nomeArquivo).replace(/\.[^/.]+$/, ''); // Remove extensão
 
-    // Remove prefixos comuns do uCondo / exportações
-    limpo = limpo.replace(/^(ucondo|u_condo|consumos|consumo|planilha|leituras|leitura)[_\-\s]*/i, '');
+    // Remove prefixos comuns do uCondo / exportações e padrões como "doc"
+    limpo = limpo.replace(/^(ucondo|u_condo|consumos|consumo|planilha|leituras|leitura|doc)[_\-\s]*/i, '');
 
     // Remove sufixos de serviços / datas comuns
     limpo = limpo.replace(/[_\-\s]*(agua|gas|energia|geral|consumos|consumo|\d{4}[_\-]?\d{2}[_\-]?\d{2}|\d{6,14})$/i, '');
+
+    // Remove padrões do WhatsApp como WA0010, WA0001
+    limpo = limpo.replace(/[_\-\s]*WA\d+[_\-\s]*/i, '');
 
     // Substitui underscores e hífens repetidos por espaços
     limpo = limpo.replace(/[_\-]+/g, ' ').trim();
 
     return limpo || '';
+  },
+
+  /**
+   * Normaliza o tipo de leitura extraído para evitar violar a constraint do Supabase.
+   */
+  normalizarTipoLeitura(tipoBruto) {
+    let tipoNormalizado = "Água e Gás"; // Valor padrão seguro
+    const tipo = String(tipoBruto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+    if (tipo.includes('agua') && tipo.includes('gas')) {
+      tipoNormalizado = "Água e Gás";
+    } else if (tipo.includes('somente agua') || tipo === 'agua') {
+      tipoNormalizado = "Somente Água";
+    } else if (tipo.includes('somente gas') || tipo === 'gas') {
+      tipoNormalizado = "Somente Gás";
+    } else if (tipo.includes('energia')) {
+      tipoNormalizado = "Energia Elétrica";
+    }
+
+    return tipoNormalizado;
   },
 
   /**
@@ -230,27 +274,16 @@ export const UCondoImportService = {
           if (cellValue.includes('consumo de') || cellValue.includes('tipo de leitura') || cellValue.includes('tipo de medicao') || cellValue.includes('tipo de medição')) {
             if (row[j + 1] !== undefined && row[j + 1] !== null && String(row[j + 1]).trim() !== '') {
               const tipoStr = String(row[j + 1]).replace(/\*/g, '').trim();
-              if (tipoStr.toLowerCase().includes('agua') && tipoStr.toLowerCase().includes('gas')) {
-                tipoMedicaoExtraido = 'Água e Gás';
-              } else if (tipoStr.toLowerCase().includes('agua')) {
-                tipoMedicaoExtraido = 'Somente Água';
-              } else if (tipoStr.toLowerCase().includes('gas') || tipoStr.toLowerCase().includes('gás')) {
-                tipoMedicaoExtraido = 'Somente Gás';
-              } else if (tipoStr.toLowerCase().includes('energia')) {
-                tipoMedicaoExtraido = 'Energia Elétrica';
-              } else if (tipoStr) {
-                tipoMedicaoExtraido = tipoStr;
-              }
+              tipoMedicaoExtraido = this.normalizarTipoLeitura(tipoStr);
             }
           }
         }
       }
     }
 
-    // Fallback: se não achou nas células, tenta extrair do nome do arquivo
-    if (!nomeExtraido && nomeArquivo) {
-      nomeExtraido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
-    }
+    // Remove o fallback automático para forçar o prompt em processarPlanilhaCadastro
+    // se o nome não for encontrado nas células, evitando cards fantasmas.
+    // O nome do arquivo será usado como sugestão no prompt.
 
     return {
       nome: nomeExtraido,
@@ -307,11 +340,15 @@ export const UCondoImportService = {
         // 2.1 Extração dinâmica de metadados das células (Condomínio e Consumo de)
         const metadados = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
         let nomeExtraido = metadados.nome;
-        let tipoMedicaoExtraido = metadados.tipoMedicao || 'Água e Gás';
+        let tipoMedicaoExtraido = this.normalizarTipoLeitura(metadados.tipoMedicao);
 
         if (!nomeExtraido) {
-          // Fallback se a planilha estiver diferente: pede pro usuário digitar
-          nomeExtraido = window.prompt('Não foi possível ler o nome na planilha. Digite o nome do condomínio:');
+          // Fallback Inteligente Anti-Card Fantasma:
+          const nomeSugerido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
+          nomeExtraido = window.prompt(
+            'Não encontramos o nome "Condomínio" na planilha. Para evitar duplicações, confirme o nome exato do condomínio que deseja atualizar (ex: São Bento) ou criar:',
+            nomeSugerido
+          );
           if (!nomeExtraido || !nomeExtraido.trim()) {
             return { cancelado: true };
           }
@@ -332,11 +369,20 @@ export const UCondoImportService = {
               condExistente = todosConds.find(c => {
                 const nomeBanco = normalizarNome(c.nome);
                 if (!nomeBanco || !nomeLimpoPlanilha) return false;
-                return (
-                  nomeBanco === nomeLimpoPlanilha ||
-                  nomeBanco.includes(nomeLimpoPlanilha) ||
-                  nomeLimpoPlanilha.includes(nomeBanco)
-                );
+                
+                // Match perfeito ou Contém
+                if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
+                  return true;
+                }
+                
+                // Fuzzy Match (Permite até 2 erros de digitação se a string tiver mais de 8 caracteres)
+                // Ex: "rogerioloch" vs "rogeriolock" (1 erro)
+                const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
+                if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
+                  return true;
+                }
+                
+                return false;
               }) || null;
             }
           } catch (errDb) {
@@ -349,18 +395,24 @@ export const UCondoImportService = {
           condExistente = condominiosExistentes.find(c => {
             const nomeBanco = normalizarNome(c.nome);
             if (!nomeBanco || !nomeLimpoPlanilha) return false;
-            return (
-              nomeBanco === nomeLimpoPlanilha ||
-              nomeBanco.includes(nomeLimpoPlanilha) ||
-              nomeLimpoPlanilha.includes(nomeBanco)
-            );
+            
+            if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
+              return true;
+            }
+            
+            const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
+            if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
+              return true;
+            }
+            
+            return false;
           }) || null;
         }
 
         // 2.4 Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
           const querSubstituir = window.confirm(
-            `Encontramos o condomínio "${condExistente.nome}". Deseja atualizar a lista de apartamentos usando esta planilha?`
+            `O condomínio '${condExistente.nome}' já existe. Deseja atualizar a planilha deste condomínio?`
           );
 
           if (!querSubstituir) {
@@ -371,14 +423,14 @@ export const UCondoImportService = {
           // 1. Deleta as unidades antigas e insere as novas usando o MESMO condominioExistente.id
           await this.persistirUnidadesLocal(condExistente.id, unidades);
 
-          // 2. Atualiza a contagem de apartamentos e tipo no condomínio existente
+          // 2. Atualiza APENAS a contagem de apartamentos no condomínio existente. 
+          // O campo tipo_leitura do card no banco de dados é intocável durante o processo de importação.
           if (supabase) {
             try {
               await supabase
                 .from('condominios')
                 .update({ 
-                  apartamentos: unidades.length,
-                  tipo_leitura: tipoMedicaoExtraido || condExistente.tipo_leitura
+                  apartamentos: unidades.length
                 })
                 .eq('id', condExistente.id);
             } catch (_) {}
@@ -393,7 +445,7 @@ export const UCondoImportService = {
           // 2.5 Se NÃO existe: Cria novo condomínio com nome e tipo de medição extraídos
           const novoCondominioData = {
             nome: nomeExtraido,
-            tipoLeitura: tipoMedicaoExtraido,
+            tipoLeitura: this.normalizarTipoLeitura(tipoMedicaoExtraido),
             diaLeitura: '10',
             apartamentos: unidades.length,
             valor: 0,
@@ -482,11 +534,52 @@ export const UCondoImportService = {
   },
 
   /**
-   * FRENTE 1: Atualização / Substituição de Unidades de Condomínio Existente
+   * FRENTE 1: Atualização / Substituição de Unidades de Condomínio Existente (com validação de segurança)
    */
-  async atualizarUnidadesCondominio(condominioId, fileData, unidadesAtuais = []) {
+  async atualizarUnidadesCondominio(condominioId, fileData, unidadesAtuais = [], condominoAtualNome = '') {
     try {
+      // 1. Extração das novas unidades
       const novasUnidades = this.extrairUnidades(fileData);
+
+      // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
+      let workbook;
+      try {
+        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+          const base64Content = fileData.split(',')[1] || fileData;
+          workbook = XLSX.read(base64Content, { type: 'base64' });
+        } else if (typeof fileData === 'string') {
+          workbook = XLSX.read(fileData, { type: 'binary' });
+        } else if (fileData instanceof ArrayBuffer) {
+          const uint8 = new Uint8Array(fileData);
+          workbook = XLSX.read(uint8, { type: 'array' });
+        } else if (fileData instanceof Uint8Array) {
+          workbook = XLSX.read(fileData, { type: 'array' });
+        } else {
+          workbook = XLSX.read(fileData, { type: 'array' });
+        }
+
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+        const metadados = this.extrairMetadadosPlanilha(rawData, '');
+
+        if (metadados.nome && condominoAtualNome) {
+          const nomePlanilhaNorm = normalizarNome(metadados.nome);
+          const nomeAtualNorm = normalizarNome(condominoAtualNome);
+
+          const temCorrespondencia = nomePlanilhaNorm.includes(nomeAtualNorm) || nomeAtualNorm.includes(nomePlanilhaNorm);
+
+          if (!temCorrespondencia) {
+            const confirmarDivergencia = window.confirm(
+              `⚠️ Aviso de Segurança:\nA planilha selecionada é do condomínio "${metadados.nome}", mas você está no condomínio "${condominoAtualNome}".\n\nDeseja realmente vincular estas ${novasUnidades.length} unidades aqui?`
+            );
+            if (!confirmarDivergencia) {
+              return null;
+            }
+          }
+        }
+      } catch (errParse) {
+        console.warn('[UCondoImportService] Aviso na verificação de nome da planilha:', errParse);
+      }
 
       if (unidadesAtuais && unidadesAtuais.length > 0) {
         const confirmar = window.confirm(
