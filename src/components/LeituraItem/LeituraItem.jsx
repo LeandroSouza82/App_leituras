@@ -182,7 +182,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
             <span>{leitura.tipoLeitura || 'Água e Gás'}</span>
           </div>
 
-          <p className="item-data">{formatDateBR(leitura.data)} • {leitura.apartamentos} aptos</p>
+          <p className="item-data">{leitura.apartamentos} aptos</p>
 
           {leitura.instrucoesAcesso && (
             <div className="info-extra">

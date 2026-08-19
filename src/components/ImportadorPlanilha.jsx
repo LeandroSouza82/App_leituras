@@ -364,39 +364,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
         {isProcessing ? 'Processando...' : 'Selecionar e Importar Planilha'}
       </button>
 
-      {/* Lista de Planilhas Persistentes no Dispositivo */}
-      {localFiles.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <h4 style={{ fontSize: 12, color: '#64748b', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <History size={14} /> Planilhas no Dispositivo
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {localFiles.map((file, index) => (
-              <div
-                key={index}
-                onClick={() => !isProcessing && handleProcessLocalFile(file)}
-                style={{
-                  padding: '10px 12px',
-                  background: '#fff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  fontSize: 13,
-                  color: '#334155',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  cursor: isProcessing ? 'not-allowed' : 'pointer'
-                }}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }}>
-                  {file.name.split('_').slice(1).join('_') || file.name}
-                </span>
-                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>IMPORTAR</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {status && (
         <div

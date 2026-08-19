@@ -271,39 +271,22 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
           Adicionar leitura
         </button>
 
-        <div className="import-block">
-          <button type="button" className="import-btn" onClick={handleUploadClick}>
-            <FileSpreadsheet size={18} />
-            Ou importe uma planilha .xlsx
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            hidden
-            onChange={handleFileChange}
+        <div style={{ marginTop: '20px' }}>
+          <ImportadorPlanilha 
+            onImportComplete={handleImportSuccess}
+            onStatusChange={(message) => {
+              if (!message.toLowerCase().includes('processando')) {
+                if (message.toLowerCase().includes('sucesso')) {
+                  showToast(message, 'success');
+                }
+              }
+            }}
           />
         </div>
       </form>
       </section>
 
-      <section className="form-card">
-        <div className="form-heading">
-          <h2>📊 Importar Planilha Completa</h2>
-          <p>Sincronize todos os condomínios de uma planilha .xlsx com o Supabase.</p>
-        </div>
-        <ImportadorPlanilha 
-          onImportComplete={handleImportSuccess}
-          onStatusChange={(message) => {
-            if (!message.toLowerCase().includes('processando')) {
-              // Apenas mostra o resultado final, não todas as etapas
-              if (message.toLowerCase().includes('sucesso')) {
-                showToast(message, 'success');
-              }
-            }
-          }}
-        />
-      </section>
+
 
       <Toast {...toast} onClose={dismissToast} />
     </>

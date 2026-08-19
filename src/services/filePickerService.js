@@ -45,6 +45,10 @@ export const FilePickerService = {
         mimeType: file.mimeType,
       };
     } catch (error) {
+      if (error && error.message && error.message.toLowerCase().includes('cancel')) {
+        console.log('[FilePicker] Seleção de arquivo cancelada pelo usuário.');
+        return null;
+      }
       console.error('[FilePicker] Falha na seleção/salvamento:', error);
       throw error;
     }
