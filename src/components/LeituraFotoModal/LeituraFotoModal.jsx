@@ -1016,7 +1016,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 </div>
               )}
               <div className="apartamentos-grid">
-                {unidadesExibidas.map((apto) => {
+                {[...unidadesExibidas]
+                  .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }))
+                  .map((apto) => {
                   const status = fotosCapturadas[apto] || {};
                   const thumbnail = status[tipoMedicaoAtivo];
                   const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
