@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Camera as CameraIcon, X, CheckCircle, Share2, Settings } from 'lucide-react';
+import { Camera as CameraIcon, X, CheckCircle, Share2, Settings, FileSpreadsheet, Upload } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
@@ -12,6 +12,8 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
+import { UCondoImportService } from '../../services/ucondoImportService';
+import { FilePickerService } from '../../services/filePickerService';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
 
@@ -31,6 +33,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [showToast, setShowToast] = useState(false);
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const toastTimeoutRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -41,6 +44,40 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setShowToast(false);
       toastTimeoutRef.current = null;
     }, 2500);
+  };
+
+  const handleImportarPlanilhaRapida = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsProcessing(true);
+      const condId = leitura?.id || leitura?.condominio_id;
+      const buffer = await file.arrayBuffer();
+
+      const novasUnidades = await UCondoImportService.atualizarUnidadesCondominio(
+        condId,
+        buffer,
+        unidadesCarregadas
+      );
+
+      if (novasUnidades && novasUnidades.length > 0) {
+        setUnidadesAtualizadas(novasUnidades);
+        alert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
+      }
+    } catch (err) {
+      console.error('[LeituraFotoModal] Erro ao importar planilha:', err);
+      alert('Erro ao processar a planilha: ' + err.message);
+    } finally {
+      if (e.target) e.target.value = '';
+      setIsProcessing(false);
+    }
+  };
+
+  const dispararSeletorPlanilha = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const storageKey = useMemo(() => `unidades_${leitura?.id || 'default'}`, [leitura?.id]);
@@ -762,8 +799,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   <button
                     type="button"
                     className="btn-settings-units"
+                    onClick={dispararSeletorPlanilha}
+                    title="Importar / Atualizar Planilha uCondo"
+                    style={{ color: '#0284c7' }}
+                  >
+                    <FileSpreadsheet size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-settings-units"
                     onClick={() => setIsManageModalOpen(true)}
-                    title="Configurar Unidades"
+                    title="Configuração Manual de Unidades"
                   >
                     <Settings size={18} />
                   </button>
@@ -774,6 +820,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 <X size={20} />
               </button>
             </header>
+
+            {/* Input invisível para seleção nativa rápida de planilha */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".xlsx,.xls,.csv"
+              style={{ display: 'none' }}
+              onChange={handleImportarPlanilhaRapida}
+            />
 
             <div className="modal-selectors">
               <div className="selectors-top-row">
@@ -808,9 +863,40 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               {unidadesCarregadas.length === 0 && (
                 <div className="no-units-notice">
                   <p>Nenhuma unidade cadastrada para este condomínio.</p>
-                  <button type="button" onClick={() => setIsManageModalOpen(true)}>
-                    ⚙️ Configurar / Importar Unidades
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '280px', margin: '0 auto' }}>
+                    <button 
+                      type="button" 
+                      onClick={dispararSeletorPlanilha}
+                      style={{
+                        background: '#0284c7',
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        fontWeight: '600'
+                      }}
+                    >
+                      <FileSpreadsheet size={18} />
+                      Importar Planilha uCondo
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsManageModalOpen(true)}
+                      style={{
+                        background: '#f1f5f9',
+                        color: '#334155',
+                        border: '1px solid #cbd5e1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <Settings size={16} />
+                      Configurar Manualmente
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="apartamentos-grid">

@@ -5,6 +5,9 @@ import Toast, { useToast } from '../Toast/Toast';
 import ImportadorPlanilha from '../ImportadorPlanilha';
 import './LeituraForm.css';
 
+import { UCondoImportService } from '../../services/ucondoImportService';
+import { supabase } from '../../services/supabase';
+
 const initialState = {
   nome: '',
   apartamentos: '',
@@ -61,17 +64,71 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
       return;
     }
 
-    const registros = await processarPlanilhaExcel(file);
-    if (!registros.length) {
-      showToast('Nenhum condomínio válido encontrado na planilha.', 'error');
-      return;
-    }
+    try {
+      const buffer = await file.arrayBuffer();
 
-    adicionarEmLote(registros);
-    setForm(initialState);
-    event.target.value = null;
-    if (typeof onImportSuccess === 'function') {
-      onImportSuccess(registros.length);
+      // 1. Obter condomínios existentes no Supabase para verificação de duplicidade
+      let condominiosExistentes = [];
+      if (supabase) {
+        try {
+          const { data: dbData } = await supabase.from('condominios').select('id, nome');
+          condominiosExistentes = dbData || [];
+        } catch (_) {}
+      }
+
+      // 2. Processamento inteligente uCondo
+      try {
+        const resultado = await UCondoImportService.processarPlanilhaCadastro(
+          file.name,
+          buffer,
+          condominiosExistentes
+        );
+
+        if (resultado?.cancelado) {
+          return;
+        }
+
+        if (resultado?.tipo === 'atualizado') {
+          alert(`✅ Sucesso! ${resultado.totalUnidades} unidades atualizadas no condomínio "${resultado.condominio.nome}".`);
+          showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas com sucesso!`, 'success');
+          if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
+          if (typeof onImportSuccess === 'function') onImportSuccess(1);
+          setForm(initialState);
+          return;
+        }
+
+        if (resultado?.tipo === 'criado') {
+          alert(`✅ Sucesso! Condomínio "${resultado.condominio.nome}" criado com ${resultado.totalUnidades} unidades importadas.`);
+          showToast(`Condomínio "${resultado.condominio.nome}" criado com sucesso!`, 'success');
+          if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
+          if (typeof onImportSuccess === 'function') onImportSuccess(1);
+          setForm(initialState);
+          return;
+        }
+      } catch (uCondoErr) {
+        console.log('[LeituraForm] Não é planilha uCondo unitária, tentando formato geral...', uCondoErr);
+      }
+
+      // 3. Fallback: Lista geral de condomínios
+      const registros = await processarPlanilhaExcel(file);
+      if (!registros.length) {
+        alert('Erro na importação: Nenhum condomínio ou unidade válida encontrada na planilha.');
+        showToast('Nenhum condomínio válido encontrado na planilha.', 'error');
+        return;
+      }
+
+      adicionarEmLote(registros);
+      setForm(initialState);
+      alert(`✅ Sucesso! ${registros.length} condomínios importados da planilha.`);
+      if (typeof onImportSuccess === 'function') {
+        onImportSuccess(registros.length);
+      }
+    } catch (err) {
+      console.error('[LeituraForm] Erro ao importar planilha:', err);
+      alert('Erro na importação: ' + (err?.message || 'Arquivo incompatível'));
+      showToast('Erro ao importar planilha: ' + (err?.message || 'Arquivo incompatível'), 'error');
+    } finally {
+      if (event.target) event.target.value = '';
     }
   };
 

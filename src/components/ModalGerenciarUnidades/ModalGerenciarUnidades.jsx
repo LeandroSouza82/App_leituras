@@ -5,63 +5,8 @@ import { Capacitor } from '@capacitor/core';
 import { FilePickerService } from '../../services/filePickerService';
 import { salvarArquivoSeguro } from '../../services/filesystemService';
 import * as XLSX from 'xlsx';
+import { UCondoImportService } from '../../services/ucondoImportService';
 import './ModalGerenciarUnidades.css';
-
-const extrairUnidadesDePlanilha = (jsonData) => {
-  if (!Array.isArray(jsonData) || jsonData.length === 0) return [];
-
-  // 1. Procura nas primeiras 15 linhas por uma coluna de cabeçalho com "unidade", "apto", etc.
-  let colIndex = -1;
-  let headerRowIndex = -1;
-
-  for (let r = 0; r < Math.min(jsonData.length, 15); r++) {
-    const row = jsonData[r];
-    if (Array.isArray(row)) {
-      const idx = row.findIndex(cell => {
-        if (!cell) return false;
-        const str = String(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        return str.includes('unidade') || str === 'apto' || str === 'apartamento' || str === 'unid' || str === 'ap' || str === 'numero' || str === 'identificador';
-      });
-      if (idx !== -1) {
-        colIndex = idx;
-        headerRowIndex = r;
-        break;
-      }
-    }
-  }
-
-  let extraidas = [];
-
-  if (colIndex !== -1 && headerRowIndex !== -1) {
-    // Extrai da coluna identificada a partir da linha após o cabeçalho
-    for (let r = headerRowIndex + 1; r < jsonData.length; r++) {
-      const cell = jsonData[r]?.[colIndex];
-      if (cell !== undefined && cell !== null && String(cell).trim() !== '') {
-        extraidas.push(String(cell).trim());
-      }
-    }
-  }
-
-  // 2. Fallback: Se não encontrou coluna explícita, varre todas as células buscando padrões
-  if (extraidas.length === 0) {
-    jsonData.forEach((row, rIdx) => {
-      if (rIdx < 2 && jsonData.length > 5) return;
-      if (Array.isArray(row)) {
-        row.forEach(cell => {
-          if (cell === null || cell === undefined) return;
-          const val = String(cell).trim();
-          if (!val) return;
-          if (/^[A-Za-z0-9]+[-/][A-Za-z0-9]+$/.test(val) || /^([A-Za-z]+\s*)?\d{3,4}$/i.test(val)) {
-            extraidas.push(val);
-          }
-        });
-      }
-    });
-  }
-
-  // Remove duplicatas mantendo a ordem
-  return Array.from(new Set(extraidas.map(u => String(u).trim()).filter(Boolean)));
-};
 
 const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome, onUnidadesAtualizadas }) => {
   const [tab, setAba] = useState('importar'); // 'importar' | 'gerar' | 'avulso'
@@ -87,13 +32,9 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
     try {
       const firstSheetName = workbook.SheetNames[0];
       const firstSheet = workbook.Sheets[firstSheetName];
-      const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-
-      if (!jsonData || jsonData.length === 0) {
-        throw new Error('A planilha selecionada está vazia.');
-      }
-
-      const unicas = extrairUnidadesDePlanilha(jsonData);
+      const unicas = UCondoImportService.extrairUnidades(
+        XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      );
 
       if (unicas.length === 0) {
         throw new Error('Nenhuma coluna de unidades identificada na planilha.');

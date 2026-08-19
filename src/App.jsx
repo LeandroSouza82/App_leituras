@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CheckCircle2, DollarSign } from 'lucide-react';
+import { Building2, CheckCircle2, DollarSign, FileSpreadsheet, PlusCircle } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -20,6 +20,7 @@ import Login from './components/Login';
 import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
+import { UCondoImportService } from './services/ucondoImportService';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 

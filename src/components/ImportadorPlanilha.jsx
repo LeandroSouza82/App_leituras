@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
 import { FilePickerService } from '../services/filePickerService';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { UCondoImportService } from '../services/ucondoImportService';
 
 const normalizeHeader = (value) =>
   String(value ?? '')
@@ -207,7 +208,60 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       setIsProcessing(true);
       emitStatus(`Processando: ${fileName}...`);
 
-      const workbook = XLSX.read(data, { type: 'base64' });
+      // 1. Obter condomínios existentes no Supabase para verificação de duplicidade
+      let condominiosExistentes = [];
+      if (supabase) {
+        try {
+          const { data: dbData } = await supabase.from('condominios').select('id, nome');
+          condominiosExistentes = dbData || [];
+        } catch (_) {}
+      }
+
+      // 2. Tentar processamento inteligente uCondo com extração dinâmica e tolerância a offset
+      try {
+        const resultadoUCondo = await UCondoImportService.processarPlanilhaCadastro(
+          fileName,
+          data,
+          condominiosExistentes
+        );
+
+        if (resultadoUCondo?.cancelado) {
+          emitStatus('Operação cancelada pelo usuário.');
+          return;
+        }
+
+        if (resultadoUCondo?.tipo === 'atualizado') {
+          const msg = `✅ ${resultadoUCondo.totalUnidades} unidades sincronizadas com sucesso no Supabase para o condomínio "${resultadoUCondo.condominio.nome}"!`;
+          alert(msg);
+          emitStatus(msg);
+          if (onImportComplete) onImportComplete(1);
+          carregarArquivosLocais();
+          return;
+        }
+
+        if (resultadoUCondo?.tipo === 'criado') {
+          const msg = `✅ Condomínio "${resultadoUCondo.condominio.nome}" e ${resultadoUCondo.totalUnidades} unidades sincronizados com sucesso no Supabase!`;
+          alert(msg);
+          emitStatus(msg);
+          if (onImportComplete) onImportComplete(1);
+          carregarArquivosLocais();
+          return;
+        }
+      } catch (uCondoErr) {
+        console.log('[Importador] Não é planilha unitária do uCondo, tentando formato de lista geral...', uCondoErr);
+      }
+
+      // 3. Fallback: Planilha de Lista Geral de Múltiplos Condomínios
+      let workbook;
+      if (typeof data === 'string' && data.startsWith('data:')) {
+        const base64Content = data.split(',')[1] || data;
+        workbook = XLSX.read(base64Content, { type: 'base64' });
+      } else if (typeof data === 'string') {
+        workbook = XLSX.read(data, { type: 'base64' });
+      } else {
+        workbook = XLSX.read(data, { type: 'array' });
+      }
+
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
@@ -222,9 +276,15 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       });
 
       const listaCondominios = parseCondominiosFromRows(rows);
+      if (!listaCondominios || listaCondominios.length === 0) {
+        throw new Error('Nenhuma coluna de Unidades ou lista de condomínios válida encontrada nesta planilha.');
+      }
+
       const totalImportado = await syncCondominios(listaCondominios);
 
-      emitStatus(`Sucesso! ${totalImportado} condomínios sincronizados.`);
+      const msg = `✅ Sucesso! ${totalImportado} condomínios sincronizados.`;
+      alert(msg);
+      emitStatus(msg);
       if (onImportComplete) {
         onImportComplete(totalImportado);
       }
@@ -233,7 +293,9 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       carregarArquivosLocais();
     } catch (error) {
       console.error('[Importador] Falha no processamento:', error);
-      emitStatus(error?.message || 'Erro ao processar planilha.');
+      const errMsg = 'Erro na importação: ' + (error?.message || 'Arquivo incompatível');
+      alert(errMsg);
+      emitStatus(errMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -256,6 +318,8 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
       await processarBufferExcel(fileContents.data, fileData.name);
     } catch (error) {
+      console.error('[Importador] Erro na seleção:', error);
+      alert('Erro na seleção do arquivo: ' + (error?.message || ''));
       emitStatus('Falha na seleção do arquivo.');
     }
   };
