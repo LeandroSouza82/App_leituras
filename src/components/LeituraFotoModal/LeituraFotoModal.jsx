@@ -360,10 +360,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleSaveReading = async (valor) => {
+  const handleSaveReading = async (valor, fotoUrlOverride = null, fileNameOverride = null) => {
     try {
       const unidadeId = String(activeApto).trim();
-      const fotoUrl = fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
+      const fotoUrl = fotoUrlOverride || fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
       if (!valor) {
         throw new Error('Valor da leitura ausente.');
@@ -390,7 +390,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Busca arquivo local da foto no disco
       const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
       const files = await StorageService.listFiles(prefixoChave);
-      const localFileName = files.length > 0 ? files[0] : null;
+      const localFileName = fileNameOverride || (files.length > 0 ? files[0] : null);
 
       // Obtém usuário autenticado
       let activeUserId = 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
@@ -486,6 +486,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
+      // Fecha o preview se estiver aberto (fallback para o fluxo antigo que ainda usa o preview)
+      setIsPreviewOpen(false);
+
     } catch (error) {
       console.error('Erro ao salvar leitura:', error);
       alert('❌ Erro inesperado ao salvar: ' + error.message);
@@ -500,7 +503,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     setCustomCameraOpen(true);
   };
 
-  const handleCameraCapture = async (base64) => {
+  // Novo fluxo All-in-One: Captura a foto e já recebe o valor digitado
+  const handleCaptureAndSave = async (base64, valorLeitura) => {
     const apto = activeApto;
     if (!apto) return;
 
@@ -513,7 +517,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const servicoKey  = tipoMedicaoAtivo.toLowerCase();
       const fileName    = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
 
-      // 1. Carimbo de data/hora via Canvas (base64 puro — o serviço adiciona o prefixo)
+      // 1. Carimbo de data/hora via Canvas
       let stampedBase64 = await ImageStampService.applyTimestamp(base64);
       console.log('[Camera] Carimbo aplicado com sucesso');
 
@@ -524,21 +528,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 3. Limpeza de RAM imediata
       stampedBase64 = null;
 
-      // 4. Sucesso total — só agora fecha a câmera e atualiza a UI
+      // 4. Sucesso total — fecha a câmera
       setCustomCameraOpen(false);
-      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
 
+      // Atualiza UI com status provisório
+      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
       setConcluidosMemoria((prev) => ({
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [servicoKey]: true }
       }));
-
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: savedFile.webUrl }
       }));
 
-      setIsPreviewOpen(true);
+      // 5. Executa a rotina de salvamento passando overrides
+      await handleSaveReading(valorLeitura, savedFile.webUrl, fileName);
 
     } catch (error) {
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
@@ -808,8 +813,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       {/* 5. Câmera customizada in-app (Totalmente independente da árvore do modal) */}
       {customCameraOpen && (
         <CustomCamera
-          onCapture={handleCameraCapture}
+          onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
+          initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
         />
       )}
     </>

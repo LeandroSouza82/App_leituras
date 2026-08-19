@@ -82,12 +82,44 @@ const gerarFotoMockBase64 = () => {
  *   onCapture(base64: string) — chamado após captura bem-sucedida
  *   onClose()                 — chamado ao fechar sem capturar
  */
-const CustomCamera = ({ onCapture, onClose }) => {
+const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
   const [isReady, setIsReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFlashOn, setIsFlashOn] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const formatInitialValue = (val) => {
+    if (!val) return "";
+    const str = String(val).replace(",", ".");
+    const num = parseFloat(str);
+    if (isNaN(num)) return "";
+    // Retorna com vírgula e 4 casas decimais (Padrão uCondo)
+    return num.toFixed(4).replace(".", ",");
+  };
+
+  const [leituraValue, setLeituraValue] = useState(() => formatInitialValue(initialValue));
+  const [isZoomed, setIsZoomed] = useState(false);
+  
   const isNative = Capacitor.isNativePlatform();
   const stoppedRef = useRef(false);
+
+  // ─── Formatação do Input (Padrão de Leitura: 4 Casas Decimais) ───────────
+  const handleLeituraChange = (e) => {
+    const rawValue = e.target.value.replace(/\D/g, "");
+    if (!rawValue) {
+      setLeituraValue("");
+      return;
+    }
+    const intValue = parseInt(rawValue, 10);
+    if (isNaN(intValue)) {
+      setLeituraValue("");
+      return;
+    }
+    // PadStart 5 para garantir pelo menos '0,000X'
+    const strValue = intValue.toString().padStart(5, "0");
+    const inteiros = strValue.slice(0, -4);
+    const decimais = strValue.slice(-4);
+    setLeituraValue(`${inteiros},${decimais}`);
+  };
 
   // ─── Inicializa a câmera ao montar ───────────────────────────────────────
   useEffect(() => {
@@ -233,8 +265,9 @@ const CustomCamera = ({ onCapture, onClose }) => {
 
       if (!base64) throw new Error("Captura retornou vazia.");
 
-      await stopCamera();
-      onCapture(base64);
+      // Em vez de fechar a câmera, exibimos o card de overlay com a foto capturada
+      setCapturedPhoto(base64);
+      setIsCapturing(false);
     } catch (err) {
       const errMsg = err?.message || JSON.stringify(err) || "Erro desconhecido";
       console.error("[CustomCamera] Falha na captura:", errMsg, err);
@@ -243,11 +276,66 @@ const CustomCamera = ({ onCapture, onClose }) => {
     }
   };
 
+  const handleRetake = (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setCapturedPhoto(null);
+    setLeituraValue(formatInitialValue(initialValue));
+    setIsZoomed(false);
+  };
+
+  const handleSave = async (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (!leituraValue) {
+      alert("Por favor, insira o valor da leitura.");
+      return;
+    }
+
+    // Paramos a câmera de forma definitiva apenas ao concluir
+    await stopCamera();
+    onSaveReading(capturedPhoto, leituraValue);
+  };
+
   // ─── Conteúdo renderizado diretamente no body via Portal ──────────────────
   const cameraContent = (
     <div className="custom-camera-root" id="custom-camera-preview">
+      {/* Fundo congelado da foto tirada (esconde o feed ao vivo sem dar stop) */}
+      {capturedPhoto && !isNative && (
+        <img 
+          src={`data:image/jpeg;base64,${capturedPhoto}`} 
+          alt="Frame Capturado" 
+          className="captured-fullscreen-bg" 
+        />
+      )}
+      {capturedPhoto && isNative && (
+        <img 
+          src={`data:image/jpeg;base64,${capturedPhoto}`} 
+          alt="Frame Capturado" 
+          className="captured-fullscreen-bg" 
+        />
+      )}
+
+      {/* Overlay de Zoom */}
+      {isZoomed && capturedPhoto && (
+        <div className="zoom-overlay" onClick={() => setIsZoomed(false)}>
+          <img 
+            src={`data:image/jpeg;base64,${capturedPhoto}`} 
+            alt="Foto Ampliada" 
+            className="zoomed-image" 
+          />
+          <button type="button" className="btn-close-zoom" onClick={() => setIsZoomed(false)}>
+            <X size={28} />
+          </button>
+        </div>
+      )}
+
       {/* Simulador visual de viewfinder para ambiente Web */}
-      {!isNative && (
+      {!isNative && !capturedPhoto && (
         <div className="web-camera-simulator">
           <div className="web-sim-badge">
             <span>🌐 SIMULADOR DE CÂMERA (WEB)</span>
@@ -270,40 +358,78 @@ const CustomCamera = ({ onCapture, onClose }) => {
         <X size={26} />
       </button>
 
-      {/* Botão Flash / Lanterna (Raio) no topo direito */}
-      <button
-        type="button"
-        className={`cam-btn cam-btn-flash ${isFlashOn ? "flash-active" : ""}`}
-        onClick={toggleFlash}
-        disabled={!isReady || isCapturing}
-        title={isFlashOn ? "Desativar Lanterna" : "Ativar Lanterna"}
-      >
-        <Zap
-          size={24}
-          color={isFlashOn ? "#facc15" : "#ffffff"}
-          fill={isFlashOn ? "#facc15" : "none"}
-        />
-      </button>
+      {/* Botão Flash / Lanterna (Raio) no topo direito - Escondido se foto já capturada */}
+      {!capturedPhoto && (
+        <button
+          type="button"
+          className={`cam-btn cam-btn-flash ${isFlashOn ? "flash-active" : ""}`}
+          onClick={toggleFlash}
+          disabled={!isReady || isCapturing}
+          title={isFlashOn ? "Desativar Lanterna" : "Ativar Lanterna"}
+        >
+          <Zap
+            size={24}
+            color={isFlashOn ? "#facc15" : "#ffffff"}
+            fill={isFlashOn ? "#facc15" : "none"}
+          />
+        </button>
+      )}
 
       {/* Indicador de carregamento no ambiente nativo */}
-      {isNative && !isReady && (
+      {isNative && !isReady && !capturedPhoto && (
         <div className="cam-loading">
           <span>Iniciando câmera…</span>
         </div>
       )}
 
-      {/* Rodapé centralizado com o botão gigante de captura */}
-      <footer className="cam-footer">
-        <button
-          type="button"
-          className={`cam-btn cam-btn-capture${isCapturing ? " capturing" : ""}`}
-          onClick={handleCapture}
-          disabled={!isReady || isCapturing}
-          title="Capturar foto"
-        >
-          <Camera size={38} />
-        </button>
-      </footer>
+      {/* Rodapé ou Card dependendo do estado */}
+      {!capturedPhoto ? (
+        <footer className="cam-footer">
+          <button
+            type="button"
+            className={`cam-btn cam-btn-capture${isCapturing ? " capturing" : ""}`}
+            onClick={handleCapture}
+            disabled={!isReady || isCapturing}
+            title="Capturar foto"
+          >
+            <Camera size={38} />
+          </button>
+        </footer>
+      ) : (
+        <div className="input-overlay-card-wrapper" style={{ display: isZoomed ? 'none' : 'flex' }}>
+          <div className="input-overlay-card">
+            <div className="overlay-header">
+              <img 
+                src={`data:image/jpeg;base64,${capturedPhoto}`} 
+                alt="Miniatura capturada" 
+                className="captured-thumbnail" 
+                onClick={() => setIsZoomed(true)}
+              />
+              <button type="button" className="btn-retake" onClick={handleRetake}>
+                Tirar de novo
+              </button>
+            </div>
+            
+            <div className="overlay-body">
+              <label>LANÇAR LEITURA ATUAL</label>
+              <input
+                type="tel"
+                className="reading-input"
+                placeholder="0,0000"
+                value={leituraValue}
+                onChange={handleLeituraChange}
+                autoFocus
+              />
+            </div>
+
+            <div className="overlay-footer">
+              <button type="button" className="btn-save-reading" onClick={handleSave}>
+                Salvar / Concluir Leitura
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

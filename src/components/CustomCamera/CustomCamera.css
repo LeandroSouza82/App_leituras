@@ -203,3 +203,175 @@ body.camera-active #root {
   font-size: 0.85rem;
   font-weight: 600;
 }
+
+/* ── Overlay Card (Tudo em Uma Tela) ── */
+.input-overlay-card-wrapper {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 16px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+  z-index: 100002;
+  pointer-events: auto !important;
+  /* Animação suave para não quebrar com teclado subindo */
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.input-overlay-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  width: 100%;
+  max-width: 400px;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.captured-thumbnail {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.captured-thumbnail:active {
+  transform: scale(0.95);
+}
+
+/* ── Fundo congelado da captura ── */
+.captured-fullscreen-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 99990; /* Acima da câmera, abaixo da UI */
+  pointer-events: none;
+}
+
+/* ── Overlay de Zoom da Foto ── */
+.zoom-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 100010; /* Acima de tudo */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto !important;
+  flex-direction: column;
+}
+
+.zoomed-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.btn-close-zoom {
+  position: absolute;
+  top: 24px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.btn-retake {
+  background: #f1f5f9;
+  color: #475569;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-retake:active {
+  background: #e2e8f0;
+}
+
+.overlay-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overlay-body label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+.reading-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  text-align: center;
+}
+
+.reading-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+}
+
+.overlay-footer {
+  margin-top: 8px;
+}
+
+.btn-save-reading {
+  width: 100%;
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 16px;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
+}
+
+.btn-save-reading:active {
+  transform: scale(0.98);
+  background: #059669;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+}
