@@ -7,3 +7,9 @@ android/**/build/
 .env
 .env.*
 !.env.example
+
+# Assinaturas Android
+*.keystore
+*.jks
+# Propriedades locais de senha (evitar commit de senhas)
+**/key.properties

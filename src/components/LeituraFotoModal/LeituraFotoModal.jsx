@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Share2, Settings, FileSpreadsheet, Upload } from 'lucide-react';
+import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
 import { CameraService } from '../../services/cameraService';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { getUnidadesOffline } from '../../data/unidadesLocais';
 import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnidades';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
@@ -16,6 +18,12 @@ import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
+
+// Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
+const sanitizeName = (name) => {
+  if (!name) return 'Desconhecido';
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
+};
 
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 1. DECLARAÇÃO DE TODOS OS HOOKS NO TOPO ABSOLUTO
@@ -218,25 +226,63 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const verificarFotosSalvas = async () => {
     if (!leitura?.id) return;
     try {
-      console.log('[FileSystem] Iniciando varredura na raiz do Directory.Data');
-
-      // Varredura direta na raiz via StorageService
-      const files = await StorageService.listFiles(`leitura_foto_${leitura.id}_`);
-
-      console.log('[FileSystem] Fotos encontradas para este condomínio:', files.length);
+      console.log('[FileSystem] Iniciando varredura de fotos');
+      
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
 
       const capturadas = {};
       const valoresSalvos = {};
 
-      for (const fileName of files) {
-        // leitura_foto_condoId_unidade_servico_timestamp.jpg
+      // 1. LER DA NOVA PASTA (Organizada)
+      try {
+        const { files: pastaFiles } = await Filesystem.readdir({
+          path: pastaCondominio,
+          directory: Directory.Cache
+        });
+
+        for (const fileObj of pastaFiles) {
+          const fileName = fileObj.name || fileObj;
+          if (fileName.endsWith('.jpg')) {
+            const match = fileName.match(/^Apto(.+)_([a-zA-Z]+)\.jpg$/);
+            if (match) {
+              const unidade = match[1];
+              const servico = match[2].toLowerCase();
+              const fullPath = `${pastaCondominio}/${fileName}`;
+              
+              const fileUriResult = await Filesystem.getUri({
+                path: fullPath,
+                directory: Directory.Cache
+              });
+              const webUrl = Capacitor.convertFileSrc(fileUriResult.uri);
+
+              if (!capturadas[unidade]) capturadas[unidade] = {};
+              capturadas[unidade][servico] = webUrl;
+              
+              const localVal = localStorage.getItem(`valor_${leitura.id}_${unidade}_${servico}`);
+              if (localVal) {
+                if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
+                valoresSalvos[unidade][servico] = localVal;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log('[FileSystem] Pasta organizada ainda não existe ou vazia:', err.message);
+      }
+
+      // 2. LER DO PADRÃO ANTIGO (Fallback na Raiz)
+      const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_`);
+      for (const fileName of filesAntigos) {
         const partes = fileName.replace('.jpg', '').split('_');
         if (partes.length >= 6) {
           const unidade = partes[3];
           const servico = partes[4].toLowerCase();
 
           try {
-            // Obtém URI do arquivo no disco sem carregar Base64 gigante na RAM
+            // Se já achou na nova pasta, ignora o antigo
+            if (capturadas[unidade]?.[servico]) continue;
+
             const fileUriResult = await Filesystem.getUri({
               path: fileName,
               directory: Directory.Data
@@ -252,7 +298,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               valoresSalvos[unidade][servico] = localVal;
             }
           } catch (readErr) {
-            console.error('Erro ao obter URI da foto:', fileName, readErr);
+            console.error('Erro ao obter URI da foto antiga:', fileName, readErr);
           }
         }
       }
@@ -328,16 +374,27 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 1. CORREÇÃO CRÍTICA: Forçar maiúsculo para bater EXATAMENTE com o arquivo salvo no Android
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
 
-      // 2. BUSCA ABRANGENTE: Pega TODOS os arquivos dessa unidade
-      const files = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
+      const fullNewPath = `${pastaCondominio}/${newFileName}`;
 
-      let deletados = 0;
-      for (const file of files) {
-        // Verifica se o arquivo pertence a este serviço (ex: AGUA), ignorando maiúsculas/minúsculas
+      try {
+        await Filesystem.deleteFile({
+          path: fullNewPath,
+          directory: Directory.Cache
+        });
+        console.log('[ExcluirFoto] Foto nova removida:', fullNewPath);
+      } catch (e) {
+        // Ignora se não existir
+      }
+
+      // 2. BUSCA ABRANGENTE NO FORMATO ANTIGO (Fallback)
+      const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
+      for (const file of filesAntigos) {
         if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
           await StorageService.deleteFile(file);
-          console.log('[ExcluirFoto] Fantasma destruído fisicamente:', file);
-          deletados++;
+          console.log('[ExcluirFoto] Fantasma antigo destruído:', file);
         }
       }
 
@@ -415,7 +472,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setIsPreviewOpen(false);
 
       // Feedback opcional para você ver que funcionou:
-      console.log(`Sucesso: ${deletados} arquivo(s) removido(s) do aparelho.`);
+      console.log(`Sucesso: foto(s) e evidências locais removidas do aparelho.`);
 
     } catch (error) {
       alert('Erro ao excluir foto: ' + error.message);
@@ -449,10 +506,25 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
       }));
 
-      // Busca arquivo local da foto no disco
-      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
-      const files = await StorageService.listFiles(prefixoChave);
-      const localFileName = fileNameOverride || (files.length > 0 ? files[0] : null);
+      // Busca arquivo local da foto (tanto nova pasta quanto raiz)
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const newFileName = `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
+      const fullNewPath = `${pastaCondominio}/${newFileName}`;
+      
+      let localFileName = fileNameOverride;
+      if (!localFileName) {
+        try {
+          // Checa se existe na nova pasta
+          await Filesystem.stat({ path: fullNewPath, directory: Directory.Cache });
+          localFileName = fullNewPath;
+        } catch (e) {
+          // Fallback para raiz
+          const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
+          const filesAntigos = await StorageService.listFiles(prefixoChave);
+          localFileName = filesAntigos.length > 0 ? filesAntigos[0] : null;
+        }
+      }
 
       // Obtém usuário autenticado
       let activeUserId = 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
@@ -557,12 +629,26 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  // Abre a câmera customizada in-app (CustomCamera) em vez da câmera nativa do SO
-  const handleDispararCamera = (aptoAlvo) => {
+  // Dispara a Câmera Nativa do Sistema Operacional (Sem recortes e sem PWA UI)
+  const handleDispararCamera = async (aptoAlvo) => {
     const apto = aptoAlvo || activeApto;
     if (!apto || isProcessing) return;
     setActiveApto(apto);
-    setCustomCameraOpen(true);
+    
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 100, // Impede perda de dados EXIF
+        allowEditing: false, 
+        resultType: CameraResultType.Uri, 
+        source: CameraSource.Camera, // <-- FORÇA ABRIR O APLICATIVO NATIVO DE CÂMERA
+        correctOrientation: true
+      });
+      
+      // Passa a foto nativa para a função de carimbar que já fizemos
+      await handleCaptureAndSave(photo, null);
+    } catch (error) {
+      console.log("Usuário cancelou ou erro na câmera:", error);
+    }
   };
 
   // Novo fluxo All-in-One: Captura a foto e já recebe o valor digitado
@@ -577,35 +663,40 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
       const servicoKey  = tipoMedicaoAtivo.toLowerCase();
-      const fileName    = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}_${Date.now()}.jpg`;
+      
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const fileName = `Apto${unidadeId}_${tipoServico}.jpg`;
 
-      // 1. Carimbo de data/hora via Canvas
-      let stampedBase64 = await ImageStampService.applyTimestamp(base64);
-      console.log('[Camera] Carimbo aplicado com sucesso');
+      // 1. Carimbo de dados via Canvas com Dupla Compressão
+      const dadosUnidade = {
+        nome: unidadeId,
+        tipoLeitura: tipoServico,
+        condominioNome: leitura.nome || 'Desconhecido'
+      };
+      
+      const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
+      console.log('[Camera] Carimbo de Dupla Compressão aplicado com sucesso');
 
-      // 2. Persistência no disco (Directory.Data)
-      const savedFile = await CameraService.salvarFotoNaRaiz(stampedBase64, fileName);
-      console.log('[Camera] Foto salva no disco:', savedFile.path);
+      // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
+      const savedFile = await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
+      console.log('[Camera] Foto WhatsApp salva na pasta estruturada:', savedFile.path);
 
       // 3. Limpeza de RAM imediata
-      stampedBase64 = null;
+      // (Variáveis de base64 agora saem de escopo naturalmente ao fechar a função)
 
-      // 4. Sucesso total — fecha a câmera
+      // 3. Sucesso parcial — fecha a câmera
       setCustomCameraOpen(false);
 
-      // Atualiza UI com status provisório
-      localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
-      setConcluidosMemoria((prev) => ({
-        ...prev,
-        [unidadeId]: { ...(prev[unidadeId] || {}), [servicoKey]: true }
-      }));
+      // 4. Salva a FOTO BANCO (leve) apenas na Memória para a Interface
+      // Isso exibe a miniatura, aguardando o usuário digitar o valor da leitura.
       setFotosCapturadas((prev) => ({
         ...prev,
-        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: savedFile.webUrl }
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: `data:image/jpeg;base64,${fotoBanco}` }
       }));
 
-      // 5. Executa a rotina de salvamento passando overrides
-      await handleSaveReading(valorLeitura, savedFile.webUrl, fileName);
+      // NÃO salva a leitura automaticamente nem a marca como concluída, 
+      // para evitar o erro de "Valor da leitura ausente."
 
     } catch (error) {
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
@@ -623,10 +714,21 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
 
-      // 1. Deleta o arquivo físico antigo do disco
+      // 1. Deleta o arquivo físico novo
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
+      try {
+        await Filesystem.deleteFile({
+          path: `${pastaCondominio}/${newFileName}`,
+          directory: Directory.Cache
+        });
+      } catch (e) {}
+
+      // 1.5. Deleta formato antigo se existir
       const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}`;
-      const files = await StorageService.listFiles(prefixoChave);
-      for (const file of files) {
+      const filesAntigos = await StorageService.listFiles(prefixoChave);
+      for (const file of filesAntigos) {
         await StorageService.deleteFile(file);
       }
 
@@ -733,15 +835,27 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
       keysToRemove.forEach((k) => localStorage.removeItem(k));
 
-      // 3. Remove arquivos temporários de fotos locais do ciclo para reiniciar os cards vazios
+      // 3. Remove arquivos temporários de fotos locais do ciclo
       try {
-        const files = await StorageService.listFiles(`leitura_foto_${condominioId}_`);
-        for (const file of files) {
+        const safeCondName = sanitizeName(leitura.nome);
+        const pastaCondominio = `FastLeituras/${safeCondName}`;
+        
+        await Filesystem.rmdir({
+          path: pastaCondominio,
+          directory: Directory.Cache,
+          recursive: true
+        });
+      } catch (fsErr) {
+        console.warn('[LeituraFotoModal] Pasta já não existe ou vazia:', fsErr.message);
+      }
+
+      // 3.5. Limpa cache legado na raiz se existir
+      try {
+        const filesAntigos = await StorageService.listFiles(`leitura_foto_${condominioId}_`);
+        for (const file of filesAntigos) {
           await StorageService.deleteFile(file);
         }
-      } catch (fsErr) {
-        console.warn('[LeituraFotoModal] Aviso ao limpar fotos locais do ciclo:', fsErr);
-      }
+      } catch (fsErr) {}
 
       console.log(`[Ciclo Encerrado] Estado ativo do condomínio ${condominioId} resetado.`);
     } catch (e) {
@@ -783,6 +897,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setExportando(false);
     }
   };
+
 
   // 3. TRAVA DE SEGURANÇA (APÓS TODOS OS HOOKS)
   if (!isOpen || !leitura) return null;
@@ -948,7 +1063,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   onClick={handleExportar}
                   disabled={exportando || unidadesConcluidasCount === 0}
                 >
-                  <Share2 size={18} />
+                  <Upload size={18} />
                   {exportando ? 'Processando...' : `Salvar Leituras (${unidadesConcluidasCount}/${unidadesExibidas.length})`}
                 </button>
                 <button type="button" className="btn-cancelar-foto" onClick={onClose}>

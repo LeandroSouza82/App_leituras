@@ -13,12 +13,11 @@ export const CameraService = {
   async capturarFoto(unitLabel) {
     try {
       const photo = await Camera.getPhoto({
-        quality: 60, // Equilíbrio perfeito entre legibilidade do visor e tamanho reduzido
-        width: 800, // Limite de resolução para evitar estourar a memória RAM da WebView
+        quality: 100, // CRUCIAL: 100 impede que o Android destrua o EXIF antes da entrega
         allowEditing: false,
         resultType: CameraResultType.Uri, // Mantém a foto no disco e retorna URI leve
         source: CameraSource.Camera,
-        correctOrientation: true,
+        correctOrientation: true, // Agora o Android conseguirá ler o EXIF intacto e rotacionar nativamente!
         saveToGallery: false,
         promptLabelHeader: unitLabel
       });
@@ -64,6 +63,35 @@ export const CameraService = {
       return { path: fileName, uri: finalUri.uri, webUrl };
     } catch (error) {
       console.error('[FileSystem] Erro ao gravar arquivo:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Persiste a foto organizadamente em subpastas (ex: FastLeituras/[Condominio]/[Apto].jpg)
+   */
+  async salvarFotoEmPasta(base64Data, pastaCondominio, fileName) {
+    try {
+      const fullPath = `${pastaCondominio}/${fileName}`;
+      await Filesystem.writeFile({
+        path: fullPath,
+        data: base64Data,
+        directory: Directory.Cache,
+        recursive: true
+      });
+
+      const finalUri = await Filesystem.getUri({
+        path: fullPath,
+        directory: Directory.Cache
+      });
+
+      const webUrl = Capacitor.convertFileSrc(finalUri.uri);
+
+      console.log('[FileSystem] Foto persistida com sucesso na pasta:', fullPath);
+
+      return { path: fullPath, uri: finalUri.uri, webUrl };
+    } catch (error) {
+      console.error('[FileSystem] Erro ao gravar arquivo na pasta:', error);
       throw error;
     }
   },

@@ -250,8 +250,8 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
         await new Promise((resolve) => setTimeout(resolve, 200));
         base64 = gerarFotoMockBase64();
       } else {
-        // Modo Nativo Android/iOS
-        const result = await CameraPreview.capture({ quality: 60, width: 800 });
+        // Modo Nativo Android/iOS - Compressão extrema para economizar espaço
+        const result = await CameraPreview.capture({ quality: 20, width: 600 });
         base64 = result?.value;
 
         // Desliga a lanterna automaticamente após a captura da foto
