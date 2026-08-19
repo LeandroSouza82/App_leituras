@@ -218,6 +218,30 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         }
       }
+
+      // Varre também todo o localStorage para garantir que qualquer valor salvo (mesmo sem foto física) seja carregado
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(`valor_${leitura.id}_`)) {
+            // Formato: valor_{leitura.id}_{unidadeId}_{tipoMedicao}
+            const resto = key.replace(`valor_${leitura.id}_`, '');
+            const lastUnderscore = resto.lastIndexOf('_');
+            if (lastUnderscore !== -1) {
+              const unidade = resto.substring(0, lastUnderscore);
+              const servico = resto.substring(lastUnderscore + 1).toLowerCase();
+              const val = localStorage.getItem(key);
+              if (val) {
+                if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
+                valoresSalvos[unidade][servico] = val;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[LeituraFotoModal] Erro ao carregar valores de leituras do localStorage:', e);
+      }
+
       setFotosCapturadas(capturadas);
       setLeiturasValores(valoresSalvos);
 
@@ -644,10 +668,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleExportar = async () => {
-    const todos = window.confirm(`Deseja exportar apenas as leituras de ${tipoMedicaoAtivo.toUpperCase()}? (Clique em "Cancelar" para exportar TODOS os serviços consolidados)`);
+    const apenasAtivo = window.confirm(
+      `Deseja exportar apenas as leituras de ${tipoMedicaoAtivo.toUpperCase()}? (Clique em "Cancelar" para exportar TODOS os serviços consolidados)`
+    );
 
     setExportando(true);
-    const sucesso = await LeituraService.exportarParaWhatsApp(leitura, todos ? tipoMedicaoAtivo : 'todos');
+    const servico = apenasAtivo ? tipoMedicaoAtivo : 'todos';
+    const sucesso = await LeituraService.exportarParaWhatsApp(
+      leitura,
+      servico,
+      listaCompleta,
+      leiturasValores
+    );
     if (sucesso) {
       alert('Dados exportados com sucesso!');
     }
