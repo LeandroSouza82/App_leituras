@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { Building2, Calendar, Gauge, KeyRound, MapPin, Navigation, Phone, X, LocateFixed } from 'lucide-react';
+import { Browser } from '@capacitor/browser';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import './CondominioDetalheModal.css';
 import { supabase } from '../../services/supabaseClient';
 
@@ -37,46 +40,71 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
     completo,
   } = condominioExibido;
 
-  const salvarLocalizacaoGPS = async () => {
-    if (!navigator.geolocation) {
-      alert('Seu navegador/dispositivo não suporta geolocalização.');
-      return;
+  const salvarLocalizacaoGPS = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
 
-    setCapturandoGps(true);
+    try {
+      setCapturandoGps(true);
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+      // 1. Checa o status atual da permissão
+      let permStatus = await Geolocation.checkPermissions();
 
-        const { error } = await supabase
-          .from('condominios')
-          .update({ latitude, longitude })
-          .eq('id', condominio.id);
+      // 2. Se não tiver permissão, pede ao usuário (abre o popup nativo do Android)
+      if (permStatus.location !== 'granted') {
+        permStatus = await Geolocation.requestPermissions();
+      }
 
+      // 3. Se o usuário negar, avisa e aborta
+      if (permStatus.location !== 'granted') {
+        alert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.');
         setCapturandoGps(false);
+        return;
+      }
 
-        if (error) {
-          alert('Erro ao salvar localização: ' + error.message);
-        } else {
-          // Atualiza o objeto local com as coordenadas salvas
-          setCondominioAtualizado({
-            ...condominioExibido,
-            latitude: Number.isFinite(latitude) ? latitude : null,
-            longitude: Number.isFinite(longitude) ? longitude : null,
-          });
-          alert('📍 Localização GPS salva com sucesso!');
-        }
-      },
-      () => {
-        setCapturandoGps(false);
-        alert('Não foi possível obter a localização. Verifique as permissões de GPS do aparelho.');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+      // 4. Com permissão garantida, captura a localização exata
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      console.log('[GPS] Coordenadas capturadas:', latitude, longitude);
+
+      const { error } = await supabase
+        .from('condominios')
+        .update({ latitude, longitude })
+        .eq('id', condominio.id);
+
+      if (error) {
+        alert('Erro ao salvar localização: ' + error.message);
+      } else {
+        // Atualiza o objeto local com as coordenadas salvas
+        setCondominioAtualizado({
+          ...condominioExibido,
+          latitude: Number.isFinite(latitude) ? latitude : null,
+          longitude: Number.isFinite(longitude) ? longitude : null,
+        });
+        alert('📍 Localização GPS salva com sucesso!');
+      }
+    } catch (error) {
+      console.error('[GPS] Erro ao obter localização:', error);
+      alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
+    } finally {
+      setCapturandoGps(false);
+    }
   };
 
-  const handleOpenMaps = () => {
+  const handleOpenMaps = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     if (!condominioExibido) return;
 
     let termoBusca = '';
@@ -94,11 +122,19 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
       termoBusca = `${nome.trim()}, Grande Florianópolis - SC`;
     }
 
-    // Monta a URL da Search API do Google Maps com segurança
+    // Monta a URL da Search API do Google Maps com codificação segura
     const urlMapas = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(termoBusca)}`;
 
-    // Abre em nova aba com flags de segurança
-    window.open(urlMapas, '_blank', 'noopener,noreferrer');
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: urlMapas });
+      } else {
+        window.open(urlMapas, '_blank');
+      }
+    } catch (err) {
+      console.warn('[CondominioDetalheModal] Falha ao abrir via Browser.open:', err);
+      window.open(urlMapas, '_blank');
+    }
   };
 
   return (

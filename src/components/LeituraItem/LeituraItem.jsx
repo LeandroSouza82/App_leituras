@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Browser } from '@capacitor/browser';
+import { Geolocation } from '@capacitor/geolocation';
 import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed, Camera as CameraIcon } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
@@ -72,42 +73,64 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   };
 
   const salvarLocalizacaoGPS = async (e) => {
-    e.stopPropagation();
-    if (!navigator.geolocation) {
-      alert('Seu navegador/dispositivo não suporta geolocalização.');
-      return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
 
-    setCapturandoGpsId(leitura.id);
+    try {
+      setCapturandoGpsId(leitura.id);
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+      // 1. Checa o status atual da permissão
+      let permStatus = await Geolocation.checkPermissions();
 
-        const { error } = await supabase
-          .from('condominios')
-          .update({ latitude, longitude })
-          .eq('id', leitura.id);
+      // 2. Se não tiver permissão, pede ao usuário (abre o popup nativo do Android)
+      if (permStatus.location !== 'granted') {
+        permStatus = await Geolocation.requestPermissions();
+      }
 
+      // 3. Se o usuário negar, avisa e aborta
+      if (permStatus.location !== 'granted') {
+        alert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.');
         setCapturandoGpsId(null);
+        return;
+      }
 
-        if (error) {
-          alert('Erro ao salvar localização: ' + error.message);
-        } else {
-          alert('📍 Localização GPS salva com sucesso!');
-          onEdit(leitura.id, { latitude, longitude });
-        }
-      },
-      () => {
-        setCapturandoGpsId(null);
-        alert('Não foi possível obter a localização. Verifique as permissões de GPS do aparelho.');
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+      // 4. Com permissão garantida, captura a localização exata
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      console.log('[GPS] Coordenadas capturadas:', latitude, longitude);
+
+      const { error } = await supabase
+        .from('condominios')
+        .update({ latitude, longitude })
+        .eq('id', leitura.id);
+
+      if (error) {
+        alert('Erro ao salvar localização: ' + error.message);
+      } else {
+        alert('📍 Localização GPS salva com sucesso!');
+        onEdit(leitura.id, { latitude, longitude });
+      }
+    } catch (error) {
+      console.error('[GPS] Erro ao obter localização:', error);
+      alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
+    } finally {
+      setCapturandoGpsId(null);
+    }
   };
 
   const handleOpenMaps = async (e) => {
-    e.stopPropagation();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!leitura) return;
 
     let termoBusca = '';
@@ -128,8 +151,11 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     // Monta a URL da Search API do Google Maps com segurança
     const urlMapas = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(termoBusca)}`;
 
-    // Abre no app nativo (Android/iOS) ou browser padrão via Capacitor
-    await Browser.open({ url: urlMapas });
+    try {
+      await Browser.open({ url: urlMapas });
+    } catch {
+      window.open(urlMapas, '_blank');
+    }
   };
 
   return (
