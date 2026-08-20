@@ -7,23 +7,29 @@
   z-index: 9999 !important;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 16px;
-  padding-top: calc(20px + env(safe-area-inset-top));
-  overflow-y: auto;
+  align-items: flex-end;
+  padding: 0;
 }
 
 .modal-lista-container {
   background: #ffffff;
-  border-radius: 20px;
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
   width: 100%;
-  max-width: 440px;
-  max-height: 85dvh;
+  max-width: 760px;
+  height: calc(100dvh - 10px);
+  max-height: calc(100dvh - 10px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  margin-top: 10px;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+  margin-top: auto;
+  animation: slideUpModal 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpModal {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
 .progresso-modal-header {

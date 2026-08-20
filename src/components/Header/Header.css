@@ -1,9 +1,9 @@
 .header-card {
-  position: relative;
-  background: transparent;
+  z-index: 10;
+  background: var(--primary-color);
   border-radius: 0;
-  padding: 22px 16px 6px;
-  box-shadow: none;
+  padding: 22px 16px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   color: #ffffff;
 }
 

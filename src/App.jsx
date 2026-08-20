@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CheckCircle2, DollarSign, FileSpreadsheet, PlusCircle } from 'lucide-react';
+import { Building2, CheckCircle2, DollarSign, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -24,6 +24,7 @@ import { UCondoImportService } from './services/ucondoImportService';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
+import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -31,6 +32,7 @@ const MainApp = ({ onLogout }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [showProgressoModal, setShowProgressoModal] = useState(false);
   const [showAReceberModal, setShowAReceberModal] = useState(false);
+  const [showBackupFotosModal, setShowBackupFotosModal] = useState(false);
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
   const {
@@ -187,37 +189,111 @@ const MainApp = ({ onLogout }) => {
   return (
     <>
       <div className="app-shell app-has-navigation">
-        <div className={`offline-banner ${isOnline ? 'online' : 'offline'}`}>
-          {isOnline
-            ? 'Conectado'
-            : 'Offline - Sincronização pendente para o banco de dados'}
-          {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
-        </div>
+        {!isOnline && (
+          <div className={`offline-banner offline`}>
+            Offline - Sincronização pendente para o banco de dados
+            {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
+          </div>
+        )}
 
         {abaAtiva === 'dashboard' && (
-          <>
-            <Header
-              mesAnoFormatado={mesAnoFormatado}
-              totalCondominios={leituras.length}
-              totalConcluidos={totalConcluidos}
-              percentualConcluido={percentualConcluido}
-              totalValor={totalValor}
-              leituras={leituras}
-              totalPendentes={totalPendentes}
-              onOpenAlerts={handleOpenAlerts}
-              onOpenProgressoModal={() => setShowProgressoModal(true)}
-              onSync={recarregarCondominios}
-            />
-            <section className="dashboard-summary">
-              <AlertaBanner
-                leiturasHoje={leiturasHoje}
-                leiturasAtrasadas={leiturasAtrasadas}
-                onFocarAtrasado={handleNavegarParaAtrasados}
+          <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#DBEAFE' }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: '#2563EB' }}>
+              <Header
+                mesAnoFormatado={mesAnoFormatado}
+                totalCondominios={leituras.length}
+                totalConcluidos={totalConcluidos}
+                percentualConcluido={percentualConcluido}
+                totalValor={totalValor}
+                leituras={leituras}
+                totalPendentes={totalPendentes}
+                onOpenAlerts={handleOpenAlerts}
+                onOpenProgressoModal={() => setShowProgressoModal(true)}
+                onSync={recarregarCondominios}
               />
-              <div className="dashboard-grid">
-                <article
-                  className="metric-card metric-blue"
-                  onClick={() => setModalCondominiosAberto(true)}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '100px' }}>
+              <section className="dashboard-summary">
+                <AlertaBanner
+                  leiturasHoje={leiturasHoje}
+                  leiturasAtrasadas={leiturasAtrasadas}
+                  onFocarAtrasado={handleNavegarParaAtrasados}
+                />
+                <div className="dashboard-grid">
+                  <article
+                    className="metric-card metric-blue"
+                    onClick={() => setModalCondominiosAberto(true)}
+                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div className="metric-icon">
+                      <Building2 size={20} />
+                    </div>
+                    <div>
+                      <p>Total de Condomínios</p>
+                      <strong>{leituras.length}</strong>
+                    </div>
+                  </article>
+
+                  <article className="metric-card metric-green">
+                    <div className="metric-icon">
+                      <CheckCircle2 size={20} />
+                    </div>
+                    <div>
+                      <p>Concluídos no mês</p>
+                      <strong>{totalConcluidos}</strong>
+                    </div>
+                  </article>
+
+                  <article
+                    className="metric-card metric-gold"
+                    onClick={() => setShowAReceberModal(true)}
+                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div className="metric-icon">
+                      <DollarSign size={20} />
+                    </div>
+                    <div>
+                      <p>A receber / Faturado</p>
+                      <strong>R$ {totalValor.toFixed(2).replace('.', ',')}</strong>
+                    </div>
+                  </article>
+
+                  <article
+                    className="metric-card metric-purple"
+                    onClick={() => setShowBackupFotosModal(true)}
+                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div className="metric-icon">
+                      <FolderSync size={20} />
+                    </div>
+                    <div>
+                      <p>Gerenciar Fotos</p>
+                      <strong>Backups</strong>
+                    </div>
+                  </article>
+                </div>
+
+                <div
+                  className="completion-card"
+                  onClick={() => setShowProgressoModal(true)}
                   style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
                   onMouseEnter={(event) => {
                     event.currentTarget.style.transform = 'translateY(-2px)';
@@ -226,70 +302,20 @@ const MainApp = ({ onLogout }) => {
                     event.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
-                  <div className="metric-icon">
-                    <Building2 size={20} />
+                  <div className="completion-header">
+                    <div>
+                      <h3>Progresso do mês</h3>
+                      <p>{percentualConcluido}% concluído</p>
+                    </div>
+                    <strong>{totalConcluidos}/{leituras.length}</strong>
                   </div>
-                  <div>
-                    <p>Total de Condomínios</p>
-                    <strong>{leituras.length}</strong>
+                  <div className="progress-track">
+                    <div className="progress-fill" style={{ width: `${percentualConcluido}%` }} />
                   </div>
-                </article>
-
-                <article className="metric-card metric-green">
-                  <div className="metric-icon">
-                    <CheckCircle2 size={20} />
-                  </div>
-                  <div>
-                    <p>Concluídos no mês</p>
-                    <strong>{totalConcluidos}</strong>
-                  </div>
-                </article>
-
-                <article
-                  className="metric-card metric-gold"
-                  onClick={() => setShowAReceberModal(true)}
-                  style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                  onMouseEnter={(event) => {
-                    event.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(event) => {
-                    event.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  <div className="metric-icon">
-                    <DollarSign size={20} />
-                  </div>
-                  <div>
-                    <p>A receber / Faturado</p>
-                    <strong>R$ {totalValor.toFixed(2).replace('.', ',')}</strong>
-                  </div>
-                </article>
-              </div>
-
-              <div
-                className="completion-card"
-                onClick={() => setShowProgressoModal(true)}
-                style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                <div className="completion-header">
-                  <div>
-                    <h3>Progresso do mês</h3>
-                    <p>{percentualConcluido}% concluído</p>
-                  </div>
-                  <strong>{totalConcluidos}/{leituras.length}</strong>
                 </div>
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${percentualConcluido}%` }} />
-                </div>
-              </div>
-            </section>
-          </>
+              </section>
+            </div>
+          </div>
         )}
 
         {abaAtiva === 'leituras' && (
@@ -308,7 +334,7 @@ const MainApp = ({ onLogout }) => {
         )}
 
         {abaAtiva === 'cadastrar' && (
-          <div className="app-content">
+          <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#eff6ff' }}>
             <LeituraForm
               adicionarLeitura={handleAdicionarLeitura}
               adicionarEmLote={adicionarEmLote}
@@ -319,12 +345,14 @@ const MainApp = ({ onLogout }) => {
         )}
 
         {abaAtiva === 'perfil' && (
-          <Perfil
-            onShowToast={showToast}
-            onNavigate={setAbaAtiva}
-            onRefresh={() => recarregarCondominios()}
-            onLogout={onLogout}
-          />
+          <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#eff6ff' }}>
+            <Perfil
+              onShowToast={showToast}
+              onNavigate={setAbaAtiva}
+              onRefresh={() => recarregarCondominios()}
+              onLogout={onLogout}
+            />
+          </div>
         )}
 
         <ModalAviso
@@ -358,6 +386,10 @@ const MainApp = ({ onLogout }) => {
       </div>
       <AutoSyncIndicator />
       <Toast {...toast} onClose={dismissToast} />
+      <BackupFotosMenu 
+        isOpen={showBackupFotosModal} 
+        onClose={() => setShowBackupFotosModal(false)} 
+      />
     </>
   );
 };

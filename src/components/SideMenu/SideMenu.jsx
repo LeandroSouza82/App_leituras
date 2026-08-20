@@ -1,13 +1,10 @@
 import React from 'react';
 import { X, Layers, LogOut, FolderSync } from 'lucide-react';
 import { supabase } from '../../services/supabase';
-import BackupFotosMenu from '../BackupFotosMenu/BackupFotosMenu';
 import './SideMenu.css';
 
 const SideMenu = ({ isOpen, onClose }) => {
-  const [isBackupMenuOpen, setIsBackupMenuOpen] = React.useState(false);
-
-  if (!isOpen && !isBackupMenuOpen) return null;
+  if (!isOpen) return null;
 
   const handleLogout = async () => {
     if (!window.confirm('Deseja realmente sair da sua conta?')) return;
@@ -54,21 +51,6 @@ const SideMenu = ({ isOpen, onClose }) => {
         <div className="side-menu-content">
           <div className="side-menu-section-title">Ações e Configurações</div>
           <ul className="side-menu-list">
-            <li>
-              <button 
-                type="button" 
-                className="side-menu-item"
-                onClick={() => setIsBackupMenuOpen(true)}
-              >
-                <div className="side-menu-item-icon">
-                  <FolderSync size={20} />
-                </div>
-                <div className="side-menu-item-info">
-                  <strong>Gerenciar Fotos</strong>
-                  <span>Backups e Compartilhamento</span>
-                </div>
-              </button>
-            </li>
             {/* Outras opções de navegação futuramente */}
           </ul>
         </div>
@@ -86,10 +68,6 @@ const SideMenu = ({ isOpen, onClose }) => {
           <p className="side-menu-version">Versão 1.0.1 • Fast Leituras</p>
         </footer>
       </aside>
-      <BackupFotosMenu 
-        isOpen={isBackupMenuOpen} 
-        onClose={() => setIsBackupMenuOpen(false)} 
-      />
     </div>
   );
 };

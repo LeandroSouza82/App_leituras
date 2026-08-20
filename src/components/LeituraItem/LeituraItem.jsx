@@ -201,7 +201,21 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
         <input type="checkbox" checked={Boolean(leitura.completo)} onChange={handleCheckboxClick} />
         <div className="item-info">
           <div className="card-header">
-            <h3 className="card-title">{leitura.nome}</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16" />
+                <path d="M9 7h1" />
+                <path d="M14 7h1" />
+                <path d="M9 11h1" />
+                <path d="M14 11h1" />
+                <path d="M9 15h1" />
+                <path d="M14 15h1" />
+                <path d="M10 21v-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3" />
+              </svg>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1F2937' }}>
+                {leitura.nome}
+              </h2>
+            </div>
             <span className={`badge-dia ${badgeDayClass}`}>{badgeText}</span>
           </div>
           <div className="item-info-top">

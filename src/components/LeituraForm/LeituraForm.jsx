@@ -206,11 +206,14 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
 
   return (
     <>
-      <section className="form-card">
-      <div className="form-heading">
-        <h2>Nova leitura</h2>
-        <p>Cadastre condomínio, data, apartamentos e valor.</p>
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--primary-color)', padding: '24px 16px 16px' }}>
+        <h2 style={{ color: '#ffffff', margin: '0 0 4px', fontSize: '1.25rem' }}>Nova leitura</h2>
+        <p style={{ color: 'rgba(255, 255, 255, 0.8)', margin: 0, fontSize: '0.9rem' }}>Cadastre condomínio, data, apartamentos e valor.</p>
       </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
+        <div style={{ width: 'min(100%, 760px)', margin: '0 auto' }}>
+        <section className="form-card">
 
       <form className="form-grid" onSubmit={handleSubmit}>
         <label className="field field-full">
@@ -284,9 +287,9 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
           />
         </div>
       </form>
-      </section>
-
-
+        </section>
+        </div>
+      </div>
 
       <Toast {...toast} onClose={dismissToast} />
     </>

@@ -1,7 +1,8 @@
 .perfil-page {
-  width: min(100%, 760px);
-  margin: 0 auto;
-  padding: 24px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
   color: var(--text-main);
   animation: perfil-enter 320ms ease both;
 }
@@ -188,19 +189,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   min-height: 42px;
   padding: 10px 14px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 16px;
   font-size: 0.86rem;
   font-weight: 800;
   cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  transition: all 0.2s ease;
 }
 
 .perfil-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .perfil-button:disabled {
@@ -211,23 +212,24 @@
 .perfil-button-primary {
   background: var(--primary-color);
   color: #ffffff;
-  box-shadow: 0 5px 12px rgba(30, 136, 229, 0.2);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
 }
 
 .perfil-button-secondary {
   width: 100%;
   margin-top: 16px;
-  border-color: var(--border-color);
-  background: #f8fafc;
-  color: var(--primary-dark);
+  border: 1.5px solid #E2E8F0;
+  background: #F8FAFC;
+  color: var(--primary-color);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.05);
 }
 
 .perfil-button-danger {
   width: 100%;
   margin-top: 16px;
-  background: #dc2626;
+  background: #EF4444;
   color: #ffffff;
-  box-shadow: 0 5px 12px rgba(220, 38, 38, 0.2);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
 .perfil-sync-status {

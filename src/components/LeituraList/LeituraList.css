@@ -16,7 +16,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background: var(--bg-app);
+  background: var(--primary-color);
   padding: 0 0 12px;
   flex-shrink: 0;
 }
@@ -29,6 +29,7 @@
   margin: 0 0 4px;
   color: #ffffff;
   font-size: 1.25rem;
+  font-weight: 700;
 }
 
 .list-header p {
@@ -60,18 +61,22 @@
 
 .busca-input {
   width: 100%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-main);
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
   font-size: 0.95rem;
   outline: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.busca-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .busca-input:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.15);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.4);
 }

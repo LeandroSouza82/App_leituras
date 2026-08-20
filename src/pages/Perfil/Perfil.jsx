@@ -191,7 +191,7 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
 
   return (
     <main className="perfil-page" aria-labelledby="perfil-title">
-      <header className="perfil-header">
+      <header className="perfil-header" style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--primary-color)', padding: '24px 16px 16px', marginBottom: 0 }}>
         <div className="perfil-avatar" aria-hidden="true">
           {initials || <UserRound size={30} />}
         </div>
@@ -205,6 +205,9 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
         </div>
         <span className="perfil-status"><span /> {perfilRole}</span>
       </header>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
+        <div style={{ width: 'min(100%, 760px)', margin: '0 auto' }}>
 
       <form className="perfil-card" onSubmit={handleSaveData}>
         <div className="perfil-card-heading">
@@ -279,6 +282,8 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
           Sair da conta
         </button>
       </section>
+        </div>
+      </div>
     </main>
   );
 };
