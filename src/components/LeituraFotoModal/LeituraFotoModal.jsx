@@ -538,6 +538,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       const payload = {
+        condominio_id: leitura.id,
         unidade_id: unidadeId,
         servico: tipoMedicaoAtivo.toUpperCase(),
         leitura_atual: parseFloat(String(valor).replace(',', '.')),
@@ -562,8 +563,31 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         try {
           let fotoUrlSupabase = fotoUrl;
 
-          // Se tem arquivo local, faz upload para o Storage do Supabase
-          if (localFileName) {
+          // Envio super-rápido otimizado usando a versão da memória (fotoBanco comprimida)
+          if (fotoUrl && fotoUrl.startsWith('data:image/jpeg;base64,')) {
+            const base64Data = fotoUrl.split(',')[1];
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Uint8Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const blob = new Blob([byteNumbers], { type: 'image/jpeg' });
+            const cleanFileName = localFileName ? localFileName.split('/').pop() : `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
+            const remotePath = `leituras/${Date.now()}_${cleanFileName}`;
+
+            const { error: uploadError } = await supabase.storage
+              .from('fotos_leituras')
+              .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
+
+            if (!uploadError) {
+              const { data: publicUrlData } = supabase.storage
+                .from('fotos_leituras')
+                .getPublicUrl(remotePath);
+              fotoUrlSupabase = publicUrlData?.publicUrl || fotoUrl;
+            }
+          }
+          // Fallback para arquivo físico apenas se a imagem não estiver na RAM
+          else if (localFileName) {
             const rawData = await StorageService.readFile(localFileName);
             if (rawData) {
               const byteCharacters = atob(rawData);
@@ -572,7 +596,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 byteNumbers[i] = byteCharacters.charCodeAt(i);
               }
               const blob = new Blob([byteNumbers], { type: 'image/jpeg' });
-              const remotePath = `leituras/${Date.now()}_${localFileName}`;
+              const cleanFileName = localFileName.split('/').pop();
+              const remotePath = `leituras/${Date.now()}_${cleanFileName}`;
 
               const { error: uploadError } = await supabase.storage
                 .from('fotos_leituras')
@@ -644,16 +669,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         correctOrientation: true
       });
       
-      // Passa a foto nativa para a função de carimbar que já fizemos
-      await handleCaptureAndSave(photo, null);
+      // Passa a foto nativa para a função de carimbar, ISOLANDO a unidade atual via apto
+      await handleCaptureAndSave(photo, null, apto);
     } catch (error) {
       console.log("Usuário cancelou ou erro na câmera:", error);
     }
   };
 
   // Novo fluxo All-in-One: Captura a foto e já recebe o valor digitado
-  const handleCaptureAndSave = async (base64, valorLeitura) => {
-    const apto = activeApto;
+  const handleCaptureAndSave = async (base64, valorLeitura, aptoOverride = null) => {
+    // Isolamento cirúrgico de ID de unidade (Impede sobrescrever de outras)
+    const apto = aptoOverride || activeApto;
     if (!apto) return;
 
     try {
@@ -694,6 +720,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: `data:image/jpeg;base64,${fotoBanco}` }
       }));
+
+      // Abre automaticamente o modal de preview/digitação para a unidade capturada
+      setIsPreviewOpen(true);
 
       // NÃO salva a leitura automaticamente nem a marca como concluída, 
       // para evitar o erro de "Valor da leitura ausente."
@@ -864,6 +893,26 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleExportar = async () => {
+    // 1. Validação Pré-Envio (Trava de Segurança Crítica)
+    for (const apto of listaCompleta) {
+      const fotoServicos = fotosCapturadas[apto] || {};
+      const concluidoServicos = concluidosMemoria[apto] || {};
+      const valorServicos = leiturasValores[apto] || {};
+
+      const servicosComRegistro = new Set([
+        ...Object.keys(fotoServicos),
+        ...Object.keys(concluidoServicos)
+      ]);
+
+      for (const servico of servicosComRegistro) {
+        const valor = valorServicos[servico];
+        if (valor === undefined || valor === null || String(valor).trim() === '') {
+          alert(`Atenção: O apartamento ${apto} possui foto ou registro mas está sem a leitura digitada. Preencha antes de enviar!`);
+          return; // Bloqueia o envio
+        }
+      }
+    }
+
     const apenasAtivo = window.confirm(
       `Deseja exportar apenas as leituras de ${tipoMedicaoAtivo.toUpperCase()}? (Clique em "Cancelar" para exportar TODOS os serviços consolidados)`
     );

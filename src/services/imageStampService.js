@@ -40,7 +40,7 @@ export const ImageStampService = {
         const fotoWhatsApp = dataUrlWhatsApp.split(',')[1] || dataUrlWhatsApp;
         
         // VERSÃO 2: Compressão máxima para o Banco de Dados (Supabase)
-        const MAX_WIDTH = 800; // Redimensiona para economizar espaço
+        const MAX_WIDTH = 1200; // Redimensiona para economizar espaço conforme solicitado
         const proporcao = MAX_WIDTH / canvas.width;
         
         const novoCanvas = document.createElement('canvas');
@@ -49,8 +49,8 @@ export const ImageStampService = {
         const novoCtx = novoCanvas.getContext('2d');
         novoCtx.drawImage(canvas, 0, 0, novoCanvas.width, novoCanvas.height);
         
-        // Qualidade esmagada (0.5) para ficar extremamente leve no estado offline/banco
-        const dataUrlBanco = novoCanvas.toDataURL('image/jpeg', 0.5);
+        // Qualidade 0.7 para ficar extremamente leve no estado offline/banco
+        const dataUrlBanco = novoCanvas.toDataURL('image/jpeg', 0.7);
         const fotoBanco = dataUrlBanco.split(',')[1] || dataUrlBanco;
         
         resolve({ fotoWhatsApp, fotoBanco });
