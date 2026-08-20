@@ -113,7 +113,6 @@ export const UCondoImportService = {
         workbook = XLSX.read(fileData, { type: 'array' });
       }
     } catch (readErr) {
-      console.error('[UCondoImport] Falha na leitura inicial com SheetJS, tentando fallback binary:', readErr);
       try {
         workbook = XLSX.read(fileData, { type: 'binary' });
       } catch (fallbackErr) {
@@ -239,10 +238,8 @@ export const UCondoImportService = {
 
         const { error: insertError } = await supabase.from('unidades').insert(unidadesParaInserir);
         if (insertError) {
-          console.warn('[UCondoImportService] Aviso na inserção em lote no Supabase:', insertError);
         }
       } catch (err) {
-        console.warn('[UCondoImportService] Erro ao sincronizar unidades com Supabase:', err);
       }
     }
   },
@@ -386,7 +383,6 @@ export const UCondoImportService = {
               }) || null;
             }
           } catch (errDb) {
-            console.warn('[UCondoImportService] Aviso na busca no Supabase:', errDb);
           }
         }
 
@@ -480,7 +476,6 @@ export const UCondoImportService = {
 
       throw new Error('Nenhuma coluna de Unidades do uCondo nem lista de condomínios válida encontrada.');
     } catch (error) {
-      console.error('[UCondoImportService] Erro no processamento:', error);
       throw error;
     }
   },
@@ -528,7 +523,6 @@ export const UCondoImportService = {
         totalUnidades: unidades.length,
       };
     } catch (error) {
-      console.error('[UCondoImportService] Erro ao criar condomínio a partir de planilha:', error);
       throw error;
     }
   },
@@ -578,7 +572,6 @@ export const UCondoImportService = {
           }
         }
       } catch (errParse) {
-        console.warn('[UCondoImportService] Aviso na verificação de nome da planilha:', errParse);
       }
 
       if (unidadesAtuais && unidadesAtuais.length > 0) {
@@ -593,7 +586,6 @@ export const UCondoImportService = {
       await this.persistirUnidadesLocal(condominioId, novasUnidades);
       return novasUnidades;
     } catch (error) {
-      console.error('[UCondoImportService] Erro ao atualizar unidades:', error);
       throw error;
     }
   }

@@ -75,7 +75,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         alert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
       }
     } catch (err) {
-      console.error('[LeituraFotoModal] Erro ao importar planilha:', err);
       alert('Erro ao processar a planilha: ' + err.message);
     } finally {
       if (e.target) e.target.value = '';
@@ -111,10 +110,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             });
             if (fileResult.data) {
               unidadesParaCarregar = JSON.parse(fileResult.data);
-              console.log('[Offline] Unidades carregadas do Filesystem');
             }
           } catch (fsError) {
-            console.log('[Offline] Arquivo JSON não encontrado, tentando localStorage...');
           }
 
           // 3. Fallback para localStorage se FS falhar
@@ -122,7 +119,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             const salvas = localStorage.getItem(storageKey);
             if (salvas) {
               unidadesParaCarregar = JSON.parse(salvas);
-              console.log('[Offline] Unidades carregadas do localStorage');
             }
           }
 
@@ -135,7 +131,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
             if (!supaErr && unidadesData && unidadesData.length > 0) {
               unidadesParaCarregar = unidadesData.map(u => u.numero || u.identificador || u.unidade);
-              console.log('[Online] Unidades carregadas do Supabase');
             }
           }
 
@@ -144,13 +139,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             const locais = getUnidadesOffline(leitura.nome);
             if (locais) {
               unidadesParaCarregar = locais;
-              console.log('[Default] Unidades carregadas do registro offline estático');
             }
           }
 
           setUnidadesAtualizadas(unidadesParaCarregar);
         } catch (error) {
-          console.error('Erro no carregamento inicial da modal:', error);
         }
       };
 
@@ -184,7 +177,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           mapa['Geral'].push(unidadeFormatada);
         }
       } catch (err) {
-        console.error('Erro ao processar unidade:', unidade, err);
       }
     });
 
@@ -226,7 +218,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const verificarFotosSalvas = async () => {
     if (!leitura?.id) return;
     try {
-      console.log('[FileSystem] Iniciando varredura de fotos');
       
       const safeCondName = sanitizeName(leitura.nome);
       const pastaCondominio = `FastLeituras/${safeCondName}`;
@@ -268,7 +259,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         }
       } catch (err) {
-        console.log('[FileSystem] Pasta organizada ainda não existe ou vazia:', err.message);
       }
 
       // 2. LER DO PADRÃO ANTIGO (Fallback na Raiz)
@@ -298,7 +288,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               valoresSalvos[unidade][servico] = localVal;
             }
           } catch (readErr) {
-            console.error('Erro ao obter URI da foto antiga:', fileName, readErr);
           }
         }
       }
@@ -323,7 +312,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         }
       } catch (e) {
-        console.warn('[LeituraFotoModal] Erro ao carregar valores de leituras do localStorage:', e);
       }
 
       setFotosCapturadas(capturadas);
@@ -346,7 +334,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         }
       } catch (e) {
-        console.warn('[LeituraFotoModal] Erro ao ler memória de concluídos do localStorage:', e);
       }
       setConcluidosMemoria(concluidosSalvos);
 
@@ -384,7 +371,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           path: fullNewPath,
           directory: Directory.Cache
         });
-        console.log('[ExcluirFoto] Foto nova removida:', fullNewPath);
       } catch (e) {
         // Ignora se não existir
       }
@@ -394,7 +380,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       for (const file of filesAntigos) {
         if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
           await StorageService.deleteFile(file);
-          console.log('[ExcluirFoto] Fantasma antigo destruído:', file);
         }
       }
 
@@ -415,7 +400,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         });
       } catch (storageErr) {
-        console.warn('[ExcluirFoto] Erro ao limpar pendências:', storageErr);
       }
 
       // 4. Tenta remover do Supabase (falha não bloqueia)
@@ -426,7 +410,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             servico: tipoServico,
           });
         } catch (supaErr) {
-          console.error("Erro ao deletar no Supabase:", supaErr);
         }
       }
 
@@ -472,7 +455,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setIsPreviewOpen(false);
 
       // Feedback opcional para você ver que funcionou:
-      console.log(`Sucesso: foto(s) e evidências locais removidas do aparelho.`);
 
     } catch (error) {
       alert('Erro ao excluir foto: ' + error.message);
@@ -621,13 +603,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
           if (!dbError) {
             syncedDirectly = true;
-            console.log('[LeituraFotoModal] Leitura sincronizada diretamente com o Supabase. Foto física preservada no disco.');
             window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
           } else {
-            console.warn('[LeituraFotoModal] Erro no insert do DB, salvando na fila offline:', dbError.message);
           }
         } catch (syncErr) {
-          console.warn('[LeituraFotoModal] Falha no sync direto, direcionando para fila offline:', syncErr.message);
         } finally {
           window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
         }
@@ -637,7 +616,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Enfileira automaticamente via salvarLeituraOffline
       if (!syncedDirectly) {
         await salvarLeituraOffline(payload, null, localFileName);
-        console.log('[LeituraFotoModal] Leitura salva na fila offline para sincronização automática em background.');
         
         // ✅ Feedback visual: exibe o toast verde APENAS se estiver offline
         if (!isOnline) {
@@ -649,7 +627,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setIsPreviewOpen(false);
 
     } catch (error) {
-      console.error('Erro ao salvar leitura:', error);
       alert('❌ Erro inesperado ao salvar: ' + error.message);
     }
   };
@@ -672,7 +649,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Passa a foto nativa para a função de carimbar, ISOLANDO a unidade atual via apto
       await handleCaptureAndSave(photo, null, apto);
     } catch (error) {
-      console.log("Usuário cancelou ou erro na câmera:", error);
     }
   };
 
@@ -684,7 +660,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     try {
       setIsProcessing(true);
-      console.log('[Camera] Base64 recebido. Tamanho:', base64.length, 'chars');
 
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
@@ -702,11 +677,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       };
       
       const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
-      console.log('[Camera] Carimbo de Dupla Compressão aplicado com sucesso');
 
       // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
       const savedFile = await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
-      console.log('[Camera] Foto WhatsApp salva na pasta estruturada:', savedFile.path);
 
       // 3. Limpeza de RAM imediata
       // (Variáveis de base64 agora saem de escopo naturalmente ao fechar a função)
@@ -729,7 +702,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     } catch (error) {
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
-      console.error('[Camera] Erro crítico no processamento pós-captura:', errMsg);
       alert('⚠️ Erro ao processar a foto. Tente novamente.\n(Detalhe: ' + errMsg + ')');
       setCustomCameraOpen(true); // mantém câmera aberta para nova tentativa
     } finally {
@@ -778,7 +750,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         });
       } catch (err) {
-        console.warn('[Retake] Erro ao limpar fila:', err);
       }
 
       // 3. Limpa no Supabase se possível (sem travar a UI se offline)
@@ -789,7 +760,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             servico: tipoServico,
           });
         } catch (supaErr) {
-          console.warn('[Retake] Erro ao deletar no Supabase:', supaErr?.message);
         }
       }
 
@@ -830,7 +800,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setIsPreviewOpen(false);
       handleDispararCamera(unidadeId);
     } catch (err) {
-      console.error('[Retake] Erro ao refazer foto:', err);
       setIsPreviewOpen(false);
       handleDispararCamera(activeApto);
     }
@@ -875,7 +844,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           recursive: true
         });
       } catch (fsErr) {
-        console.warn('[LeituraFotoModal] Pasta já não existe ou vazia:', fsErr.message);
       }
 
       // 3.5. Limpa cache legado na raiz se existir
@@ -886,9 +854,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       } catch (fsErr) {}
 
-      console.log(`[Ciclo Encerrado] Estado ativo do condomínio ${condominioId} resetado.`);
     } catch (e) {
-      console.warn('[LeituraFotoModal] Erro ao resetar estado ativo do condomínio:', e);
     }
   };
 
@@ -940,7 +906,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onClose();
       }
     } catch (err) {
-      console.error('[Exportação] Erro ao processar salvamento das leituras:', err);
       alert('Ocorreu um erro ao salvar as leituras. Tente novamente.');
     } finally {
       setExportando(false);

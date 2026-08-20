@@ -126,7 +126,6 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
     stoppedRef.current = false;
 
     if (!isNative) {
-      console.log("[CustomCamera] Ambiente Web detectado. Simulador ativo.");
       setIsReady(true);
       return;
     }
@@ -147,11 +146,9 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
         setIsReady(true);
       } catch (err) {
         if (err?.message === "camera already started" || err?.message?.includes("already started")) {
-          console.log("[CustomCamera] Câmera já estava rodando. Prosseguindo.");
           setIsReady(true);
           return;
         }
-        console.error("[CustomCamera] Erro Crítico ao iniciar câmera:", JSON.stringify(err, Object.getOwnPropertyNames(err)));
         forceStop();
         onClose();
       }
@@ -219,7 +216,6 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
     setIsFlashOn(nextState);
 
     if (!isNative) {
-      console.log("[CustomCamera] Lanterna simulada (Modo Web):", nextState ? "LIGADA ⚡" : "DESLIGADA");
       return;
     }
 
@@ -227,7 +223,6 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
       // 'torch' mantém a luz da lanterna acesa continuamente para iluminar o medidor escuro
       await CameraPreview.setFlashMode({ flashMode: nextState ? "torch" : "off" });
     } catch (err) {
-      console.error("[CustomCamera] Erro ao alternar flash:", err);
       alert("Este dispositivo pode não suportar o controle de lanterna.");
       setIsFlashOn(false);
     }
@@ -270,7 +265,6 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
       setIsCapturing(false);
     } catch (err) {
       const errMsg = err?.message || JSON.stringify(err) || "Erro desconhecido";
-      console.error("[CustomCamera] Falha na captura:", errMsg, err);
       setIsCapturing(false);
       alert("⚠️ Erro ao capturar foto. Tente novamente.\n(Detalhe técnico: " + errMsg + ")");
     }

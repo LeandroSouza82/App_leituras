@@ -55,7 +55,6 @@ export const ImageStampService = {
         
         resolve({ fotoWhatsApp, fotoBanco });
       } catch (error) {
-        console.error("Erro ao processar dupla compressão:", error);
         reject(error);
       }
     });

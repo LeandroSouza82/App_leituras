@@ -22,7 +22,6 @@ export const StorageService = {
 
       return true;
     } catch (error) {
-      console.error('[Storage] Erro ao salvar arquivo:', safeFileName, error);
       throw error;
     }
   },
@@ -38,7 +37,6 @@ export const StorageService = {
       });
       return result.data;
     } catch (error) {
-      console.error('[Storage] Erro ao ler arquivo:', fileName, error);
       throw error;
     }
   },
@@ -58,7 +56,6 @@ export const StorageService = {
       if (!prefix) return fileList;
       return fileList.filter(name => name.startsWith(prefix));
     } catch (error) {
-      console.error('[Storage] Erro ao listar arquivos:', error);
       return [];
     }
   },
@@ -74,7 +71,6 @@ export const StorageService = {
       });
       return true;
     } catch (error) {
-      console.warn('[Storage] Arquivo não encontrado para remoção:', fileName);
       return false;
     }
   }

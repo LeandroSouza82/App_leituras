@@ -139,7 +139,6 @@ const MainApp = ({ onLogout }) => {
           }
         }
       } catch (err) {
-        console.error('[ShareIntent] Erro ao processar planilha compartilhada:', err);
         alert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
         showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
       }
@@ -478,7 +477,6 @@ const App = () => {
           setSession(null);
         } else if (!navigator.onLine) {
           // Mantém a sessão local em caso de oscilação ou reconexão de rede
-          console.warn('[Auth] Oscilação de rede detectada. Mantendo sessão ativa localmente.');
         }
         setLoadingSession(false);
       }

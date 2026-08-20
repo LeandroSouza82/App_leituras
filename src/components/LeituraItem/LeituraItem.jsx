@@ -107,7 +107,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
 
-      console.log('[GPS] Coordenadas capturadas:', latitude, longitude);
 
       const { error } = await supabase
         .from('condominios')
@@ -121,7 +120,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
         onEdit(leitura.id, { latitude, longitude });
       }
     } catch (error) {
-      console.error('[GPS] Erro ao obter localização:', error);
       alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
     } finally {
       setCapturandoGpsId(null);
@@ -180,7 +178,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
         // Bypass COMPLETO da WebView: Comunica direto com a API Java/Kotlin do Android
         await AppLauncher.openUrl({ url: intentUrl });
       } catch (error) {
-        console.error("Falha ao lançar WhatsApp nativamente:", error);
         // Fallback de segurança para o discador caso dê erro extremo
         window.location.href = `tel:${modalContato}`;
       }

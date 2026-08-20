@@ -182,17 +182,13 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
   const carregarArquivosLocais = async () => {
     try {
-      console.log('[Importador] Iniciando varredura de arquivos locais...');
 
       // Debug: Ver o que tem na raiz do Directory.Data
       const rootDir = await Filesystem.readdir({ path: '', directory: Directory.Data });
-      console.log('[Importador] Conteúdo da raiz Data:', rootDir.files);
 
       const files = await FilePickerService.getLocalSpreadsheets();
       setLocalFiles(files);
-      console.log('[Importador] Arquivos carregados para o estado:', files.length);
     } catch (error) {
-      console.error('[Importador] Erro ao listar arquivos:', error);
     }
   };
 
@@ -248,7 +244,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
           return;
         }
       } catch (uCondoErr) {
-        console.log('[Importador] Não é planilha unitária do uCondo, tentando formato de lista geral...', uCondoErr);
       }
 
       // 3. Fallback: Planilha de Lista Geral de Múltiplos Condomínios
@@ -292,7 +287,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       // Atualiza a lista após nova importação
       carregarArquivosLocais();
     } catch (error) {
-      console.error('[Importador] Falha no processamento:', error);
       const errMsg = 'Erro na importação: ' + (error?.message || 'Arquivo incompatível');
       alert(errMsg);
       emitStatus(errMsg);
@@ -318,7 +312,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
       await processarBufferExcel(fileContents.data, fileData.name);
     } catch (error) {
-      console.error('[Importador] Erro na seleção:', error);
       alert('Erro na seleção do arquivo: ' + (error?.message || ''));
       emitStatus('Falha na seleção do arquivo.');
     }
@@ -326,14 +319,12 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
   const handleProcessLocalFile = async (file) => {
     try {
-      console.log('[Importador] Lendo arquivo local:', file.path);
       const fileContents = await Filesystem.readFile({
         path: file.path,
         directory: Directory.Data
       });
       await processarBufferExcel(fileContents.data, file.name);
     } catch (error) {
-      console.error('[Importador] Erro na leitura local:', error);
       emitStatus('Erro ao ler arquivo local.');
     }
   };

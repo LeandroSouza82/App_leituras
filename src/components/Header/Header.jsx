@@ -40,7 +40,6 @@ const Header = ({
     try {
       await gerarRelatorioLeiturasExcel(leituras || [], mesAnoFormatado || title, 1650);
     } catch (error) {
-      console.error('Erro na exportação:', error);
       alert('Erro ao exportar Excel: ' + error.message);
     }
   };

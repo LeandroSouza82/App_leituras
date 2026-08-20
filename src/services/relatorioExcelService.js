@@ -230,7 +230,6 @@ export const gerarRelatorioLeiturasExcel = async (dadosCondominios = [], mesAno 
         dialogTitle: 'Exportar Planilha Excel',
       });
     } catch (nativeErr) {
-      console.warn('[relatorioExcelService] Erro no Share nativo, usando saveAs fallback:', nativeErr);
       saveAs(blob, fileName);
     }
   } else {

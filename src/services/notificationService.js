@@ -74,7 +74,6 @@ export const NotificationService = {
         });
       }
     } catch (error) {
-      console.error('Erro ao agendar notificações:', error);
     }
   },
 

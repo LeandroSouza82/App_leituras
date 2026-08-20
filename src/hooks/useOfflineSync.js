@@ -12,7 +12,6 @@ const readPendingQueue = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (error) {
-    console.warn('Não foi possível ler a fila de leituras pendentes:', error);
     return [];
   }
 };
@@ -22,7 +21,6 @@ const writePendingQueue = (items) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     return true;
   } catch (error) {
-    console.warn('Não foi possível salvar a fila de leituras pendentes:', error);
     return false;
   }
 };
@@ -32,7 +30,6 @@ const readPendenciasOffline = () => {
     const raw = localStorage.getItem(PENDENCIAS_OFFLINE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (error) {
-    console.warn('Não foi possível ler pendências offline:', error);
     return [];
   }
 };
@@ -42,7 +39,6 @@ const writePendenciasOffline = (items) => {
     localStorage.setItem(PENDENCIAS_OFFLINE_KEY, JSON.stringify(items));
     return true;
   } catch (error) {
-    console.warn('Não foi possível salvar pendências offline:', error);
     return false;
   }
 };
@@ -85,7 +81,6 @@ export function useOfflineSync() {
       return;
     }
 
-    console.log('Reconectado! Sincronizando pendências offline com o Supabase...');
 
     const pendenciasRestantes = [];
 
@@ -118,7 +113,6 @@ export function useOfflineSync() {
           throw error;
         }
       } catch (err) {
-        console.error('Falha ao sincronizar item pendente:', item.id, err);
         pendenciasRestantes.push(item);
       }
     }
@@ -156,7 +150,6 @@ export function useOfflineSync() {
           throw error;
         }
       } catch (err) {
-        console.warn('Falha ao sincronizar item pendente:', item, err);
         naoEnviados.push(item);
       }
     }

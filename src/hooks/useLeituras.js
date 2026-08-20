@@ -78,7 +78,6 @@ export const useLeituras = (onFeedback = () => {}) => {
       const falhaDeRede = mensagemErro.includes('Failed to fetch') || !navigator.onLine;
 
       if (falhaDeRede) {
-        console.warn('Alteração salva localmente (offline). Sincronizará ao reconectar.');
 
         try {
           const pendencias = JSON.parse(localStorage.getItem('pendencias_offline') || '[]');
@@ -90,7 +89,6 @@ export const useLeituras = (onFeedback = () => {}) => {
           });
           localStorage.setItem('pendencias_offline', JSON.stringify(pendencias));
         } catch (storageError) {
-          console.warn('Não foi possível persistir pendência offline:', storageError);
         }
 
         return;

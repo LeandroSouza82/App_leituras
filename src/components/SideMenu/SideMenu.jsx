@@ -20,7 +20,6 @@ const SideMenu = ({ isOpen, onClose }) => {
       // Redireciona para acionar o ciclo natural de autenticação (Splash -> Login)
       window.location.href = '/';
     } catch (error) {
-      console.error('[SideMenu] Erro ao fazer logout:', error);
       window.location.href = '/';
     }
   };

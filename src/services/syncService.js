@@ -34,7 +34,6 @@ export const writeFilaSync = (items) => {
     const safeItems = Array.isArray(items) ? items : [];
     localStorage.setItem(FILA_SYNC_KEY, JSON.stringify(safeItems));
   } catch (err) {
-    console.warn('[SyncService] Erro ao gravar fila local:', err);
   }
 };
 
@@ -70,7 +69,6 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
           recursive: true
         });
       } catch (fsErr) {
-        console.warn('[SyncService] Aviso ao gravar arquivo no disco:', fsErr?.message);
       }
     }
 
@@ -99,7 +97,6 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
     }
 
     writeFilaSync(filaAtual);
-    console.log('[SyncService] Leitura salva na fila local para sincronização:', itemFila);
 
     // Se estiver online, tenta sincronizar imediatamente em background
     Network.getStatus().then(status => {
@@ -110,7 +107,6 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
 
     return true;
   } catch (error) {
-    console.error('[SyncService] Erro ao salvar leitura offline:', error);
     return false;
   }
 }
@@ -124,14 +120,12 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
  */
 export async function sincronizarFilaEmBackground() {
   if (isSyncRunning) {
-    console.log('[SyncService] Sincronização já em andamento, ignorando chamada concorrente.');
     return;
   }
 
   try {
     const status = await Network.getStatus();
     if (!status.connected) {
-      console.log('[SyncService] Dispositivo offline. Sincronização postergada.');
       return;
     }
 
@@ -142,7 +136,6 @@ export async function sincronizarFilaEmBackground() {
 
     isSyncRunning = true;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
-    console.log(`[SyncService] Sincronizando ${fila.length} itens da fila em background...`);
 
     const { data: { user } } = await supabase.auth.getUser();
     const userIdPadrao = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
@@ -176,7 +169,6 @@ export async function sincronizarFilaEmBackground() {
               publicPhotoUrl = publicUrlData?.publicUrl || null;
             }
           } catch (fileErr) {
-            console.warn('[SyncService] Aviso no upload da foto local:', item.fileName, fileErr?.message);
           }
         }
 
@@ -195,25 +187,20 @@ export async function sincronizarFilaEmBackground() {
           .insert([payloadEnvio]);
 
         if (dbError) {
-          console.warn('[SyncService] Aviso no insert do Supabase:', dbError.message);
         }
 
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.
         // O arquivo físico permanece no disco no Directory.Data para preview/auditoria.
         const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
         writeFilaSync(filaAtualizada);
-        console.log('[SyncService] Item sincronizado e removido da fila:', item.unidade_id, item.servico);
 
       } catch (itemErr) {
-        console.error('[SyncService] Falha ao processar item da fila:', item.id, itemErr?.message);
       }
     }
 
-    console.log('[SyncService] Fila de background processada com sucesso.');
     window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
 
   } catch (globalErr) {
-    console.error('[SyncService] Erro durante sincronização em background:', globalErr);
   } finally {
     isSyncRunning = false;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
@@ -231,7 +218,6 @@ export function iniciarObservadorRede() {
 
   try {
     Network.addListener('networkStatusChange', async (status) => {
-      console.log('[SyncService] Conectividade alterada:', status.connected ? 'ONLINE' : 'OFFLINE');
       if (status.connected) {
         setTimeout(() => {
           sincronizarFilaEmBackground();
@@ -245,8 +231,6 @@ export function iniciarObservadorRede() {
       }
     }).catch(() => {});
 
-    console.log('[SyncService] Observador de rede iniciado.');
   } catch (err) {
-    console.warn('[SyncService] Falha ao iniciar observador de rede:', err);
   }
 }

@@ -50,7 +50,6 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
       setLeituraValor('');
       onClose();
     } catch (error) {
-      console.error('Erro ao salvar leitura:', error);
       alert('Erro ao sincronizar leitura: ' + error.message);
     } finally {
       setIsSaving(false);

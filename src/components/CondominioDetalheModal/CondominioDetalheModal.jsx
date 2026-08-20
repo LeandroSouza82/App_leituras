@@ -73,7 +73,6 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
 
-      console.log('[GPS] Coordenadas capturadas:', latitude, longitude);
 
       const { error } = await supabase
         .from('condominios')
@@ -92,7 +91,6 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
         alert('📍 Localização GPS salva com sucesso!');
       }
     } catch (error) {
-      console.error('[GPS] Erro ao obter localização:', error);
       alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
     } finally {
       setCapturandoGps(false);
@@ -132,7 +130,6 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
         window.open(urlMapas, '_blank');
       }
     } catch (err) {
-      console.warn('[CondominioDetalheModal] Falha ao abrir via Browser.open:', err);
       window.open(urlMapas, '_blank');
     }
   };

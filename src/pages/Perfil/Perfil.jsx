@@ -148,7 +148,6 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
       await onRefresh();
       onShowToast('Dados locais e da sessão atualizados.');
     } catch (error) {
-      console.error('Erro ao sincronizar:', error);
       onShowToast('Erro ao atualizar os dados.', 'error');
     } finally {
       setRefreshing(false);

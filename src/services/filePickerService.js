@@ -35,7 +35,6 @@ export const FilePickerService = {
         directory: Directory.Data
       });
 
-      console.log('[FilePicker] Arquivo persistido em:', uriResult.uri);
 
       return {
         name: file.name,
@@ -46,10 +45,8 @@ export const FilePickerService = {
       };
     } catch (error) {
       if (error && error.message && error.message.toLowerCase().includes('cancel')) {
-        console.log('[FilePicker] Seleção de arquivo cancelada pelo usuário.');
         return null;
       }
-      console.error('[FilePicker] Falha na seleção/salvamento:', error);
       throw error;
     }
   },
@@ -73,14 +70,12 @@ export const FilePickerService = {
         directory: Directory.Data,
       });
 
-      console.log(`[FilePicker] Varredura em ${targetDir}:`, files);
 
       return files.map(file => ({
         name: typeof file === 'string' ? file : file.name,
         path: `${targetDir}/${typeof file === 'string' ? file : file.name}`
       }));
     } catch (error) {
-      console.error('[FilePicker] Erro na varredura local:', error);
       return [];
     }
   }

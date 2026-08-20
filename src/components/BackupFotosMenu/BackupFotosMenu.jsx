@@ -34,7 +34,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       try {
         dbCondominios = await buscarCondominios();
       } catch (e) {
-        console.warn('[BackupFotosMenu] Não foi possível buscar condomínios para nomes originais.');
       }
 
       const pastasEncontradas = [];
@@ -71,13 +70,11 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
             }
           }
         } catch (e) {
-          console.warn('Erro ao ler detalhes da pasta:', nomePasta, e);
         }
       }
 
       setCondominios(pastasEncontradas);
     } catch (e) {
-      console.log('Pasta FastLeituras ainda não existe ou está vazia.');
       setCondominios([]);
     } finally {
       setIsLoading(false);
@@ -122,7 +119,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
           
           fileUris.push(savedFile.uri);
         } catch (err) {
-          console.error(`Erro ao processar foto ${fileName} para compartilhamento:`, err);
         }
       }
 
@@ -142,7 +138,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       await Share.share(shareOptions);
 
     } catch (e) {
-      console.error('[BackupFotosMenu] Erro ao compartilhar:', e);
       alert('Ocorreu um erro ao compartilhar: ' + e.message);
     } finally {
       setIsSharing(false);
@@ -167,7 +162,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         setExpandedCondo(null);
       }
     } catch (err) {
-      console.error('Erro ao excluir lote:', err);
       alert('Ocorreu um erro ao excluir o lote: ' + err.message);
     }
   };

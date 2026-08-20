@@ -28,7 +28,6 @@ export const CameraService = {
         format: photo.format
       };
     } catch (error) {
-      console.error('[Camera] Erro na captura da foto:', error);
       throw error;
     }
   },
@@ -58,11 +57,9 @@ export const CameraService = {
 
       const webUrl = Capacitor.convertFileSrc(finalUri.uri);
 
-      console.log('[FileSystem] Foto persistida com sucesso na raiz:', fileName);
 
       return { path: fileName, uri: finalUri.uri, webUrl };
     } catch (error) {
-      console.error('[FileSystem] Erro ao gravar arquivo:', error);
       throw error;
     }
   },
@@ -87,11 +84,9 @@ export const CameraService = {
 
       const webUrl = Capacitor.convertFileSrc(finalUri.uri);
 
-      console.log('[FileSystem] Foto persistida com sucesso na pasta:', fullPath);
 
       return { path: fullPath, uri: finalUri.uri, webUrl };
     } catch (error) {
-      console.error('[FileSystem] Erro ao gravar arquivo na pasta:', error);
       throw error;
     }
   },
@@ -125,7 +120,6 @@ export const CameraService = {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('[Supabase] Falha no upload:', error);
       throw error;
     }
   }

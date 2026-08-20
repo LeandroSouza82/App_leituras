@@ -25,7 +25,6 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
         onClose();
       }
     } catch (err) {
-      console.error('Erro ao abrir câmera Capacitor:', err);
       const msg = String(err?.message || '');
       if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('cancelled')) {
         alert('Erro ao acessar a câmera: ' + msg);

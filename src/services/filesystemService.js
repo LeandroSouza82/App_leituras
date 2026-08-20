@@ -21,7 +21,6 @@ export async function salvarArquivoSeguro(pathCompleto, dados, encoding = null) 
     partes.pop(); // Remove o nome do arquivo (ex: unidades.json)
     const caminhoDaPasta = partes.join('/');
 
-    console.log("[FileSystem] Preparando diretório:", caminhoDaPasta);
 
     // 3. Cria a pasta pai garantidamente
     if (caminhoDaPasta) {
@@ -64,11 +63,9 @@ export async function salvarArquivoSeguro(pathCompleto, dados, encoding = null) 
     // 6. Salva o arquivo com recursive: true
     await Filesystem.writeFile(writeOptions);
 
-    console.log("[FileSystem] Arquivo salvo com sucesso em:", pathLimpo);
     return true;
 
   } catch (err) {
-    console.error("[FileSystem] ERRO CRÍTICO AO SALVAR ARQUIVO:", err);
     throw err; // Repassa o erro para o UI mostrar a mensagem
   }
 }
@@ -100,7 +97,6 @@ export async function lerArquivoSeguro(pathCompleto, encoding = null) {
     const result = await Filesystem.readFile(readOptions);
     return result.data;
   } catch (err) {
-    console.error("[FileSystem] ERRO AO LER ARQUIVO:", err);
     throw err;
   }
 }

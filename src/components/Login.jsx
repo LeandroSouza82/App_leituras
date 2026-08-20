@@ -223,9 +223,6 @@ const Login = ({ onLoginSuccess }) => {
       if (error) throw error;
 
       if (data?.session) {
-        console.log('✅ Usuário autenticado com sucesso!');
-        console.log('UUID do Usuário:', data.session.user.id);
-        console.log('E-mail logado:', data.session.user.email);
 
         setFeedback({
           tipo: 'sucesso',
@@ -240,7 +237,6 @@ const Login = ({ onLoginSuccess }) => {
 
       throw new Error('Sessão não foi retornada pelo Supabase.');
     } catch (err) {
-      console.error('❌ Erro na autenticação:', err.message);
       setFeedback({
         tipo: 'erro',
         mensagem: err.message || 'Falha ao autenticar. Verifique seus dados.',

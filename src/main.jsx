@@ -13,14 +13,12 @@ if (typeof window !== 'undefined') {
   // Intercepta e previne reloads disparados no evento de reconexão de rede (online)
   window.addEventListener('online', (event) => {
     event.stopImmediatePropagation?.();
-    console.log('[Network] Conexão restabelecida. Reload automático de janela bloqueado.');
   }, true);
 
   // Se houver Service Worker ativo, previne recarregamentos automáticos no controllerchange
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('controllerchange', (event) => {
       event.stopImmediatePropagation?.();
-      console.log('[SW] Controller alterado. Automatic window reload bloqueado.');
     }, true);
   }
 }

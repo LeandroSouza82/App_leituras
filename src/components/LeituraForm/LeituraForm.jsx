@@ -106,7 +106,6 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
           return;
         }
       } catch (uCondoErr) {
-        console.log('[LeituraForm] Não é planilha uCondo unitária, tentando formato geral...', uCondoErr);
       }
 
       // 3. Fallback: Lista geral de condomínios
@@ -124,7 +123,6 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
         onImportSuccess(registros.length);
       }
     } catch (err) {
-      console.error('[LeituraForm] Erro ao importar planilha:', err);
       alert('Erro na importação: ' + (err?.message || 'Arquivo incompatível'));
       showToast('Erro ao importar planilha: ' + (err?.message || 'Arquivo incompatível'), 'error');
     } finally {

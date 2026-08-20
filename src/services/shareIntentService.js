@@ -13,14 +13,12 @@ export const ShareIntentService = {
   init(onFileReceived) {
     // Listener para o evento de abertura via URL/File URI
     App.addListener('appUrlOpen', async (data) => {
-      console.log('[ShareIntent] Recebido evento appUrlOpen:', data.url);
 
       try {
         const fileUri = data.url;
 
         // Valida se o URI é de um arquivo (content:// ou file://)
         if (!fileUri.startsWith('content://') && !fileUri.startsWith('file://')) {
-          console.warn('[ShareIntent] URL recebida não é um arquivo válido:', fileUri);
           return;
         }
 
@@ -31,7 +29,6 @@ export const ShareIntentService = {
           const blob = await response.blob();
           arrayBuffer = await blob.arrayBuffer();
         } catch (e) {
-          console.error("Erro no fetch da URI, tentando Filesystem...", e);
           // Fallback usando o Filesystem do Capacitor se necessário
           const readFileResult = await Filesystem.readFile({ path: fileUri });
           if (readFileResult && readFileResult.data) {
@@ -50,7 +47,6 @@ export const ShareIntentService = {
           });
         }
       } catch (error) {
-        console.error('[ShareIntent] Falha ao processar arquivo compartilhado:', error);
       }
     });
   },
@@ -104,7 +100,6 @@ export const ShareIntentService = {
         });
       }
 
-      console.log('[ShareIntent] Arquivo processado com sucesso em:', targetPath);
 
       return {
         name: fileName,
@@ -112,7 +107,6 @@ export const ShareIntentService = {
         originalUri: uri
       };
     } catch (error) {
-      console.error('[ShareIntent] Erro ao copiar arquivo:', error);
       throw error;
     }
   }

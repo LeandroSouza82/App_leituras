@@ -243,7 +243,6 @@ export const LeituraService = {
         });
 
         // Validação Explícita por Console
-        console.log('[Exportação] Dados mesclados para Excel:', dadosExcel);
 
         const ws = XLSX.utils.json_to_sheet(dadosExcel);
         XLSX.utils.book_append_sheet(wb, ws, 'Consumos');
@@ -266,7 +265,6 @@ export const LeituraService = {
           });
 
           // Validação Explícita por Console
-          console.log(`[Exportação] Dados mesclados para Excel (${servico}):`, dadosExcel);
 
           const ws = XLSX.utils.json_to_sheet(dadosExcel);
           const abaNome = servico === 'AGUA' ? 'Água' : 'Gás';
@@ -301,7 +299,6 @@ export const LeituraService = {
 
       return true;
     } catch (error) {
-      console.error('Erro na exportação Excel:', error);
       alert('Erro ao gerar planilha uCondo: ' + error.message);
       return false;
     }

@@ -43,7 +43,6 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       setUnidadesTemp(prev => [...new Set([...prev, ...unicas])]);
       alert(`✅ ${unicas.length} unidades identificadas com sucesso!`);
     } catch (err) {
-      console.error('Erro no processamento da planilha:', err);
       alert('Erro ao processar planilha: ' + err.message);
     } finally {
       setIsProcessing(false);
@@ -74,7 +73,6 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
         }
       }
     } catch (err) {
-      console.error('Erro ao selecionar planilha:', err);
       alert('Erro ao selecionar planilha: ' + err.message);
       setIsProcessing(false);
     }
@@ -138,7 +136,6 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       alert('✅ Unidades salvas permanentemente no dispositivo!');
       onClose();
     } catch (error) {
-      console.error('Erro ao salvar unidades no filesystem:', error);
       alert('Erro ao persistir dados: ' + error.message);
     }
   };
