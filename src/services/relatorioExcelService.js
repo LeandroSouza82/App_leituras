@@ -230,6 +230,11 @@ export const gerarRelatorioLeiturasExcel = async (dadosCondominios = [], mesAno 
         dialogTitle: 'Exportar Planilha Excel',
       });
     } catch (nativeErr) {
+      const msg = nativeErr?.message || String(nativeErr);
+      if (msg.includes('AbortError') || msg.toLowerCase().includes('cancel') || msg.includes('Share canceled')) {
+        // Ignora silenciosamente. Usuário cancelou o prompt nativo.
+        return { blob, fileName, buffer, canceled: true };
+      }
       saveAs(blob, fileName);
     }
   } else {

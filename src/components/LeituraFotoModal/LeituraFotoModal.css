@@ -488,3 +488,139 @@
   }
 }
 
+/* ================= Modal de Exportação Customizado ================= */
+.export-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.export-modal-container {
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalScaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.export-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.export-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.export-modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  transition: background-color 0.2s;
+}
+
+.export-modal-close:hover {
+  background-color: #e2e8f0;
+}
+
+.export-modal-body {
+  padding: 24px;
+}
+
+.export-modal-body p {
+  margin: 0 0 24px 0;
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.export-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-export-primary {
+  background-color: #10b981;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-export-primary:hover {
+  background-color: #059669;
+  transform: translateY(-2px);
+}
+
+.btn-export-secondary {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-export-secondary:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+}
+
+.btn-export-cancel {
+  background-color: transparent;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-export-cancel:hover {
+  background-color: #f8fafc;
+  color: #475569;
+}
+
+@keyframes modalScaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+

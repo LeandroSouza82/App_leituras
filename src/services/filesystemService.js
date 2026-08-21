@@ -1,102 +1,69 @@
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
-/**
- * Serviço Utilitário Modular para operações seguras no Filesystem.
- */
+const BASE_DIR = 'Backups';
 
-/**
- * Salva um arquivo de forma segura, garantindo diretórios e codificação correta.
- * @param {string} pathCompleto - O caminho completo incluindo o nome do arquivo.
- * @param {string|object} dados - Conteúdo a ser gravado (String ou Objeto).
- * @param {string} [encoding] - Codificação opcional (padrão Encoding.UTF8 para JSON/texto).
- * @returns {Promise<boolean>} Retorna true se salvo com sucesso.
- */
-export async function salvarArquivoSeguro(pathCompleto, dados, encoding = null) {
-  try {
-    // 1. Limpa o path (remove barra inicial se existir para não dar erro)
-    const pathLimpo = pathCompleto.startsWith('/') ? pathCompleto.substring(1) : pathCompleto;
+export const filesystemService = {
+  sanitizeName: (name) => {
+    return name.replace(/[^a-z0-9]/gi, '_');
+  },
 
-    // 2. Extrai apenas o diretório pai (remove o nome do arquivo)
-    const partes = pathLimpo.split('/');
-    partes.pop(); // Remove o nome do arquivo (ex: unidades.json)
-    const caminhoDaPasta = partes.join('/');
+  salvarFotoCondominio: async (condominioNome, fileName, base64Data) => {
+    const safeCondo = filesystemService.sanitizeName(condominioNome);
+    const dirPath = `${BASE_DIR}/${safeCondo}`;
+    const filePath = `${dirPath}/${fileName}`;
 
-
-    // 3. Cria a pasta pai garantidamente
-    if (caminhoDaPasta) {
-      await Filesystem.mkdir({
-        path: caminhoDaPasta,
-        directory: Directory.Data,
-        recursive: true
-      }).catch(() => {
-        // Ignora se a pasta já existir
-      });
+    try {
+      await Filesystem.readdir({ path: dirPath, directory: Directory.Data });
+    } catch {
+      await Filesystem.mkdir({ path: dirPath, directory: Directory.Data, recursive: true });
     }
 
-    // 4. Garante que os dados sejam uma string válida
-    let dadosParaGravar = dados;
-    if (typeof dados === 'object' && dados !== null) {
-      dadosParaGravar = JSON.stringify(dados);
-    } else if (typeof dados !== 'string') {
-      dadosParaGravar = String(dados ?? '');
-    }
+    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
-    // 5. Configuração do encoding para evitar erro de Base64 inválido
-    let finalEncoding = encoding;
-    if (!finalEncoding) {
-      if (pathLimpo.endsWith('.json') || pathLimpo.endsWith('.txt') || typeof dados === 'object') {
-        finalEncoding = Encoding.UTF8;
-      }
-    }
-
-    const writeOptions = {
-      path: pathLimpo,
-      data: dadosParaGravar,
+    await Filesystem.writeFile({
+      path: filePath,
+      data: cleanBase64,
       directory: Directory.Data,
       recursive: true
-    };
+    });
 
-    if (finalEncoding) {
-      writeOptions.encoding = finalEncoding;
+    return filePath;
+  },
+
+  listarLotes: async () => {
+    try {
+      const result = await Filesystem.readdir({ path: BASE_DIR, directory: Directory.Data });
+      return result.files;
+    } catch {
+      return [];
     }
+  },
 
-    // 6. Salva o arquivo com recursive: true
-    await Filesystem.writeFile(writeOptions);
-
-    return true;
-
-  } catch (err) {
-    throw err; // Repassa o erro para o UI mostrar a mensagem
-  }
-}
-
-/**
- * Lê um arquivo do armazenamento seguro (Directory.Data) com suporte a UTF-8.
- * @param {string} pathCompleto - Caminho relativo do arquivo.
- * @param {string} [encoding] - Codificação opcional (padrão Encoding.UTF8 para JSON/texto).
- * @returns {Promise<string>} Conteúdo lido do arquivo.
- */
-export async function lerArquivoSeguro(pathCompleto, encoding = null) {
-  try {
-    const pathLimpo = pathCompleto.startsWith('/') ? pathCompleto.substring(1) : pathCompleto;
-
-    let finalEncoding = encoding;
-    if (!finalEncoding && (pathLimpo.endsWith('.json') || pathLimpo.endsWith('.txt'))) {
-      finalEncoding = Encoding.UTF8;
+  listarFotosLote: async (safeCondoName) => {
+    try {
+      const result = await Filesystem.readdir({ path: `${BASE_DIR}/${safeCondoName}`, directory: Directory.Data });
+      return result.files;
+    } catch {
+      return [];
     }
+  },
 
-    const readOptions = {
-      path: pathLimpo,
-      directory: Directory.Data
-    };
-
-    if (finalEncoding) {
-      readOptions.encoding = finalEncoding;
-    }
-
-    const result = await Filesystem.readFile(readOptions);
+  lerFotoBase64: async (filePath) => {
+    const result = await Filesystem.readFile({ path: filePath, directory: Directory.Data });
     return result.data;
-  } catch (err) {
-    throw err;
+  },
+
+  excluirLote: async (safeCondoName) => {
+    await Filesystem.rmdir({ path: `${BASE_DIR}/${safeCondoName}`, directory: Directory.Data, recursive: true });
   }
-}
+};
+
+export const salvarArquivoSeguro = async (fileName, data) => {
+  await Filesystem.writeFile({
+    path: fileName,
+    data: data,
+    directory: Directory.Data,
+    encoding: Encoding.UTF8,
+    recursive: true
+  });
+};

@@ -14,6 +14,7 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
+import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
 import CustomCamera from '../CustomCamera/CustomCamera';
@@ -40,6 +41,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -466,11 +468,28 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(activeApto).trim();
       const fotoUrl = fotoUrlOverride || fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
+      if (!fotoUrl || fotoUrl.trim() === '') {
+        alert('Falha ao processar a foto. A imagem não foi anexada corretamente.');
+        return;
+      }
+
       if (!valor) {
         throw new Error('Valor da leitura ausente.');
       }
 
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
+      const newFileName = `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
+      
+      let localFileName = fileNameOverride;
+
+      // 1. BACKUP LOCAL OBRIGATÓRIO (Lote Offline - Organizado via filesystemService)
+      if (fotoUrl.startsWith('data:image/jpeg;base64,')) {
+        try {
+          localFileName = await filesystemService.salvarFotoCondominio(leitura.nome, localFileName || newFileName, fotoUrl);
+        } catch (e) {
+          console.error("Falha ao salvar backup fisico via service:", e);
+        }
+      }
 
       // Grava valor digitado
       localStorage.setItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`, valor);
@@ -487,14 +506,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
       }));
-
-      // Busca arquivo local da foto (tanto nova pasta quanto raiz)
-      const safeCondName = sanitizeName(leitura.nome);
-      const pastaCondominio = `FastLeituras/${safeCondName}`;
-      const newFileName = `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
-      const fullNewPath = `${pastaCondominio}/${newFileName}`;
-      
-      let localFileName = fileNameOverride;
       if (!localFileName) {
         try {
           // Checa se existe na nova pasta
@@ -521,6 +532,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const payload = {
         condominio_id: leitura.id,
+        condominio_nome: leitura.nome,
         unidade_id: unidadeId,
         servico: tipoMedicaoAtivo.toUpperCase(),
         leitura_atual: parseFloat(String(valor).replace(',', '.')),
@@ -639,15 +651,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     
     try {
       const photo = await Camera.getPhoto({
-        quality: 100, // Impede perda de dados EXIF
+        quality: 30, // Compressão máxima para otimizar disco e banda (reduz a foto severamente)
         allowEditing: false, 
-        resultType: CameraResultType.Uri, 
+        resultType: CameraResultType.DataUrl, // <-- GARANTE BASE64 NO CAPACITOR
         source: CameraSource.Camera, // <-- FORÇA ABRIR O APLICATIVO NATIVO DE CÂMERA
         correctOrientation: true
       });
       
-      // Passa a foto nativa para a função de carimbar, ISOLANDO a unidade atual via apto
-      await handleCaptureAndSave(photo, null, apto);
+      // Passa a foto nativa convertida para a função de carimbar
+      await handleCaptureAndSave(photo.dataUrl, null, apto);
     } catch (error) {
     }
   };
@@ -858,7 +870,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleExportar = async () => {
+  const handleExportar = () => {
     // 1. Validação Pré-Envio (Trava de Segurança Crítica)
     for (const apto of listaCompleta) {
       const fotoServicos = fotosCapturadas[apto] || {};
@@ -879,12 +891,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
     }
 
-    const apenasAtivo = window.confirm(
-      `Deseja exportar apenas as leituras de ${tipoMedicaoAtivo.toUpperCase()}? (Clique em "Cancelar" para exportar TODOS os serviços consolidados)`
-    );
+    // Abre o novo modal customizado de exportação (em vez do antigo window.prompt)
+    setIsExportModalOpen(true);
+  };
 
+  const executeExport = async (scope) => {
+    setIsExportModalOpen(false);
     setExportando(true);
-    const servico = apenasAtivo ? tipoMedicaoAtivo : 'todos';
+    
+    const servico = scope === 'todos' ? 'todos' : tipoMedicaoAtivo;
     const condId = leitura?.id || leitura?.condominio_id;
 
     try {
@@ -1127,6 +1142,43 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           onClose={() => setCustomCameraOpen(false)}
           initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
         />
+      )}
+
+      {/* 6. Modal Customizado de Opções de Exportação */}
+      {isExportModalOpen && (
+        <div className="export-modal-overlay" onClick={() => setIsExportModalOpen(false)}>
+          <div className="export-modal-container" onClick={e => e.stopPropagation()}>
+            <div className="export-modal-header">
+              <h3>Opções de Exportação</h3>
+              <button className="export-modal-close" onClick={() => setIsExportModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="export-modal-body">
+              <p>Escolha o formato que deseja exportar:</p>
+              <div className="export-modal-actions">
+                <button 
+                  className="btn-export-primary" 
+                  onClick={() => executeExport('ativo')}
+                >
+                  Apenas {tipoMedicaoAtivo.toUpperCase()}
+                </button>
+                <button 
+                  className="btn-export-secondary" 
+                  onClick={() => executeExport('todos')}
+                >
+                  Água e Gás (Todos)
+                </button>
+                <button 
+                  className="btn-export-cancel" 
+                  onClick={() => setIsExportModalOpen(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

@@ -299,6 +299,9 @@ export const LeituraService = {
 
       return true;
     } catch (error) {
+      if (error.name === 'AbortError' || error.message?.includes('canceled') || error.message?.includes('cancelled')) {
+        return false;
+      }
       alert('Erro ao gerar planilha uCondo: ' + error.message);
       return false;
     }

@@ -75,6 +75,7 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
     const itemFila = {
       id: payload.id || `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       unidade_id: String(payload.unidade_id || '').trim(),
+      condominio_nome: payload.condominio_nome || null,
       servico: (payload.servico || 'AGUA').toUpperCase(),
       leitura_atual: payload.leitura_atual !== undefined ? parseFloat(payload.leitura_atual) : null,
       leiturista_id: payload.leiturista_id || null,
@@ -175,6 +176,7 @@ export async function sincronizarFilaEmBackground() {
         // 2. Inserção / Upsert no Supabase Database
         const payloadEnvio = {
           unidade_id: item.unidade_id,
+          condominio_nome: item.condominio_nome || null,
           servico: item.servico,
           leitura_atual: item.leitura_atual,
           foto_url: publicPhotoUrl || '',
