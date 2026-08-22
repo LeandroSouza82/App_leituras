@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { DollarSign, X } from 'lucide-react';
+import React from 'react';
+import { DollarSign } from 'lucide-react';
 import './AReceberModal.css';
 
 const formatCurrency = (value) =>
@@ -13,73 +13,62 @@ const AReceberModal = ({ isOpen, onClose, leituras, totalValor }) => {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-container a-receber-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="modal-title-group">
-            <div className="modal-icon blue">
-              <DollarSign size={20} />
-            </div>
-            <div>
-              <h3>Detalhamento de Valores a Receber</h3>
-              <p>Valores por condomínio para o mês vigente</p>
-            </div>
+      <div className="modal-lista-container" onClick={(e) => e.stopPropagation()}>
+        
+        {/* CABEÇALHO PADRÃO ESCURO */}
+        <div className="modal-lista-header">
+          <div>
+            <h2>
+              <DollarSign size={18} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 6 }}/> 
+              Detalhamento de Valores a Receber
+            </h2>
+            <span className="subtitulo-contador">Valores por condomínio para o mês vigente</span>
           </div>
-          <button type="button" className="close-btn" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="modal-body">
-          <div className="total-destaque">
-            <span>Total Geral a Faturar:</span>
-            <strong>{formatCurrency(totalValor)}</strong>
-          </div>
-
-          <div className="tabela-container">
-            <table className="tabela-faturamento">
-              <thead>
-                <tr>
-                  <th>Condomínio</th>
-                  <th>Tipo Leitura</th>
-                  <th>Dia</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leituras.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', color: '#64748b' }}>
-                      Nenhum condomínio cadastrado.
-                    </td>
-                  </tr>
-                ) : (
-                  leituras.map((item) => (
-                    <tr key={item.id}>
-                      <td className="col-nome">{item.nome}</td>
-                      <td>{item.tipoLeitura || 'Água e Gás'}</td>
-                      <td>Dia {item.diaLeitura}</td>
-                      <td>
-                        <span className={`status-pill ${item.completo ? 'sucesso' : 'pendente'}`}>
-                          {item.completo ? 'Concluído' : 'Pendente'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: '600' }}>
-                        {formatCurrency(Number(item.valor || 0))}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="modal-footer">
           <button type="button" className="btn-fechar" onClick={onClose}>
-            Fechar
+            ✕
           </button>
         </div>
+
+        {/* CARD DE TOTAL GERAL */}
+        <div className="total-destaque" style={{ margin: '16px' }}>
+          <span>Total Geral a Faturar:</span>
+          <strong>{formatCurrency(totalValor)}</strong>
+        </div>
+
+        {/* CORPO DO MODAL - LISTA DE CARDS */}
+        <div className="modal-lista-body">
+          {leituras.length === 0 ? (
+            <p className="lista-vazia">Nenhum condomínio cadastrado.</p>
+          ) : (
+            <ul className="lista-condominios-ul">
+              {leituras.map((item, index) => (
+                <li key={item.id || index} className="item-condominio a-receber-item">
+                  
+                  <div className="a-receber-left">
+                    <span className="numero-item">{index + 1}</span>
+                    <div className="a-receber-info">
+                      <span className="nome-condominio">{item.nome}</span>
+                      <div className="a-receber-detalhes">
+                        <span className="detalhe-tipo">{item.tipoLeitura || 'Água e Gás'}</span>
+                        <span className="detalhe-ponto">•</span>
+                        <span className="detalhe-dia">Dia {item.diaLeitura}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="a-receber-right">
+                    <span className={`status-pill ${item.completo ? 'sucesso' : 'pendente'}`}>
+                      {item.completo ? 'Concluído' : 'Pendente'}
+                    </span>
+                    <span className="valor-receber">{formatCurrency(Number(item.valor || 0))}</span>
+                  </div>
+
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
       </div>
     </div>
   );

@@ -105,7 +105,8 @@
   border-radius: 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-start !important; /* Força o alinhamento à esquerda e protege contra poluição de outros modais */
+  gap: 16px; /* Gap ajustado para um espaçamento mais elegante entre o número e o nome */
   font-weight: 600;
   color: #0f172a;
   font-size: 0.95rem;

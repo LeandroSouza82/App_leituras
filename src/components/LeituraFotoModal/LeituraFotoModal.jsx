@@ -43,8 +43,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [showToast, setShowToast] = useState(false);
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [pressedApto, setPressedApto] = useState(null);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const longPressFiredRef = useRef(false);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -501,11 +503,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const startLongPress = (apto, concluido) => {
     if (!concluido) return;
     
+    setPressedApto(apto);
+    longPressFiredRef.current = false;
+    
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
     
     longPressRef.current = setTimeout(async () => {
+      longPressFiredRef.current = true;
+      setPressedApto(null);
+      
       if (navigator.vibrate) {
         navigator.vibrate(100);
       }
@@ -516,14 +524,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       if (isConfirmed) {
         handleExcluirFoto(apto, true);
       }
-    }, 1500); // 1.5 segundos para agilidade
+    }, 1000);
   };
 
-  const cancelLongPress = () => {
+  const cancelLongPress = (apto, thumbnail) => {
+    setPressedApto(null);
     if (longPressRef.current) {
       clearTimeout(longPressRef.current);
       longPressRef.current = null;
     }
+    
+    // Se não foi concluído como long press, executa a ação de clique normal
+    if (!longPressFiredRef.current) {
+      handleUnitClick(apto, thumbnail);
+    }
+    
+    longPressFiredRef.current = false;
   };
 
   const handleSaveReading = async (valor, fotoUrlOverride = null, fileNameOverride = null) => {
@@ -1068,16 +1084,28 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       key={apto}
                       type="button"
                       className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
-                      onClick={() => handleUnitClick(apto, thumbnail)}
                       onPointerDown={() => startLongPress(apto, concluido)}
-                      onPointerUp={cancelLongPress}
-                      onPointerCancel={cancelLongPress}
+                      onPointerUp={() => cancelLongPress(apto, thumbnail)}
+                      onPointerCancel={() => cancelLongPress(apto, thumbnail)}
+                      onPointerLeave={() => {
+                        // Cancela só se o dedo sair, sem forçar clique acidental
+                        setPressedApto(null);
+                        if (longPressRef.current) {
+                          clearTimeout(longPressRef.current);
+                          longPressRef.current = null;
+                        }
+                      }}
                     >
                       <span className="apto-number">{apto}</span>
                       {concluido ? (
                         <div className="concluido-container">
                           {thumbnail ? (
-                            <img src={thumbnail} alt="Preview" className="unit-miniature" />
+                            <img 
+                              src={thumbnail} 
+                              alt="Preview" 
+                              className="unit-miniature" 
+                              style={{ opacity: pressedApto === apto ? 0.5 : 1, transition: 'opacity 0.2s' }}
+                            />
                           ) : (
                             <div className="unit-sync-done-icon">
                               <CheckCircle size={22} color="#16a34a" />
