@@ -188,9 +188,12 @@
 }
 
 .file-list-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  align-items: center !important;
+  width: 100% !important;
   margin-bottom: 16px;
   background: #f8fafc;
   padding: 12px;
@@ -199,12 +202,24 @@
 }
 
 .file-preview-item {
+  width: 70px !important;
+  height: 70px !important;
+  border-radius: 6px !important;
+  flex-shrink: 0 !important;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background-color: #f8fafc;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: #475569;
-  font-family: monospace;
+  justify-content: center;
+  position: relative;
+}
+
+.file-preview-item img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  cursor: pointer;
 }
 
 .file-preview-more {

@@ -73,23 +73,29 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
 
+      // 1. Atualiza o objeto local com as coordenadas salvas (UI Instantânea)
+      setCondominioAtualizado({
+        ...condominioExibido,
+        latitude: Number.isFinite(latitude) ? latitude : null,
+        longitude: Number.isFinite(longitude) ? longitude : null,
+      });
 
-      const { error } = await supabase
+      // 2. Persistência Offline-First (Garante a gravação sem internet)
+      try {
+        const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
+        const novoCache = cache.map(c => String(c.id) === String(condominio.id) ? { ...c, latitude, longitude } : c);
+        localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
+      } catch (e) {}
+
+      // 3. Sincronização em Background (Silenciosa, não bloqueia o usuário)
+      supabase
         .from('condominios')
         .update({ latitude, longitude })
-        .eq('id', condominio.id);
+        .eq('id', condominio.id)
+        .then(() => {})
+        .catch(() => {});
 
-      if (error) {
-        alert('Erro ao salvar localização: ' + error.message);
-      } else {
-        // Atualiza o objeto local com as coordenadas salvas
-        setCondominioAtualizado({
-          ...condominioExibido,
-          latitude: Number.isFinite(latitude) ? latitude : null,
-          longitude: Number.isFinite(longitude) ? longitude : null,
-        });
-        alert('📍 Localização GPS salva com sucesso!');
-      }
+      alert('📍 Localização GPS salva com sucesso no aparelho!');
     } catch (error) {
       alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
     } finally {

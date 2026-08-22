@@ -107,18 +107,9 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
       const latitude = position.coords.latitude;
       const longitude = position.coords.longitude;
 
-
-      const { error } = await supabase
-        .from('condominios')
-        .update({ latitude, longitude })
-        .eq('id', leitura.id);
-
-      if (error) {
-        alert('Erro ao salvar localização: ' + error.message);
-      } else {
-        alert('📍 Localização GPS salva com sucesso!');
-        onEdit(leitura.id, { latitude, longitude });
-      }
+      // Chama a edição otimista (já tratada offline-first no useLeituras)
+      onEdit(leitura.id, { latitude, longitude });
+      alert('📍 Localização GPS salva com sucesso no aparelho!');
     } catch (error) {
       alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
     } finally {

@@ -69,6 +69,8 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
           recursive: true
         });
       } catch (fsErr) {
+        console.error('Falha crítica ao gravar foto no disco:', fsErr);
+        throw new Error('Falha ao salvar a foto localmente. Verifique o espaço no aparelho.');
       }
     }
 
@@ -98,6 +100,9 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
     }
 
     writeFilaSync(filaAtual);
+
+    // Dispara evento instantâneo para espelhar a Interface Otimista na Busca Online
+    window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
 
     // Se estiver online, tenta sincronizar imediatamente em background
     Network.getStatus().then(status => {
@@ -143,33 +148,63 @@ export async function sincronizarFilaEmBackground() {
 
     for (const item of [...fila]) {
       try {
+        // Verifica duplicação no Supabase antes de subir (proteção inegociável)
+        const { data: existingData } = await supabase
+          .from('leituras_detalhes')
+          .select('id')
+          .eq('unidade_id', item.unidade_id)
+          .eq('servico', item.servico)
+          .eq('data_leitura', item.data_leitura)
+          .limit(1);
+          
+        if (existingData && existingData.length > 0) {
+          // Já existe, apenas remove da fila
+          const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
+          writeFilaSync(filaAtualizada);
+          continue;
+        }
+
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
         if (item.fileName) {
-          try {
-            const fileResult = await Filesystem.readFile({
-              path: item.fileName,
-              directory: Directory.Data
-            });
+          const fileResult = await Filesystem.readFile({
+            path: item.fileName,
+            directory: Directory.Data
+          });
 
-            if (fileResult?.data) {
-              const blob = base64ToBlob(fileResult.data, 'image/jpeg');
-              const remotePath = `leituras/${Date.now()}_${item.fileName}`;
+          if (fileResult?.data) {
+            const blob = base64ToBlob(fileResult.data, 'image/jpeg');
+            const remotePath = `leituras/${Date.now()}_${item.fileName}`;
 
+            let uploadSuccess = false;
+            let lastUploadError = null;
+
+            for (let attempt = 1; attempt <= 2; attempt++) {
               const { error: uploadError } = await supabase.storage
                 .from('fotos_leituras')
                 .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
 
-              if (uploadError) throw uploadError;
-
-              const { data: publicUrlData } = supabase.storage
-                .from('fotos_leituras')
-                .getPublicUrl(remotePath);
-
-              publicPhotoUrl = publicUrlData?.publicUrl || null;
+              if (!uploadError) {
+                uploadSuccess = true;
+                break;
+              }
+              lastUploadError = uploadError;
+              if (attempt < 2) await new Promise(res => setTimeout(res, 1000));
             }
-          } catch (fileErr) {
+
+            if (!uploadSuccess) {
+              throw new Error("Falha no upload da imagem no sync em background: " + (lastUploadError?.message || ""));
+            }
+
+            const { data: publicUrlData } = supabase.storage
+              .from('fotos_leituras')
+              .getPublicUrl(remotePath);
+
+            publicPhotoUrl = publicUrlData?.publicUrl;
+            if (!publicPhotoUrl) throw new Error("URL pública não retornada pelo Supabase no sync.");
+          } else {
+            throw new Error("Arquivo não encontrado no sistema local durante o sync.");
           }
         }
 
@@ -232,6 +267,15 @@ export function iniciarObservadorRede() {
         sincronizarFilaEmBackground();
       }
     }).catch(() => {});
+
+    // Executa a cada 2 minutos para garantir que nada fique preso
+    setInterval(() => {
+      Network.getStatus().then((status) => {
+        if (status.connected) {
+          sincronizarFilaEmBackground();
+        }
+      }).catch(() => {});
+    }, 120000);
 
   } catch (err) {
   }

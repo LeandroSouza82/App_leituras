@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
 import { supabase } from './supabase';
+import { customPrompt } from '../components/CustomPrompt/CustomPrompt';
 
 /**
  * Normaliza o nome do condomínio removendo acentos, múltiplos espaços,
@@ -342,7 +343,7 @@ export const UCondoImportService = {
         if (!nomeExtraido) {
           // Fallback Inteligente Anti-Card Fantasma:
           const nomeSugerido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
-          nomeExtraido = window.prompt(
+          nomeExtraido = await customPrompt(
             'Não encontramos o nome "Condomínio" na planilha. Para evitar duplicações, confirme o nome exato do condomínio que deseja atualizar (ex: São Bento) ou criar:',
             nomeSugerido
           );
@@ -490,7 +491,10 @@ export const UCondoImportService = {
 
       // 2. Extração do Nome Automático
       let nomeSugerido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
-      let nomeFinal = window.prompt('Confirme ou digite o nome deste novo condomínio:', nomeSugerido || 'Novo Condomínio');
+      let nomeFinal = await customPrompt(
+        'Confirme ou digite o nome deste novo condomínio:', 
+        nomeSugerido || 'Novo Condomínio'
+      );
 
       if (!nomeFinal || !nomeFinal.trim()) {
         return null;

@@ -69,17 +69,16 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
       return;
     }
 
-    const { error } = await supabase
-      .from('condominios')
-      .update({ latitude: null, longitude: null })
-      .eq('id', condominio.id);
+    // 1. Limpeza otimista na tela atual
+    setForm((prev) => ({ ...prev, latitude: null, longitude: null }));
 
-    if (error) {
-      alert('Erro ao limpar GPS: ' + error.message);
-    } else {
-      alert('📍 Localização GPS removida! O app usará o endereço digitado.');
-      setForm((prev) => ({ ...prev, latitude: null, longitude: null }));
+    // 2. Aciona o fluxo Offline-First do useLeituras (que já grava no cache local e em background)
+    if (onSave) {
+      await onSave(condominio.id, { latitude: null, longitude: null });
     }
+
+    // 3. Feedback visual elegante
+    showToast('GPS removido com sucesso. As alterações foram salvas localmente.');
   };
 
   const handleSalvar = async (event) => {

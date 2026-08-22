@@ -29,15 +29,31 @@ export const useLeituras = (onFeedback = () => {}) => {
   useEffect(() => {
     let isMounted = true;
 
+    // 1. CARREGAMENTO INSTANTÂNEO OFF-LINE (CACHE)
+    try {
+      const cachedData = localStorage.getItem('condominios_cache');
+      if (cachedData && isMounted) {
+        setLeituras(JSON.parse(cachedData));
+      }
+    } catch (e) {
+      console.warn("Erro ao ler cache local de condominios", e);
+    }
+
+    // 2. BUSCA EM BACKGROUND NO SUPABASE (Silenciosa)
     buscarCondominios()
       .then((dados) => {
         if (isMounted) {
           setLeituras(dados);
+          localStorage.setItem('condominios_cache', JSON.stringify(dados));
         }
       })
       .catch((error) => {
+        // Se houver erro de rede, mas já temos cache, silencie o erro para não travar a UI
         if (isMounted) {
-          onFeedback(error.message, 'error');
+          const hasCache = !!localStorage.getItem('condominios_cache');
+          if (!hasCache) {
+             onFeedback(error.message, 'error');
+          }
         }
       });
 
@@ -116,16 +132,32 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const editarLeitura = async (idTarget, novosDados) => {
+    // 1. Atualização Otimista no Estado (UI Instantânea)
+    setLeituras((previous) =>
+      previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...novosDados } : item))
+    );
+
+    // 2. Atualização Otimista no Cache Local (Offline-First)
     try {
-      const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
-      setLeituras((previous) =>
-        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
-      );
-      return true;
-    } catch (error) {
-      onFeedback(error.message, 'error');
-      return false;
-    }
+      const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
+      const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...novosDados } : c);
+      localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
+    } catch (e) {}
+
+    // 3. Atualização Assíncrona no Supabase (Background silencioso)
+    atualizarCondominio(idTarget, novosDados)
+      .then(leituraAtualizada => {
+        // Confirma com os dados re-processados do backend (se necessário)
+        setLeituras((previous) =>
+          previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
+        );
+      })
+      .catch((error) => {
+        // Falha de rede silenciosa. O dado já está salvo no cache para próxima vez.
+        console.warn('Sincronização em background de edição falhou:', error);
+      });
+
+    return true;
   };
 
   const adicionarEmLote = async (novosCondominios) => {

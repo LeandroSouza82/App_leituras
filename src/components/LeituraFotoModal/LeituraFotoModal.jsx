@@ -17,6 +17,7 @@ import { salvarLeituraOffline } from '../../services/syncService';
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
+import { customConfirm } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
 
@@ -74,6 +75,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       if (novasUnidades && novasUnidades.length > 0) {
         setUnidadesAtualizadas(novasUnidades);
+        
+        // Salvar permanentemente no cache
+        localStorage.setItem(`unidades_${condId}`, JSON.stringify(novasUnidades));
+        try {
+          await Filesystem.writeFile({
+            path: `unidades_${condId}.json`,
+            data: JSON.stringify(novasUnidades),
+            directory: Directory.Data,
+            encoding: Encoding.UTF8
+          });
+        } catch (e) {}
+
         alert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
       }
     } catch (err) {
@@ -118,8 +131,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
           // 3. Fallback para localStorage se FS falhar
           if (unidadesParaCarregar.length === 0) {
-            const salvas = localStorage.getItem(storageKey);
-            if (salvas) {
+            const salvas = localStorage.getItem(`unidades_${condId}`);
+            if (!salvas && storageKey) {
+                const oldSalvas = localStorage.getItem(storageKey);
+                if (oldSalvas) unidadesParaCarregar = JSON.parse(oldSalvas);
+            } else if (salvas) {
               unidadesParaCarregar = JSON.parse(salvas);
             }
           }
@@ -144,7 +160,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             }
           }
 
-          setUnidadesAtualizadas(unidadesParaCarregar);
+          if (unidadesParaCarregar.length > 0) {
+            setUnidadesAtualizadas(unidadesParaCarregar);
+            
+            // Garantir que a lista esteja cacheada localmente
+            localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesParaCarregar));
+            Filesystem.writeFile({
+              path: `unidades_${condId}.json`,
+              data: JSON.stringify(unidadesParaCarregar),
+              directory: Directory.Data,
+              encoding: Encoding.UTF8
+            }).catch(() => {});
+          } else {
+            setUnidadesAtualizadas([]);
+          }
         } catch (error) {
         }
       };
@@ -355,11 +384,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleExcluirFoto = async () => {
-    if (!window.confirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
+  const handleExcluirFoto = async (overrideApto = null, skipConfirm = false) => {
+    if (!skipConfirm) {
+      if (!window.confirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
+    }
 
     try {
-      const unidadeId = String(activeApto).trim();
+      const unidadeId = String(overrideApto || activeApto).trim();
       // 1. CORREÇÃO CRÍTICA: Forçar maiúsculo para bater EXATAMENTE com o arquivo salvo no Android
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
 
@@ -450,16 +481,48 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
+          if (Object.keys(novo[unidadeId]).length === 0) {
+            delete novo[unidadeId];
+          }
         }
         return novo;
       });
 
       setIsPreviewOpen(false);
+      setActiveApto(null);
+    } catch (err) {
+      console.error('Erro ao excluir foto:', err);
+      alert('Ocorreu um erro ao excluir a foto. Tente novamente.');
+    }
+  };
 
-      // Feedback opcional para você ver que funcionou:
+  const longPressRef = useRef(null);
 
-    } catch (error) {
-      alert('Erro ao excluir foto: ' + error.message);
+  const startLongPress = (apto, concluido) => {
+    if (!concluido) return;
+    
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+    
+    longPressRef.current = setTimeout(async () => {
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+      const isConfirmed = await customConfirm(
+        'Deseja realmente excluir esta foto?',
+        'Excluir Foto'
+      );
+      if (isConfirmed) {
+        handleExcluirFoto(apto, true);
+      }
+    }, 1500); // 1.5 segundos para agilidade
+  };
+
+  const cancelLongPress = () => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
     }
   };
 
@@ -488,7 +551,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           localFileName = await filesystemService.salvarFotoCondominio(leitura.nome, localFileName || newFileName, fotoUrl);
         } catch (e) {
           console.error("Falha ao salvar backup fisico via service:", e);
+          throw new Error('Falha crítica ao gravar foto no disco (Lote Offline). ' + e.message);
         }
+      }
+
+      if (!localFileName) {
+        throw new Error('Falha crítica: O arquivo físico da foto não pôde ser gerado ou encontrado no dispositivo.');
       }
 
       // Grava valor digitado
@@ -506,18 +574,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
       }));
-      if (!localFileName) {
-        try {
-          // Checa se existe na nova pasta
-          await Filesystem.stat({ path: fullNewPath, directory: Directory.Cache });
-          localFileName = fullNewPath;
-        } catch (e) {
-          // Fallback para raiz
-          const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}`;
-          const filesAntigos = await StorageService.listFiles(prefixoChave);
-          localFileName = filesAntigos.length > 0 ? filesAntigos[0] : null;
-        }
-      }
+
 
       // Obtém usuário autenticado
       let activeUserId = 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
@@ -541,99 +598,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         fileName: localFileName
       };
 
-      // 1. Verifica status de conectividade em tempo real
-      let isOnline = false;
-      try {
-        const netStatus = await Network.getStatus();
-        isOnline = !!netStatus.connected;
-      } catch {
-        isOnline = navigator.onLine;
-      }
-
-      // 2. SE ONLINE: Tenta envio direto ao Supabase (Storage + DB)
-      let syncedDirectly = false;
-      if (isOnline && supabase) {
-        window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
-        try {
-          let fotoUrlSupabase = fotoUrl;
-
-          // Envio super-rápido otimizado usando a versão da memória (fotoBanco comprimida)
-          if (fotoUrl && fotoUrl.startsWith('data:image/jpeg;base64,')) {
-            const base64Data = fotoUrl.split(',')[1];
-            const byteCharacters = atob(base64Data);
-            const byteNumbers = new Uint8Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-              byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const blob = new Blob([byteNumbers], { type: 'image/jpeg' });
-            const cleanFileName = localFileName ? localFileName.split('/').pop() : `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
-            const remotePath = `leituras/${Date.now()}_${cleanFileName}`;
-
-            const { error: uploadError } = await supabase.storage
-              .from('fotos_leituras')
-              .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-            if (!uploadError) {
-              const { data: publicUrlData } = supabase.storage
-                .from('fotos_leituras')
-                .getPublicUrl(remotePath);
-              fotoUrlSupabase = publicUrlData?.publicUrl || fotoUrl;
-            }
-          }
-          // Fallback para arquivo físico apenas se a imagem não estiver na RAM
-          else if (localFileName) {
-            const rawData = await StorageService.readFile(localFileName);
-            if (rawData) {
-              const byteCharacters = atob(rawData);
-              const byteNumbers = new Uint8Array(byteCharacters.length);
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-              }
-              const blob = new Blob([byteNumbers], { type: 'image/jpeg' });
-              const cleanFileName = localFileName.split('/').pop();
-              const remotePath = `leituras/${Date.now()}_${cleanFileName}`;
-
-              const { error: uploadError } = await supabase.storage
-                .from('fotos_leituras')
-                .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
-
-              if (!uploadError) {
-                const { data: publicUrlData } = supabase.storage
-                  .from('fotos_leituras')
-                  .getPublicUrl(remotePath);
-                fotoUrlSupabase = publicUrlData?.publicUrl || fotoUrl;
-              }
-            }
-          }
-
-          const { error: dbError } = await supabase
-            .from('leituras_detalhes')
-            .insert([{
-              ...payload,
-              foto_url: fotoUrlSupabase || ''
-            }]);
-
-          if (!dbError) {
-            syncedDirectly = true;
-            window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
-          } else {
-          }
-        } catch (syncErr) {
-        } finally {
-          window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
-        }
-      }
-
-      // 3. SE OFFLINE ou se o envio direto falhou por instabilidade:
-      // Enfileira automaticamente via salvarLeituraOffline
-      if (!syncedDirectly) {
-        await salvarLeituraOffline(payload, null, localFileName);
-        
-        // ✅ Feedback visual: exibe o toast verde APENAS se estiver offline
-        if (!isOnline) {
-          exibirToastSucesso();
-        }
-      }
+      // ✅ OFFLINE-FIRST ABSOLUTO: Sem bloqueios de rede.
+      // O app empurra a foto instantaneamente para a fila do syncService, 
+      // liberando a UI (câmera) na hora, independente de ter 5G ou zero internet.
+      await salvarLeituraOffline(payload, null, localFileName);
+      
+      // ✅ Feedback visual não bloqueante
+      exibirToastSucesso();
 
       // Fecha o preview se estiver aberto (fallback para o fluxo antigo que ainda usa o preview)
       setIsPreviewOpen(false);
@@ -891,16 +862,42 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
     }
 
-    // Abre o novo modal customizado de exportação (em vez do antigo window.prompt)
-    setIsExportModalOpen(true);
+    // 2. Análise Automática de Utilitários (Offline-First UX)
+    const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    if (tipo.includes('somente agua') || tipo === 'agua') {
+      executeExport('agua');
+    } else if (tipo.includes('somente gas') || tipo === 'gas') {
+      executeExport('gas');
+    } else if (tipo.includes('energia')) {
+      executeExport('energia');
+    } else {
+      // Caso Misto (Água e Gás) ou indefinido, abre o modal de opções
+      setIsExportModalOpen(true);
+    }
   };
 
   const executeExport = async (scope) => {
     setIsExportModalOpen(false);
-    setExportando(true);
+
+    // Suporta 'agua', 'gas', 'energia', 'todos' ou faz fallback para a aba ativa
+    const servico = (scope && ['agua', 'gas', 'energia', 'todos'].includes(scope)) 
+      ? scope 
+      : tipoMedicaoAtivo;
     
-    const servico = scope === 'todos' ? 'todos' : tipoMedicaoAtivo;
-    const condId = leitura?.id || leitura?.condominio_id;
+    // 1. Confirmação Elegante de Envio
+    const nomeAmigavel = servico === 'todos' ? 'Consolidado (Todos)' : servico.toUpperCase();
+    
+    const mensagemConfirmacao = `Confirmar envio de ${nomeAmigavel}? Esta ação enviará os dados para o WhatsApp.`;
+    
+    const isConfirmed = await customConfirm(
+      mensagemConfirmacao, 
+      'Confirmação de Envio'
+    );
+
+    if (!isConfirmed) return;
+
+    setExportando(true);
 
     try {
       const sucesso = await LeituraService.exportarParaWhatsApp(
@@ -911,19 +908,33 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       );
 
       if (sucesso) {
-        // 1. Reseta o estado temporário ativo do condomínio
-        await resetarEstadoLeiturasAtivas(condId);
-
-        // 2. Notificação e feedback de conclusão do ciclo
-        alert('Leituras salvas e exportadas com sucesso! Condomínio finalizado e pronto para o próximo mês.');
-
-        // 3. Fecha o modal de apartamentos e retorna ao dashboard
-        onClose();
+        // Feedback de conclusão sem fechar o modal nem apagar os cards!
+        exibirToastSucesso();
       }
     } catch (err) {
       alert('Ocorreu um erro ao salvar as leituras. Tente novamente.');
     } finally {
       setExportando(false);
+    }
+  };
+
+  const handleLimparMes = async () => {
+    setIsExportModalOpen(false);
+
+    const isConfirmed = await customConfirm(
+      'Deseja realmente finalizar o mês e LIMPAR todas as leituras da tela deste condomínio? Esta ação o preparará para o próximo ciclo.',
+      'Limpar Condomínio'
+    );
+
+    if (!isConfirmed) return;
+
+    const condId = leitura?.id || leitura?.condominio_id;
+    try {
+      await resetarEstadoLeiturasAtivas(condId);
+      alert('Condomínio limpo e finalizado com sucesso! Pronto para o próximo mês.');
+      onClose();
+    } catch (err) {
+      alert('Erro ao limpar condomínio: ' + err.message);
     }
   };
 
@@ -1058,6 +1069,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       type="button"
                       className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
                       onClick={() => handleUnitClick(apto, thumbnail)}
+                      onPointerDown={() => startLongPress(apto, concluido)}
+                      onPointerUp={cancelLongPress}
+                      onPointerCancel={cancelLongPress}
                     >
                       <span className="apto-number">{apto}</span>
                       {concluido ? (
@@ -1156,19 +1170,43 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             </div>
             <div className="export-modal-body">
               <p>Escolha o formato que deseja exportar:</p>
-              <div className="export-modal-actions">
+              <div className="export-modal-actions" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <button 
                   className="btn-export-primary" 
-                  onClick={() => executeExport('ativo')}
+                  onClick={() => executeExport('agua')}
                 >
-                  Apenas {tipoMedicaoAtivo.toUpperCase()}
+                  Enviar Apenas Água
+                </button>
+                <button 
+                  className="btn-export-primary" 
+                  onClick={() => executeExport('gas')}
+                >
+                  Enviar Apenas Gás
+                </button>
+                <button 
+                  className="btn-export-primary" 
+                  onClick={() => executeExport('energia')}
+                >
+                  Enviar Apenas Energia
                 </button>
                 <button 
                   className="btn-export-secondary" 
+                  style={{ backgroundColor: '#0284c7', color: 'white', borderColor: '#0284c7' }}
                   onClick={() => executeExport('todos')}
                 >
-                  Água e Gás (Todos)
+                  Enviar Todos (Consolidado)
                 </button>
+
+                <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '6px 0' }}></div>
+
+                <button 
+                  className="btn-export-secondary" 
+                  style={{ backgroundColor: '#ef4444', color: 'white', borderColor: '#ef4444' }}
+                  onClick={handleLimparMes}
+                >
+                  Limpar / Iniciar Próximo Mês
+                </button>
+
                 <button 
                   className="btn-export-cancel" 
                   onClick={() => setIsExportModalOpen(false)}
