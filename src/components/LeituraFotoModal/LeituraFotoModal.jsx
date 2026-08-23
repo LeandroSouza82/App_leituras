@@ -47,6 +47,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const longPressFiredRef = useRef(false);
+  const pointerStartPos = useRef(null);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -525,6 +526,41 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         handleExcluirFoto(apto, true);
       }
     }, 1000);
+  };
+
+  const handlePointerDown = (e, apto, concluido) => {
+    pointerStartPos.current = { x: e.clientX, y: e.clientY };
+    startLongPress(apto, concluido);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!pointerStartPos.current) return;
+    const diffY = Math.abs(e.clientY - pointerStartPos.current.y);
+    const diffX = Math.abs(e.clientX - pointerStartPos.current.x);
+    // Se arrastou mais de 10px, considera scroll e cancela o clique/long press
+    if (diffY > 10 || diffX > 10) {
+      setPressedApto(null);
+      if (longPressRef.current) {
+        clearTimeout(longPressRef.current);
+        longPressRef.current = null;
+      }
+      pointerStartPos.current = null;
+    }
+  };
+
+  const handlePointerUp = (e, apto, thumbnail) => {
+    if (!pointerStartPos.current) return; // scroll cancelado
+    pointerStartPos.current = null;
+    cancelLongPress(apto, thumbnail);
+  };
+
+  const handlePointerCancel = () => {
+    pointerStartPos.current = null;
+    setPressedApto(null);
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
   };
 
   const cancelLongPress = (apto, thumbnail) => {
@@ -1084,17 +1120,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       key={apto}
                       type="button"
                       className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
-                      onPointerDown={() => startLongPress(apto, concluido)}
-                      onPointerUp={() => cancelLongPress(apto, thumbnail)}
-                      onPointerCancel={() => cancelLongPress(apto, thumbnail)}
-                      onPointerLeave={() => {
-                        // Cancela só se o dedo sair, sem forçar clique acidental
-                        setPressedApto(null);
-                        if (longPressRef.current) {
-                          clearTimeout(longPressRef.current);
-                          longPressRef.current = null;
-                        }
-                      }}
+                      style={{ touchAction: 'pan-y' }}
+                      onPointerDown={(e) => handlePointerDown(e, apto, concluido)}
+                      onPointerMove={handlePointerMove}
+                      onPointerUp={(e) => handlePointerUp(e, apto, thumbnail)}
+                      onPointerCancel={handlePointerCancel}
+                      onPointerLeave={handlePointerCancel}
                     >
                       <span className="apto-number">{apto}</span>
                       {concluido ? (
