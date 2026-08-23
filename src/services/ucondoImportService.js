@@ -325,6 +325,32 @@ export const UCondoImportService = {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
 
+      // ==========================================
+      // BIFURCAÇÃO INTELIGENTE (FORK)
+      // ==========================================
+      let isPlanilhaLeituras = false;
+
+      if (rawData && rawData.length > 0) {
+        const cabecalhoEmTexto = rawData.slice(0, 15).map(row => (row || []).join(' ').toLowerCase()).join(' ');
+        
+        if ((cabecalhoEmTexto.includes('condomínio') || cabecalhoEmTexto.includes('condominio')) && cabecalhoEmTexto.includes('consumo de')) {
+          // Verifica se o condomínio já existe antes de forçar o fluxo de leituras anteriores
+          const metadadosTemp = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
+          const nomeSugeridoTemp = metadadosTemp.nome || this.extrairNomeCondominioDeArquivo(nomeArquivo);
+          const nomeLimpoTemp = normalizarNome(nomeSugeridoTemp);
+          
+          const existeNoBanco = condominiosExistentes.some(c => normalizarNome(c.nome) === nomeLimpoTemp);
+          
+          if (existeNoBanco) {
+            isPlanilhaLeituras = true;
+          }
+        }
+      }
+
+      if (isPlanilhaLeituras) {
+        return await this.processarPlanilhaLeiturasAnteriores(nomeArquivo, rawData, condominiosExistentes);
+      }
+
       // 2. Extrai unidades no formato uCondo
       let unidades = [];
       try {
@@ -460,6 +486,70 @@ export const UCondoImportService = {
           // Insere todas as unidades extraídas com o ID gerado
           await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
 
+          // ==========================================
+          // MÁGICA ALL-IN-ONE: SE A PLANILHA TIVER LEITURAS, JÁ SALVA JUNTO!
+          // ==========================================
+          try {
+            let headerRowIdx = -1;
+            let unidColIdx = -1;
+            let consumoColIdx = -1;
+            let leituraAntColIdx = -1;
+
+            for (let i = 0; i < Math.min(10, rawData.length); i++) {
+              const row = rawData[i];
+              if (!row || !Array.isArray(row)) continue;
+              for (let j = 0; j < row.length; j++) {
+                const cellText = String(row[j] || '').trim().toLowerCase();
+                if (cellText === 'unidade' || cellText === 'unid' || cellText.includes('unidade')) {
+                  if (headerRowIdx === -1 || headerRowIdx === i) {
+                    headerRowIdx = i;
+                    unidColIdx = j;
+                  }
+                }
+                if (cellText.includes('consumo')) {
+                  if (headerRowIdx === -1 || headerRowIdx === i) {
+                    headerRowIdx = i;
+                    consumoColIdx = j;
+                  }
+                }
+              }
+            }
+
+            if (headerRowIdx !== -1 && unidColIdx !== -1 && consumoColIdx !== -1) {
+              leituraAntColIdx = consumoColIdx > 0 ? consumoColIdx - 1 : 3;
+            } else {
+              leituraAntColIdx = 3;
+              unidColIdx = 1;
+              headerRowIdx = 5;
+            }
+
+            const leiturasExtraidas = [];
+            for (let i = headerRowIdx + 1; i < rawData.length; i++) {
+              const row = rawData[i];
+              if (!row || !Array.isArray(row) || row.length === 0) continue;
+              const unidade = String(row[unidColIdx] || '').trim();
+              const leituraAnteriorStr = String(row[leituraAntColIdx] || '').trim();
+
+              if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
+                const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
+                if (!isNaN(leituraAnteriorNum)) {
+                  leiturasExtraidas.push({
+                    unidade,
+                    leitura_anterior: leituraAnteriorNum
+                  });
+                }
+              }
+            }
+
+            if (leiturasExtraidas.length > 0) {
+              localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+              await this.sincronizarLeiturasAnterioresEmLote(condominioSalvo.id, leiturasExtraidas);
+            }
+          } catch (errLeituras) {
+            console.error("Erro ao incluir leituras automáticas no cadastro:", errLeituras);
+          }
+          // ==========================================
+
           return {
             tipo: 'criado',
             condominio: condominioSalvo,
@@ -478,6 +568,224 @@ export const UCondoImportService = {
       throw new Error('Nenhuma coluna de Unidades do uCondo nem lista de condomínios válida encontrada.');
     } catch (error) {
       throw error;
+    }
+  },
+
+  /**
+   * FRENTE 3 (FORK): Processamento Dedicado para Planilha de Leituras Anteriores
+   */
+  async processarPlanilhaLeiturasAnteriores(nomeArquivo, rawData, condominiosExistentes) {
+    try {
+      const metadados = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
+      let nomeExtraido = metadados.nome;
+
+      if (!nomeExtraido) {
+        nomeExtraido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
+      }
+      
+      const nomeLimpoPlanilha = normalizarNome(nomeExtraido);
+      let condExistente = null;
+
+      // Busca flexível no Supabase (Fonte da Verdade)
+      if (supabase && nomeLimpoPlanilha) {
+        try {
+          const { data: todosConds, error: fetchError } = await supabase
+            .from('condominios')
+            .select('*');
+
+          if (!fetchError && Array.isArray(todosConds)) {
+            condExistente = todosConds.find(c => {
+              const nomeBanco = normalizarNome(c.nome);
+              if (!nomeBanco || !nomeLimpoPlanilha) return false;
+              
+              if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) return true;
+              
+              const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
+              if (nomeLimpoPlanilha.length > 8 && distancia <= 2) return true;
+              
+              return false;
+            }) || null;
+          }
+        } catch (errDb) {}
+      }
+
+      // Fallback em memória
+      if (!condExistente && Array.isArray(condominiosExistentes) && nomeLimpoPlanilha) {
+        condExistente = condominiosExistentes.find(c => {
+          const nomeBanco = normalizarNome(c.nome);
+          if (!nomeBanco || !nomeLimpoPlanilha) return false;
+          if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) return true;
+          const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
+          if (nomeLimpoPlanilha.length > 8 && distancia <= 2) return true;
+          return false;
+        }) || null;
+      }
+
+      if (!condExistente) {
+        throw new Error(`Condomínio vinculado à planilha "${nomeExtraido}" não foi encontrado. Cadastre o condomínio primeiro.`);
+      }
+
+      // 1. Identificação Dinâmica (A Inteligência)
+      let mesReferencia = '';
+      let headerRowIndex = -1;
+      let unidadeColIndex = -1;
+      let consumoColIndex = -1;
+      let leituraAnteriorColIndex = -1;
+
+      // Varrer primeiras 10 linhas
+      for (let i = 0; i < Math.min(10, rawData.length); i++) {
+        const row = rawData[i];
+        if (!row || !Array.isArray(row)) continue;
+
+        for (let j = 0; j < row.length; j++) {
+          const cellText = String(row[j] || '').trim().toLowerCase();
+          
+          if (cellText.includes('referência') || cellText.includes('referencia')) {
+            const parts = String(row[j]).split(/refer[êe]ncia/i);
+            if (parts.length > 1 && parts[1].trim() !== '') {
+              mesReferencia = parts[1].trim();
+            } else if (j + 1 < row.length) {
+              mesReferencia = String(row[j + 1] || '').trim();
+            }
+          }
+
+          if (cellText === 'unidade' || cellText === 'unid' || cellText === 'ap' || cellText.includes('unidade')) {
+            if (headerRowIndex === -1 || headerRowIndex === i) {
+              headerRowIndex = i;
+              unidadeColIndex = j;
+            }
+          }
+
+          if (cellText.includes('consumo')) {
+            if (headerRowIndex === -1 || headerRowIndex === i) {
+              headerRowIndex = i;
+              consumoColIndex = j;
+            }
+          }
+        }
+      }
+
+      // Captura Exata
+      if (headerRowIndex !== -1 && unidadeColIndex !== -1 && consumoColIndex !== -1) {
+        if (consumoColIndex > 0) {
+          leituraAnteriorColIndex = consumoColIndex - 1;
+        }
+
+        if (mesReferencia) {
+          const row = rawData[headerRowIndex];
+          const mesRefLimpo = mesReferencia.toLowerCase().split(' ')[0]; // ex: "julho"
+          for (let j = 0; j < row.length; j++) {
+            const headText = String(row[j] || '').trim().toLowerCase();
+            if (headText.includes(mesRefLimpo)) {
+              leituraAnteriorColIndex = j;
+              break;
+            }
+          }
+        }
+      }
+
+      // Fallback
+      if (leituraAnteriorColIndex === -1) leituraAnteriorColIndex = 3;
+      if (unidadeColIndex === -1) unidadeColIndex = 1;
+      if (headerRowIndex === -1) headerRowIndex = 5;
+
+      const nomeRefExibicao = mesReferencia || 'Anterior';
+      const desejaSalvar = window.confirm(`Planilha de fechamento de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
+
+      if (!desejaSalvar) {
+        return { cancelado: true };
+      }
+
+      const leiturasExtraidas = [];
+      for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        if (!row || !Array.isArray(row) || row.length === 0) continue;
+        
+        const unidade = String(row[unidadeColIndex] || '').trim();
+        const leituraAnteriorStr = String(row[leituraAnteriorColIndex] || '').trim();
+        
+        if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
+          const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
+          if (!isNaN(leituraAnteriorNum)) {
+            leiturasExtraidas.push({
+              unidade,
+              leitura_anterior: leituraAnteriorNum
+            });
+          }
+        }
+      }
+
+      if (leiturasExtraidas.length === 0) {
+         throw new Error('Nenhuma leitura anterior válida foi encontrada na planilha.');
+      }
+
+      try {
+        localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+      } catch (e) {}
+
+      // Envio em lote
+      await this.sincronizarLeiturasAnterioresEmLote(condExistente.id, leiturasExtraidas);
+
+      return {
+        tipo: 'atualizado', // Reutilizando a prop 'atualizado' para o Toast no App.jsx funcionar perfeitamente
+        condominio: condExistente,
+        totalUnidades: leiturasExtraidas.length
+      };
+
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Função assíncrona que pega o array extraído e faz o envio em massa (lote) 
+   * para a tabela no banco de dados, vinculando cada leitura à sua unidade.
+   */
+  async sincronizarLeiturasAnterioresEmLote(condominioId, leiturasArray) {
+    if (!supabase) throw new Error('Supabase não configurado.');
+
+    try {
+      // 1. Busca as unidades do condomínio para obter os IDs (vinculação relacional)
+      const { data: unidadesBanco, error: errUnidades } = await supabase
+        .from('unidades')
+        .select('id, nome, condominio_id')
+        .eq('condominio_id', condominioId);
+
+      if (errUnidades) throw new Error('Não foi possível carregar os dados das unidades do servidor.');
+      
+      if (!unidadesBanco || unidadesBanco.length === 0) {
+        throw new Error('Nenhuma unidade cadastrada encontrada para este condomínio. Cadastre as unidades primeiro.');
+      }
+
+      // 2. Prepara o lote de atualização
+      const loteParaEnvio = [];
+
+      for (const item of leiturasArray) {
+        // Encontra a unidade correspondente pelo nome normalizado
+        const unidadeBanco = unidadesBanco.find(u => normalizarNome(u.nome) === normalizarNome(item.unidade));
+        
+        if (unidadeBanco) {
+          loteParaEnvio.push({
+            unidade: unidadeBanco.nome,
+            condominio_nome: unidadeBanco.condominio_id, // Usando ID temporariamente para manter relação
+            leitura_anterior: item.leitura_anterior,
+          });
+        }
+      }
+
+      if (loteParaEnvio.length > 0) {
+        // Correção 1: Apontando para a tabela correta que criamos (unidades_leituras)
+        // Correção 2: Removendo o upsert complexo para um insert simples inicial
+        const { error } = await supabase.from('unidades_leituras').insert(loteParaEnvio);
+        
+        if (error) {
+          console.error("Erro do Supabase:", error);
+          throw new Error('Houve uma falha de comunicação com o servidor ao salvar as leituras. Verifique sua conexão e tente novamente.');
+        }
+      }
+    } catch(err) {
+      // Correção 3: Mensagem amigável capturando o erro tratado
+      throw new Error(err.message || 'Ocorreu um erro inesperado ao salvar as leituras da planilha.');
     }
   },
 
@@ -539,6 +847,9 @@ export const UCondoImportService = {
       // 1. Extração das novas unidades
       const novasUnidades = this.extrairUnidades(fileData);
 
+      let isPlanilhaLeituras = false;
+      let rawDataToExtractLeituras = null;
+
       // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
       let workbook;
       try {
@@ -558,6 +869,17 @@ export const UCondoImportService = {
 
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+        rawDataToExtractLeituras = rawData;
+        
+        if (rawData && rawData.length > 0) {
+          // Varre as primeiras 15 linhas inteiras procurando as palavras-chave em qualquer coluna
+          const cabecalhoEmTexto = rawData.slice(0, 15).map(row => (row || []).join(' ').toLowerCase()).join(' ');
+          
+          if ((cabecalhoEmTexto.includes('condomínio') || cabecalhoEmTexto.includes('condominio')) && cabecalhoEmTexto.includes('consumo de')) {
+            isPlanilhaLeituras = true;
+          }
+        }
+
         const metadados = this.extrairMetadadosPlanilha(rawData, '');
 
         if (metadados.nome && condominoAtualNome) {
@@ -588,6 +910,106 @@ export const UCondoImportService = {
       }
 
       await this.persistirUnidadesLocal(condominioId, novasUnidades);
+
+      // 3. Se for planilha de leituras, extrai as leituras anteriores e envia em lote para o Supabase
+      if (isPlanilhaLeituras && rawDataToExtractLeituras) {
+        // 1. Identificação Dinâmica (A Inteligência)
+        let mesReferencia = '';
+        let headerRowIndex = -1;
+        let unidadeColIndex = -1;
+        let consumoColIndex = -1;
+        let leituraAnteriorColIndex = -1;
+
+        // Varrer primeiras 10 linhas
+        for (let i = 0; i < Math.min(10, rawDataToExtractLeituras.length); i++) {
+          const row = rawDataToExtractLeituras[i];
+          if (!row || !Array.isArray(row)) continue;
+
+          for (let j = 0; j < row.length; j++) {
+            const cellText = String(row[j] || '').trim().toLowerCase();
+            
+            if (cellText.includes('referência') || cellText.includes('referencia')) {
+              const parts = String(row[j]).split(/refer[êe]ncia/i);
+              if (parts.length > 1 && parts[1].trim() !== '') {
+                mesReferencia = parts[1].trim();
+              } else if (j + 1 < row.length) {
+                mesReferencia = String(row[j + 1] || '').trim();
+              }
+            }
+
+            if (cellText === 'unidade' || cellText === 'unid' || cellText === 'ap' || cellText.includes('unidade')) {
+              if (headerRowIndex === -1 || headerRowIndex === i) {
+                headerRowIndex = i;
+                unidadeColIndex = j;
+              }
+            }
+
+            if (cellText.includes('consumo')) {
+              if (headerRowIndex === -1 || headerRowIndex === i) {
+                headerRowIndex = i;
+                consumoColIndex = j;
+              }
+            }
+          }
+        }
+
+        // Captura Exata
+        if (headerRowIndex !== -1 && unidadeColIndex !== -1 && consumoColIndex !== -1) {
+          if (consumoColIndex > 0) {
+            leituraAnteriorColIndex = consumoColIndex - 1;
+          }
+
+          if (mesReferencia) {
+            const row = rawDataToExtractLeituras[headerRowIndex];
+            const mesRefLimpo = mesReferencia.toLowerCase().split(' ')[0]; // ex: "julho"
+            for (let j = 0; j < row.length; j++) {
+              const headText = String(row[j] || '').trim().toLowerCase();
+              if (headText.includes(mesRefLimpo)) {
+                leituraAnteriorColIndex = j;
+                break;
+              }
+            }
+          }
+        }
+
+        // Fallback
+        if (leituraAnteriorColIndex === -1) leituraAnteriorColIndex = 3;
+        if (unidadeColIndex === -1) unidadeColIndex = 1;
+        if (headerRowIndex === -1) headerRowIndex = 5;
+
+        const nomeRefExibicao = mesReferencia || 'Anterior';
+        const desejaSalvar = window.confirm(`Planilha de fechamento de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
+
+        if (desejaSalvar) {
+          const leiturasExtraidas = [];
+          for (let i = headerRowIndex + 1; i < rawDataToExtractLeituras.length; i++) {
+            const row = rawDataToExtractLeituras[i];
+            if (!row || !Array.isArray(row) || row.length === 0) continue;
+            
+            const unidade = String(row[unidadeColIndex] || '').trim();
+            const leituraAnteriorStr = String(row[leituraAnteriorColIndex] || '').trim();
+            
+            if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
+              const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
+              if (!isNaN(leituraAnteriorNum)) {
+                leiturasExtraidas.push({
+                  unidade,
+                  leitura_anterior: leituraAnteriorNum
+                });
+              }
+            }
+          }
+
+          if (leiturasExtraidas.length > 0) {
+            try {
+              localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+            } catch (e) {}
+
+            await this.sincronizarLeiturasAnterioresEmLote(condominioId, leiturasExtraidas);
+          }
+        }
+      }
+
       return novasUnidades;
     } catch (error) {
       throw error;

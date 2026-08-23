@@ -77,6 +77,7 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
     const itemFila = {
       id: payload.id || `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       unidade_id: String(payload.unidade_id || '').trim(),
+      condominio_id: payload.condominio_id || null,
       condominio_nome: payload.condominio_nome || null,
       servico: (payload.servico || 'AGUA').toUpperCase(),
       leitura_atual: payload.leitura_atual !== undefined ? parseFloat(payload.leitura_atual) : null,
@@ -224,6 +225,20 @@ export async function sincronizarFilaEmBackground() {
           .insert([payloadEnvio]);
 
         if (dbError) {
+          throw new Error("Erro DB insert: " + dbError.message);
+        }
+
+        // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês
+        if (item.condominio_id && item.unidade_id && item.leitura_atual !== undefined && item.leitura_atual !== null) {
+          const { error: updateError } = await supabase
+            .from('unidades')
+            .update({ leitura_anterior: item.leitura_atual })
+            .eq('condominio_id', item.condominio_id)
+            .eq('nome', item.unidade_id);
+            
+          if (updateError) {
+             console.error("Erro ao atualizar leitura anterior na tabela unidades:", updateError);
+          }
         }
 
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.

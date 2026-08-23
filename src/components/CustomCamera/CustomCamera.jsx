@@ -82,7 +82,7 @@ const gerarFotoMockBase64 = () => {
  *   onCapture(base64: string) — chamado após captura bem-sucedida
  *   onClose()                 — chamado ao fechar sem capturar
  */
-const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
+const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnterior = null }) => {
   const [isReady, setIsReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFlashOn, setIsFlashOn] = useState(false);
@@ -97,6 +97,7 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
   };
 
   const [leituraValue, setLeituraValue] = useState(() => formatInitialValue(initialValue));
+  const [erroValidacao, setErroValidacao] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);
   
   const isNative = Capacitor.isNativePlatform();
@@ -118,8 +119,35 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
     const strValue = intValue.toString().padStart(5, "0");
     const inteiros = strValue.slice(0, -4);
     const decimais = strValue.slice(-4);
-    setLeituraValue(`${inteiros},${decimais}`);
+    const novoValor = `${inteiros},${decimais}`;
+    setLeituraValue(novoValor);
+
+    // Validação de Leitura Anterior
+    if (leituraAnterior) {
+      const valorAtualFloat = parseFloat(`${inteiros}.${decimais}`);
+      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
+      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+        setErroValidacao('A leitura não pode ser menor que o mês anterior');
+      } else {
+        setErroValidacao('');
+      }
+    } else {
+      setErroValidacao('');
+    }
   };
+
+  // Garante a validação inicial se houver valor pré-preenchido
+  useEffect(() => {
+    if (leituraValue && leituraAnterior) {
+      const valorAtualFloat = parseFloat(leituraValue.replace(',', '.'));
+      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
+      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+        setErroValidacao('A leitura não pode ser menor que o mês anterior');
+      } else {
+        setErroValidacao('');
+      }
+    }
+  }, [leituraValue, leituraAnterior]);
 
   // ─── Inicializa a câmera ao montar ───────────────────────────────────────
   useEffect(() => {
@@ -406,18 +434,50 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "" }) => {
             
             <div className="overlay-body">
               <label>LANÇAR LEITURA ATUAL</label>
+              
+              <div className="bg-slate-50 p-2 rounded-md mb-2 border border-slate-200" style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
+                <p className="text-sm text-gray-600 font-medium" style={{ fontSize: '13px', color: '#475569' }}>
+                  Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? leituraAnterior : '0,0000'}</strong>
+                </p>
+                {leituraValue && (() => {
+                  const atualFloat = parseFloat(leituraValue.replace(',', '.'));
+                  const anteriorFloat = parseFloat(String(leituraAnterior || 0).replace(',', '.'));
+                  if (!isNaN(atualFloat) && !isNaN(anteriorFloat) && atualFloat >= anteriorFloat) {
+                    const consumo = (atualFloat - anteriorFloat).toFixed(4);
+                    return (
+                      <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
+                        Consumo Calculado: <strong>{consumo.replace('.', ',')} m³</strong>
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
               <input
                 type="tel"
-                className="reading-input"
+                className={`reading-input ${erroValidacao ? 'border-red-500' : ''}`}
+                style={erroValidacao ? { borderColor: '#ef4444' } : {}}
                 placeholder="0,0000"
                 value={leituraValue}
                 onChange={handleLeituraChange}
                 autoFocus
               />
+              {erroValidacao && (
+                <span className="text-xs text-red-500 mt-1" style={{ fontSize: '12px', color: '#ef4444', display: 'block', marginTop: '4px' }}>
+                  {erroValidacao}
+                </span>
+              )}
             </div>
 
             <div className="overlay-footer">
-              <button type="button" className="btn-save-reading" onClick={handleSave}>
+              <button 
+                type="button" 
+                className={`btn-save-reading ${erroValidacao ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                onClick={handleSave}
+                disabled={!leituraValue || !!erroValidacao}
+                style={erroValidacao ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+              >
                 Salvar / Concluir Leitura
               </button>
             </div>

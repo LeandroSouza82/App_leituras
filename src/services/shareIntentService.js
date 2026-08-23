@@ -65,6 +65,84 @@ export const ShareIntentService = {
         }
       } catch (_) {}
 
+      // 1.5. INTERCEPÇÃO CIRÚRGICA: Leitura Prévia de Planilha de Leituras Anteriores
+      if (fileData) {
+        try {
+          const XLSX = await import('xlsx');
+          const workbook = XLSX.read(fileData, { type: 'base64' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+          // Identificação Inteligente
+          let isPlanilhaLeitura = false;
+          let hasCondominio = false;
+          let hasConsumo = false;
+
+          for (let i = 0; i < Math.min(15, rawData.length); i++) {
+            const rowStr = (rawData[i] || []).join(' ').toLowerCase();
+            if ((rowStr.includes('condomínio') || rowStr.includes('condominio')) && rowStr.includes('consumo de')) {
+              isPlanilhaLeitura = true;
+              break;
+            }
+          }
+
+          if (isPlanilhaLeitura) {
+            const desejaSalvar = window.confirm("Planilha de leitura anterior detectada. Deseja salvar os dados?");
+            if (desejaSalvar) {
+              const leiturasAnteriores = [];
+              let startRow = 6; // linha 7 (índice 6)
+              let unidadeCol = 1; // Coluna B (índice 1)
+              let leituraCol = 3; // Coluna D (índice 3)
+
+              // Mapeamento dinâmico de colunas para garantir robustez
+              for(let i = 0; i < Math.min(15, rawData.length); i++) {
+                const row = rawData[i] || [];
+                const rowStr = row.join(' ').toLowerCase();
+                if (rowStr.includes('unidade') && (rowStr.includes('anterior') || rowStr.includes('leitura') || rowStr.includes('consumo'))) {
+                   startRow = i + 1;
+                   for (let c = 0; c < row.length; c++) {
+                      const cell = String(row[c] || '').toLowerCase();
+                      if (cell.includes('unidade')) unidadeCol = c;
+                      if (cell.includes('anterior') || cell.includes('leitura') || (cell.includes('fechamento') && !cell.includes('nova'))) leituraCol = c;
+                   }
+                   break;
+                }
+              }
+
+              // Processamento Offline e Conversão
+              for (let i = startRow; i < rawData.length; i++) {
+                 const row = rawData[i];
+                 if (!row || row.length === 0) continue;
+                 
+                 const unidade = String(row[unidadeCol] || '').trim();
+                 const leituraRaw = String(row[leituraCol] || '').trim();
+                 
+                 if (unidade && !unidade.toLowerCase().includes('total') && leituraRaw) {
+                    const leituraNum = parseFloat(leituraRaw.replace(/\./g, '').replace(',', '.'));
+                    if (!isNaN(leituraNum)) {
+                       leiturasAnteriores.push({
+                          unidade,
+                          leitura_anterior: leituraNum
+                       });
+                    }
+                 }
+              }
+
+              if (leiturasAnteriores.length > 0) {
+                 localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasAnteriores));
+                 window.alert(`✅ ${leiturasAnteriores.length} leituras anteriores salvas no dispositivo!`);
+              } else {
+                 window.alert('Nenhuma leitura válida encontrada na planilha.');
+              }
+            }
+            // Aborta o fluxo padrão para planilhas de leitura anterior, não importando como cadastro
+            return { cancelado: true };
+          }
+        } catch (excelErr) {
+          console.error("Erro na intercepção de leitura anterior:", excelErr);
+        }
+      }
+
       // 2. Garante que a pasta de destino existe
       const targetDir = 'planilhas_recebidas';
       try {
@@ -91,6 +169,22 @@ export const ShareIntentService = {
           data: fileData,
           directory: Directory.Data
         });
+
+        try {
+          // Indicador visual temporário
+          window.alert('Sincronizando... Iniciando leitura e atualização.');
+          
+          // Import dinâmico para evitar dependência circular se houver
+          const { UCondoImportService } = await import('./ucondoImportService');
+          await UCondoImportService.processarPlanilhaCadastro(
+            fileName,
+            fileData,
+            [] // Condomínios existentes (pode ser resolvido dentro do serviço)
+          );
+        } catch (syncErr) {
+          console.error("Erro ao sincronizar planilha no ShareIntent:", syncErr);
+        }
+
       } else {
         // Copia usando copy
         await Filesystem.copy({
@@ -98,6 +192,24 @@ export const ShareIntentService = {
           to: targetPath,
           toDirectory: Directory.Data
         });
+
+        try {
+          // Indicador visual temporário
+          window.alert('Sincronizando... Iniciando leitura e atualização.');
+          
+          // Lê os dados recém-salvos para enviar ao processamento
+          const lido = await Filesystem.readFile({ path: targetPath, directory: Directory.Data });
+          if (lido && lido.data) {
+            const { UCondoImportService } = await import('./ucondoImportService');
+            await UCondoImportService.processarPlanilhaCadastro(
+              fileName,
+              lido.data,
+              []
+            );
+          }
+        } catch (syncErr) {
+          console.error("Erro ao sincronizar planilha copiada no ShareIntent:", syncErr);
+        }
       }
 
 

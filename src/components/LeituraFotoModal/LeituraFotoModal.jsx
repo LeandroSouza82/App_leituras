@@ -49,6 +49,61 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const longPressFiredRef = useRef(false);
   const pointerStartPos = useRef(null);
 
+  // NOVO: Estado e busca da leitura anterior (Offline-first)
+  const [leituraAnteriorAtiva, setLeituraAnteriorAtiva] = useState(null);
+
+  useEffect(() => {
+    if (isOpen && activeApto) {
+      const fetchLeituraAnterior = async () => {
+        let valueEncontrado = null;
+        const apString = String(activeApto).trim();
+        const condId = leitura?.id || leitura?.condominio_id;
+
+        // 1. Tentar puxar do banco de dados (Supabase) se houver conexão
+        try {
+          const status = await Network.getStatus();
+          if (status.connected && supabase && condId) {
+            const { data: undData, error: undErr } = await supabase
+              .from('unidades')
+              .select('leitura_anterior')
+              .eq('condominio_id', condId)
+              .eq('nome', apString)
+              .limit(1)
+              .single();
+              
+            if (!undErr && undData && undData.leitura_anterior !== null && undData.leitura_anterior !== undefined) {
+               valueEncontrado = undData.leitura_anterior;
+            }
+          }
+        } catch (e) {
+          console.error("Erro ao buscar leitura_anterior no Supabase", e);
+        }
+
+        // 2. Fallback para o celular (localStorage)
+        if (valueEncontrado === null) {
+          try {
+            const str = localStorage.getItem('leituras_anteriores');
+            if (str) {
+              const arr = JSON.parse(str);
+              const obj = arr.find(l => String(l.unidade).trim() === apString);
+              if (obj && obj.leitura_anterior !== undefined && obj.leitura_anterior !== null) {
+                 valueEncontrado = obj.leitura_anterior;
+              }
+            }
+          } catch(e) {
+            console.error("Erro fallback local", e);
+          }
+        }
+
+        setLeituraAnteriorAtiva(valueEncontrado);
+      };
+      
+      fetchLeituraAnterior();
+    } else {
+      setLeituraAnteriorAtiva(null);
+    }
+  }, [isOpen, activeApto, leitura]);
+
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
@@ -613,6 +668,30 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // Grava valor digitado
       localStorage.setItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`, valor);
+
+      // ✅ OFFLINE-FIRST: Atualiza a Leitura Anterior no LocalStorage IMEDIATAMENTE
+      // Para que a trava de segurança esteja validada caso o leiturista reabra a mesma unidade
+      try {
+        const leiturasAnterioresStr = localStorage.getItem('leituras_anteriores');
+        const valorNumerico = parseFloat(String(valor).replace(',', '.'));
+        if (leiturasAnterioresStr && !isNaN(valorNumerico)) {
+          const leiturasAnteriores = JSON.parse(leiturasAnterioresStr);
+          const idx = leiturasAnteriores.findIndex(l => String(l.unidade).trim() === unidadeId);
+          if (idx !== -1) {
+            leiturasAnteriores[idx].leitura_anterior = valorNumerico;
+          } else {
+            leiturasAnteriores.push({ unidade: unidadeId, leitura_anterior: valorNumerico });
+          }
+          localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasAnteriores));
+        } else if (!isNaN(valorNumerico)) {
+           localStorage.setItem('leituras_anteriores', JSON.stringify([{
+              unidade: unidadeId,
+              leitura_anterior: valorNumerico
+           }]));
+        }
+      } catch (errLocal) {
+        console.error("Erro ao atualizar leitura anterior localmente:", errLocal);
+      }
 
       // ✅ MEMÓRIA VISUAL PERSISTENTE: Marca a unidade como concluída no localStorage
       localStorage.setItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`, 'true');
@@ -1198,6 +1277,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onDelete={handleExcluirFoto}
         onSaveReading={handleSaveReading}
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
+        leituraAnterior={leituraAnteriorAtiva}
       />
 
       {/* 4. Feedback Toast */}
@@ -1214,6 +1294,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
           initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
+          leituraAnterior={leituraAnteriorAtiva}
         />
       )}
 

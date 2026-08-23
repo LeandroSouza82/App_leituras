@@ -4,9 +4,10 @@ import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
-const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDelete, onSaveReading, initialValue = '' }) => {
+const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDelete, onSaveReading, initialValue = '', leituraAnterior = null }) => {
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [erroValidacao, setErroValidacao] = useState('');
 
   const formatarComMascara = (val) => {
     if (!val) return '';
@@ -29,15 +30,41 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
     num = num.padStart(5, '0');
     const intPart = num.slice(0, -4);
     const decPart = num.slice(-4);
-    setLeituraValor(`${intPart},${decPart}`);
+    const novoValor = `${intPart},${decPart}`;
+    setLeituraValor(novoValor);
+
+    if (leituraAnterior) {
+      const valorAtualFloat = parseFloat(`${intPart}.${decPart}`);
+      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
+      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+        setErroValidacao('A leitura não pode ser menor que o mês anterior');
+      } else {
+        setErroValidacao('');
+      }
+    } else {
+      setErroValidacao('');
+    }
   };
 
   // Garante sincronização com o valor inicial formatado ao abrir
   useEffect(() => {
     if (isOpen) {
-      setLeituraValor(initialValue ? formatarComMascara(initialValue) : '');
+      const valorFormatado = initialValue ? formatarComMascara(initialValue) : '';
+      setLeituraValor(valorFormatado);
+      
+      if (valorFormatado && leituraAnterior) {
+        const valorAtualFloat = parseFloat(valorFormatado.replace(',', '.'));
+        const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
+        if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+          setErroValidacao('A leitura não pode ser menor que o mês anterior');
+        } else {
+          setErroValidacao('');
+        }
+      } else {
+        setErroValidacao('');
+      }
     }
-  }, [isOpen, initialValue]);
+  }, [isOpen, initialValue, leituraAnterior]);
 
   if (!isOpen) return null;
 
@@ -97,7 +124,27 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
           </div>
 
           <div className="reading-input-container">
-            <label htmlFor="leitura-atual">Lançar Leitura Atual</label>
+            <label htmlFor="leitura-atual" style={{ textTransform: 'uppercase' }}>LANÇAR LEITURA ATUAL</label>
+            
+            <div className="bg-slate-50 p-2 rounded-md mb-2 border border-slate-200" style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
+              <p className="text-sm text-gray-600 font-medium" style={{ fontSize: '13px', color: '#475569' }}>
+                Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? leituraAnterior : '0,0000'}</strong>
+              </p>
+              {leituraValor && (() => {
+                const atualFloat = parseFloat(leituraValor.replace(',', '.'));
+                const anteriorFloat = parseFloat(String(leituraAnterior || 0).replace(',', '.'));
+                if (!isNaN(atualFloat) && !isNaN(anteriorFloat) && atualFloat >= anteriorFloat) {
+                  const consumo = (atualFloat - anteriorFloat).toFixed(4);
+                  return (
+                    <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
+                      Consumo Calculado: <strong>{consumo.replace('.', ',')} m³</strong>
+                    </p>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
             <input
               id="leitura-atual"
               type="text"
@@ -106,17 +153,24 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
               value={leituraValor}
               onChange={handleInputChange}
               placeholder="0,0000"
-              className="reading-input-field"
+              className={`reading-input-field ${erroValidacao ? 'border-red-500' : ''}`}
+              style={erroValidacao ? { borderColor: '#ef4444' } : {}}
             />
+            {erroValidacao && (
+              <span className="text-xs text-red-500 mt-1" style={{ fontSize: '12px', color: '#ef4444', display: 'block', marginTop: '4px' }}>
+                {erroValidacao}
+              </span>
+            )}
           </div>
         </div>
 
         <footer className="preview-foto-footer">
           <button
             type="button"
-            className="btn-concluir-leitura"
+            className={`btn-concluir-leitura ${erroValidacao ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={handleSave}
-            disabled={!leituraValor || isSaving}
+            disabled={!leituraValor || isSaving || !!erroValidacao}
+            style={erroValidacao ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
           >
             <Save size={20} />
             {isSaving ? 'Salvando...' : 'Salvar / Concluir Leitura'}
