@@ -4,81 +4,60 @@ import { supabase } from '../../services/supabase';
 import '../AReceberModal/AReceberModal.css'; // Herdando o design system do modal padrão (cabeçalho azul escuro, bordas)
 import './FeedbackModal.css';
 
-// Arquitetura: Função de Compressão Máxima Front-end
-const compressImage = async (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        
-        // Redimensionamento agressivo para max 800px
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
-        let width = img.width;
-        let height = img.height;
+// Função utilitária para comprimir a imagem via Canvas
+const comprimirImagemBase64 = (base64Str, maxWidth = 800, quality = 0.5) => {
+  return new Promise((resolve) => {
+    if (!base64Str) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
 
-        canvas.width = width;
-        canvas.height = height;
+      canvas.width = width;
+      canvas.height = height;
 
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
 
-        // Compressão em JPEG 60% para máxima economia de Storage no Supabase
-        canvas.toBlob(
-          (blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error('Falha na compressão nativa'));
-          },
-          'image/jpeg',
-          0.6 
-        );
-      };
-      img.onerror = (err) => reject(err);
+      // Retorna a imagem super compactada em JPEG
+      const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+      resolve(compressedBase64);
     };
-    reader.onerror = (err) => reject(err);
+    img.onerror = () => resolve(base64Str); // Fallback caso dê erro na leitura
   });
 };
 
 const FeedbackModal = ({ isOpen, onClose }) => {
   const [descricao, setDescricao] = useState('');
-  const [imageFile, setImageFile] = useState(null);
+  const [imageFile, setImageFile] = useState(null); // Armazena o Base64 original
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
 
-  // Handler Cirúrgico do Input de Arquivo
-  const handleImageChange = async (e) => {
+  // Handler do Input de Arquivo (lê como Base64 cru para exibir o preview e guardar para envio)
+  const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    try {
-      // Intercepta e espreme a imagem imediatamente após a seleção
-      const compressedBlob = await compressImage(file);
-      
-      setImageFile(compressedBlob);
-      setPreviewUrl(URL.createObjectURL(compressedBlob));
-    } catch (error) {
-      console.error("Erro na compressão:", error);
-      alert("Houve um problema ao processar a imagem. Tente anexar novamente.");
-    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result;
+      setImageFile(base64String);
+      setPreviewUrl(base64String);
+    };
+    reader.readAsDataURL(file);
   };
 
   const removeImage = () => {
@@ -89,71 +68,53 @@ const FeedbackModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // Handler Mestre de Submissão para o Banco (Supabase)
-  const handleSubmit = async () => {
-    if (!descricao.trim()) {
-      alert("A descrição é obrigatória. Por favor, detalhe seu feedback.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
+  const handleEnviarFeedback = async (textoFeedback, imagemOriginalUri = null) => {
     try {
-      let finalImageUrl = null;
+      if (!textoFeedback || !textoFeedback.trim()) {
+        alert('Por favor, digite sua mensagem antes de enviar.');
+        return false;
+      }
 
-      // 1. Storage: Faz upload da imagem espremida se houver anexo
-      if (imageFile) {
-        const fileName = `feedbacks/bug_report_${Date.now()}.jpg`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('app_anexos') // Substitua pelo nome exato do seu Bucket no Supabase
-          .upload(fileName, imageFile, {
-            contentType: 'image/jpeg',
-            cacheControl: '3600',
-            upsert: false
-          });
+      // 1. Comprime a imagem pesada antes de mandar para o banco
+      let imagemComprimida = null;
+      if (imagemOriginalUri) {
+        imagemComprimida = await comprimirImagemBase64(imagemOriginalUri, 800, 0.4);
+      }
 
-        if (uploadError) {
-          console.error("Supabase Storage falhou:", uploadError);
-          throw new Error("Erro ao subir a imagem para a nuvem.");
+      // 2. Envia para a tabela app_feedbacks mapeando exatamente com as colunas reais
+      if (supabase) {
+        const payload = {
+          descricao: textoFeedback.trim(),
+          imagem_url: imagemComprimida || ''
+        };
+
+        const { error } = await supabase.from('app_feedbacks').insert([payload]);
+
+        if (error) {
+          console.error("Detalhe técnico do erro Supabase:", error);
+          throw new Error(error.message);
         }
-
-        // Recupera o link público para atrelar ao banco
-        const { data: publicData } = supabase.storage
-          .from('app_anexos')
-          .getPublicUrl(fileName);
-          
-        finalImageUrl = publicData.publicUrl;
       }
 
-      // 2. Database: Registra o texto e a URL na tabela app_feedbacks
-      const { error: insertError } = await supabase
-        .from('app_feedbacks')
-        .insert([
-          {
-            descricao: descricao.trim(),
-            imagem_url: finalImageUrl,
-            status: 'pendente'
-            // user_id: opcional, adicione se houver uma gestão de sessão Auth ativa.
-          }
-        ]);
+      alert('Feedback enviado com sucesso! Muito obrigado.');
+      if (typeof onClose === 'function') onClose();
+      return true;
+    } catch (err) {
+      console.error('Erro ao enviar feedback:', err);
+      alert('Não foi possível enviar o feedback no momento. Verifique sua conexão e tente novamente.');
+      return false;
+    }
+  };
 
-      if (insertError) {
-        console.error("Supabase Insert falhou:", insertError);
-        throw new Error("Erro ao registrar o feedback no banco de dados.");
-      }
-
-      // 3. Sucesso! Limpa o cache local e despede o usuário
-      alert("Feedback enviado com sucesso! Muito obrigado por nos ajudar a melhorar o app.");
+  // Wrapper para conectar o botão ao método definitivo de envio
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    const sucesso = await handleEnviarFeedback(descricao, imageFile);
+    if (sucesso) {
       setDescricao('');
       removeImage();
-      onClose();
-
-    } catch (error) {
-      alert(error.message || "Houve um erro inesperado. Verifique sua conexão e tente novamente.");
-    } finally {
-      setIsSubmitting(false);
     }
+    setIsSubmitting(false);
   };
 
   return (
