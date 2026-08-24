@@ -4,10 +4,28 @@ import '../CondominioDetalheModal/CondominioDetalheModal.css';
 import './CameraSettingsModal.css';
 
 const CameraSettingsModal = ({ isOpen, onClose }) => {
-  const [compressao, setCompressao] = useState('maxima');
-  const [salvarGaleria, setSalvarGaleria] = useState(false);
+  // 1. Inicializa os estados lendo a memória do celular (localStorage)
+  const [compressao, setCompressao] = useState(() => {
+    return localStorage.getItem('config_compressao') || 'maxima';
+  });
+  
+  const [salvarGaleria, setSalvarGaleria] = useState(() => {
+    return localStorage.getItem('config_copia_galeria') === 'true';
+  });
 
   if (!isOpen) return null;
+
+  // 2. Funções cirúrgicas para atualizar a tela e salvar na memória ao mesmo tempo
+  const handleMudarCompressao = (nivel) => {
+    setCompressao(nivel);
+    localStorage.setItem('config_compressao', nivel);
+  };
+
+  const handleToggleGaleria = () => {
+    const novoEstado = !salvarGaleria;
+    setSalvarGaleria(novoEstado);
+    localStorage.setItem('config_copia_galeria', String(novoEstado));
+  };
 
   return (
     <div className="condominio-detalhe-overlay" onClick={onClose}>
@@ -38,21 +56,21 @@ const CameraSettingsModal = ({ isOpen, onClose }) => {
               <button 
                 type="button" 
                 className={`btn-3d ${compressao === 'maxima' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
-                onClick={() => setCompressao('maxima')}
+                onClick={() => handleMudarCompressao('maxima')}
               >
                 Máxima (Ideal)
               </button>
               <button 
                 type="button" 
                 className={`btn-3d ${compressao === 'media' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
-                onClick={() => setCompressao('media')}
+                onClick={() => handleMudarCompressao('media')}
               >
                 Média
               </button>
               <button 
                 type="button" 
                 className={`btn-3d ${compressao === 'baixa' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
-                onClick={() => setCompressao('baixa')}
+                onClick={() => handleMudarCompressao('baixa')}
               >
                 Baixa
               </button>
@@ -71,7 +89,7 @@ const CameraSettingsModal = ({ isOpen, onClose }) => {
               <button 
                 type="button"
                 className={`btn-3d ${salvarGaleria ? 'btn-3d-toggle-on' : 'btn-3d-toggle-off'}`}
-                onClick={() => setSalvarGaleria(!salvarGaleria)}
+                onClick={handleToggleGaleria}
               >
                 {salvarGaleria ? 'Habilitado' : 'Desabilitado'}
               </button>

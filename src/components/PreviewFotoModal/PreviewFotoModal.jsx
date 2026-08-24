@@ -128,7 +128,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
             
             <div className="bg-slate-50 p-2 rounded-md mb-2 border border-slate-200" style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
               <p className="text-sm text-gray-600 font-medium" style={{ fontSize: '13px', color: '#475569' }}>
-                Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? leituraAnterior : '0,0000'}</strong>
+                Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? Number(leituraAnterior).toFixed(4).replace('.', ',') : '0,0000'}</strong>
               </p>
               {leituraValor && (() => {
                 const atualFloat = parseFloat(leituraValor.replace(',', '.'));

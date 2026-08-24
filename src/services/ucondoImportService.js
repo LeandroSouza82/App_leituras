@@ -339,7 +339,13 @@ export const UCondoImportService = {
           const nomeSugeridoTemp = metadadosTemp.nome || this.extrairNomeCondominioDeArquivo(nomeArquivo);
           const nomeLimpoTemp = normalizarNome(nomeSugeridoTemp);
           
-          const existeNoBanco = condominiosExistentes.some(c => normalizarNome(c.nome) === nomeLimpoTemp);
+          const existeNoBanco = condominiosExistentes.some(c => {
+            const nomeBanco = normalizarNome(c.nome);
+            if (!nomeBanco || !nomeLimpoTemp) return false;
+            if (nomeBanco === nomeLimpoTemp || nomeBanco.includes(nomeLimpoTemp) || nomeLimpoTemp.includes(nomeBanco)) return true;
+            const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoTemp);
+            return (nomeLimpoTemp.length > 8 && distancia <= 2);
+          });
           
           if (existeNoBanco) {
             isPlanilhaLeituras = true;
@@ -542,7 +548,7 @@ export const UCondoImportService = {
             }
 
             if (leiturasExtraidas.length > 0) {
-              localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+              localStorage.setItem(`leituras_anteriores_${condominioSalvo.id}`, JSON.stringify(leiturasExtraidas));
               await this.sincronizarLeiturasAnterioresEmLote(condominioSalvo.id, leiturasExtraidas);
             }
           } catch (errLeituras) {
@@ -720,7 +726,7 @@ export const UCondoImportService = {
       }
 
       try {
-        localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+        localStorage.setItem(`leituras_anteriores_${condExistente.id}`, JSON.stringify(leiturasExtraidas));
       } catch (e) {}
 
       // Envio em lote
@@ -745,6 +751,13 @@ export const UCondoImportService = {
     if (!supabase) throw new Error('Supabase não configurado.');
 
     try {
+      // 0. Captura o usuário ativo para garantir o vínculo multi-tenant (RLS)
+      let activeUserId = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) activeUserId = user.id;
+      } catch { /* Mantém null como fallback seguro */ }
+
       // 1. Busca as unidades do condomínio para obter os IDs (vinculação relacional)
       const { data: unidadesBanco, error: errUnidades } = await supabase
         .from('unidades')
@@ -769,6 +782,7 @@ export const UCondoImportService = {
             unidade: unidadeBanco.nome,
             condominio_nome: unidadeBanco.condominio_id, // Usando ID temporariamente para manter relação
             leitura_anterior: item.leitura_anterior,
+            leiturista_id: activeUserId,
           });
         }
       }
@@ -1002,7 +1016,7 @@ export const UCondoImportService = {
 
           if (leiturasExtraidas.length > 0) {
             try {
-              localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasExtraidas));
+              localStorage.setItem(`leituras_anteriores_${condominioId}`, JSON.stringify(leiturasExtraidas));
             } catch (e) {}
 
             await this.sincronizarLeiturasAnterioresEmLote(condominioId, leiturasExtraidas);
