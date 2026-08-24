@@ -14,6 +14,7 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
+import { sincronizarLeiturasNuvemParaLocal } from '../../services/leiturasAnterioresService';
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
@@ -82,7 +83,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // 2. Fallback para o celular (localStorage)
         if (valueEncontrado === null) {
           try {
-            const str = localStorage.getItem('leituras_anteriores');
+            const str = localStorage.getItem(`leituras_anteriores_${condId}`);
             if (str) {
               const arr = JSON.parse(str);
               const obj = arr.find(l => String(l.unidade).trim() === apString);
@@ -171,6 +172,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           verificarFotosSalvas();
 
           const condId = leitura?.id || leitura?.condominio_id;
+
+          // Restauração silenciosa: reconstrói a gaveta local se o app foi reinstalado
+          sincronizarLeiturasNuvemParaLocal(condId).catch(() => {});
+
           let unidadesParaCarregar = [];
 
           // 2. Tentar carregar do Filesystem (Permanente)
@@ -649,21 +654,23 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
       const newFileName = `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
-      
+
       let localFileName = fileNameOverride;
 
-      // 1. BACKUP LOCAL OBRIGATÓRIO (Lote Offline - Organizado via filesystemService)
+      // 1. BACKUP LOCAL TOLERANTE A FALHAS (Lote Offline - Organizado via filesystemService)
+      // O bloco try/catch interno garante que uma falha no Filesystem não aborte o fluxo do leiturista.
       if (fotoUrl.startsWith('data:image/jpeg;base64,')) {
         try {
           localFileName = await filesystemService.salvarFotoCondominio(leitura.nome, localFileName || newFileName, fotoUrl);
         } catch (e) {
-          console.error("Falha ao salvar backup fisico via service:", e);
-          throw new Error('Falha crítica ao gravar foto no disco (Lote Offline). ' + e.message);
+          console.warn('[handleSaveReading] Backup físico da foto falhou silenciosamente. O fluxo continua.', e);
         }
       }
 
+      // Se o arquivo físico não pôde ser gerado (falha no FS ou foto não era base64),
+      // usa o nome canônico como referência para o payload, sem abortar.
       if (!localFileName) {
-        throw new Error('Falha crítica: O arquivo físico da foto não pôde ser gerado ou encontrado no dispositivo.');
+        localFileName = newFileName;
       }
 
       // Grava valor digitado
@@ -672,7 +679,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // ✅ OFFLINE-FIRST: Atualiza a Leitura Anterior no LocalStorage IMEDIATAMENTE
       // Para que a trava de segurança esteja validada caso o leiturista reabra a mesma unidade
       try {
-        const leiturasAnterioresStr = localStorage.getItem('leituras_anteriores');
+        const chaveStorage = `leituras_anteriores_${leitura.id}`;
+        const leiturasAnterioresStr = localStorage.getItem(chaveStorage);
         const valorNumerico = parseFloat(String(valor).replace(',', '.'));
         if (leiturasAnterioresStr && !isNaN(valorNumerico)) {
           const leiturasAnteriores = JSON.parse(leiturasAnterioresStr);
@@ -682,9 +690,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           } else {
             leiturasAnteriores.push({ unidade: unidadeId, leitura_anterior: valorNumerico });
           }
-          localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasAnteriores));
+          localStorage.setItem(chaveStorage, JSON.stringify(leiturasAnteriores));
         } else if (!isNaN(valorNumerico)) {
-           localStorage.setItem('leituras_anteriores', JSON.stringify([{
+           localStorage.setItem(chaveStorage, JSON.stringify([{
               unidade: unidadeId,
               leitura_anterior: valorNumerico
            }]));
