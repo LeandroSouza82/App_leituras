@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Building2, Calendar, Gauge, KeyRound, MapPin, Navigation, Phone, X, LocateFixed } from 'lucide-react';
 import { Browser } from '@capacitor/browser';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import './CondominioDetalheModal.css';
 import { supabase } from '../../services/supabaseClient';
+import ContactActionModal from '../ContactActionModal/ContactActionModal';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -22,6 +23,13 @@ const formatDiaLeitura = (dia) => {
 const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
   const [capturandoGps, setCapturandoGps] = useState(false);
   const [condominioAtualizado, setCondominioAtualizado] = useState(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowContactModal(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !condominio) {
     return null;
@@ -192,10 +200,14 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
           <section className="detalhe-secao">
             <h3><Phone size={16} /> Contato do Síndico / Gestor</h3>
             {contatoSindico ? (
-              <a className="btn-acao-telefone" href={`tel:${contatoSindico}`}>
+              <button 
+                type="button"
+                className="btn-acao-telefone" 
+                onClick={() => setShowContactModal(true)}
+              >
                 <Phone size={16} />
-                {contatoSindico}
-              </a>
+                {contatoSindico.replace(/[^\d+]/g, '')}
+              </button>
             ) : (
               <p className="detalhe-vazio">Nenhum contato informado.</p>
             )}
@@ -212,6 +224,12 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
           </section>
         </div>
       </div>
+      
+      <ContactActionModal 
+        isOpen={showContactModal} 
+        contatoBruto={contatoSindico} 
+        onClose={() => setShowContactModal(false)} 
+      />
     </div>
   );
 };
