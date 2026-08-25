@@ -83,7 +83,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // 2. Fallback para o celular (localStorage)
         if (valueEncontrado === null) {
           try {
-            const str = localStorage.getItem(`leituras_anteriores_${condId}`);
+            const chaveStorage = `leituras_anteriores_${condId}_${tipoMedicaoAtivo.toUpperCase()}`;
+            const str = localStorage.getItem(chaveStorage);
             if (str) {
               const arr = JSON.parse(str);
               const obj = arr.find(l => String(l.unidade).trim() === apString);
@@ -103,7 +104,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     } else {
       setLeituraAnteriorAtiva(null);
     }
-  }, [isOpen, activeApto, leitura]);
+  }, [isOpen, activeApto, leitura, tipoMedicaoAtivo]);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -172,6 +173,26 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           verificarFotosSalvas();
 
           const condId = leitura?.id || leitura?.condominio_id;
+
+          // Seleção dinâmica da aba (Água, Gás, Energia) baseada em dados existentes
+          const tipoLeituraStr = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase();
+          const temAguaDb = tipoLeituraStr.includes('agua') || tipoLeituraStr === 'água';
+          const temGasDb = tipoLeituraStr.includes('gas') || tipoLeituraStr === 'gás';
+          const temEnergiaDb = tipoLeituraStr.includes('energia');
+
+          const temAguaPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_AGUA`);
+          const temGasPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_GAS`);
+          const temEnergiaPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_ENERGIA`);
+
+          if (temAguaDb || temAguaPlanilha) {
+            setTipoMedicaoAtivo('agua');
+          } else if (temGasDb || temGasPlanilha) {
+            setTipoMedicaoAtivo('gas');
+          } else if (temEnergiaDb || temEnergiaPlanilha) {
+            setTipoMedicaoAtivo('energia');
+          } else {
+            setTipoMedicaoAtivo('agua'); // Fallback padrão
+          }
 
           // Restauração silenciosa: reconstrói a gaveta local se o app foi reinstalado
           sincronizarLeiturasNuvemParaLocal(condId).catch(() => {});
@@ -438,9 +459,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handleUnitClick = (apto, thumbnail) => {
+  const handleUnitClick = (apto, concluido) => {
     setActiveApto(apto);
-    if (thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]) {
+    // Decisão baseada no 'concluido' calculado no render, que já consolida
+    // fotosCapturadas + concluidosMemoria — fonte da verdade mais confiável.
+    if (concluido) {
       setIsPreviewOpen(true);
     } else {
       handleDispararCamera(apto);
@@ -608,10 +631,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const handlePointerUp = (e, apto, thumbnail) => {
+  const handlePointerUp = (e, apto, concluido) => {
     if (!pointerStartPos.current) return; // scroll cancelado
     pointerStartPos.current = null;
-    cancelLongPress(apto, thumbnail);
+    cancelLongPress(apto, concluido);
   };
 
   const handlePointerCancel = () => {
@@ -623,18 +646,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const cancelLongPress = (apto, thumbnail) => {
+  const cancelLongPress = (apto, concluido) => {
     setPressedApto(null);
     if (longPressRef.current) {
       clearTimeout(longPressRef.current);
       longPressRef.current = null;
     }
-    
-    // Se não foi concluído como long press, executa a ação de clique normal
     if (!longPressFiredRef.current) {
-      handleUnitClick(apto, thumbnail);
+      handleUnitClick(apto, concluido);
     }
-    
     longPressFiredRef.current = false;
   };
 
@@ -679,7 +699,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // ✅ OFFLINE-FIRST: Atualiza a Leitura Anterior no LocalStorage IMEDIATAMENTE
       // Para que a trava de segurança esteja validada caso o leiturista reabra a mesma unidade
       try {
-        const chaveStorage = `leituras_anteriores_${leitura.id}`;
+        const chaveStorage = `leituras_anteriores_${leitura.id}_${tipoMedicaoAtivo.toUpperCase()}`;
         const leiturasAnterioresStr = localStorage.getItem(chaveStorage);
         const valorNumerico = parseFloat(String(valor).replace(',', '.'));
         if (leiturasAnterioresStr && !isNaN(valorNumerico)) {
@@ -1210,7 +1230,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       style={{ touchAction: 'pan-y' }}
                       onPointerDown={(e) => handlePointerDown(e, apto, concluido)}
                       onPointerMove={handlePointerMove}
-                      onPointerUp={(e) => handlePointerUp(e, apto, thumbnail)}
+                      onPointerUp={(e) => handlePointerUp(e, apto, concluido)}
                       onPointerCancel={handlePointerCancel}
                       onPointerLeave={handlePointerCancel}
                     >
@@ -1282,7 +1302,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo]}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
         onRetake={handleRetakeFoto}
-        onDelete={handleExcluirFoto}
         onSaveReading={handleSaveReading}
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
         leituraAnterior={leituraAnteriorAtiva}

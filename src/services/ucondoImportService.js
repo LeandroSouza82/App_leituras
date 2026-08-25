@@ -339,14 +339,16 @@ export const UCondoImportService = {
           const nomeSugeridoTemp = metadadosTemp.nome || this.extrairNomeCondominioDeArquivo(nomeArquivo);
           const nomeLimpoTemp = normalizarNome(nomeSugeridoTemp);
           
-          const existeNoBanco = condominiosExistentes.some(c => {
+          // Faz a busca flexível e já guarda o objeto inteiro (com ID) na variável
+          const condExistente = condominiosExistentes.find(c => {
             const nomeBanco = normalizarNome(c.nome);
             if (!nomeBanco || !nomeLimpoTemp) return false;
             if (nomeBanco === nomeLimpoTemp || nomeBanco.includes(nomeLimpoTemp) || nomeLimpoTemp.includes(nomeBanco)) return true;
             const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoTemp);
             return (nomeLimpoTemp.length > 8 && distancia <= 2);
           });
-          
+
+          const existeNoBanco = !!condExistente;          
           if (existeNoBanco) {
             isPlanilhaLeituras = true;
           }
@@ -500,12 +502,20 @@ export const UCondoImportService = {
             let unidColIdx = -1;
             let consumoColIdx = -1;
             let leituraAntColIdx = -1;
+            let servicoPlanilha = 'AGUA';
 
             for (let i = 0; i < Math.min(10, rawData.length); i++) {
               const row = rawData[i];
               if (!row || !Array.isArray(row)) continue;
               for (let j = 0; j < row.length; j++) {
                 const cellText = String(row[j] || '').trim().toLowerCase();
+                
+                if (cellText.includes('gás') || cellText.includes('gas') || cellText.includes('m3')) {
+                  servicoPlanilha = 'GAS';
+                } else if (cellText.includes('energia') || cellText.includes('luz') || cellText.includes('elétrica') || cellText.includes('eletrica') || cellText.includes('kwh')) {
+                  servicoPlanilha = 'ENERGIA';
+                }
+
                 if (cellText === 'unidade' || cellText === 'unid' || cellText.includes('unidade')) {
                   if (headerRowIdx === -1 || headerRowIdx === i) {
                     headerRowIdx = i;
@@ -548,8 +558,8 @@ export const UCondoImportService = {
             }
 
             if (leiturasExtraidas.length > 0) {
-              localStorage.setItem(`leituras_anteriores_${condominioSalvo.id}`, JSON.stringify(leiturasExtraidas));
-              await this.sincronizarLeiturasAnterioresEmLote(condominioSalvo.id, leiturasExtraidas);
+              localStorage.setItem(`leituras_anteriores_${condominioSalvo.id}_${servicoPlanilha}`, JSON.stringify(leiturasExtraidas));
+              await this.sincronizarLeiturasAnterioresEmLote(condominioSalvo.id, leiturasExtraidas, servicoPlanilha);
             }
           } catch (errLeituras) {
             console.error("Erro ao incluir leituras automáticas no cadastro:", errLeituras);
@@ -637,6 +647,7 @@ export const UCondoImportService = {
       let unidadeColIndex = -1;
       let consumoColIndex = -1;
       let leituraAnteriorColIndex = -1;
+      let servicoPlanilha = 'AGUA';
 
       // Varrer primeiras 10 linhas
       for (let i = 0; i < Math.min(10, rawData.length); i++) {
@@ -645,6 +656,12 @@ export const UCondoImportService = {
 
         for (let j = 0; j < row.length; j++) {
           const cellText = String(row[j] || '').trim().toLowerCase();
+
+          if (cellText.includes('gás') || cellText.includes('gas') || cellText.includes('m3')) {
+            servicoPlanilha = 'GAS';
+          } else if (cellText.includes('energia') || cellText.includes('luz') || cellText.includes('elétrica') || cellText.includes('eletrica') || cellText.includes('kwh')) {
+            servicoPlanilha = 'ENERGIA';
+          }
           
           if (cellText.includes('referência') || cellText.includes('referencia')) {
             const parts = String(row[j]).split(/refer[êe]ncia/i);
@@ -696,7 +713,8 @@ export const UCondoImportService = {
       if (headerRowIndex === -1) headerRowIndex = 5;
 
       const nomeRefExibicao = mesReferencia || 'Anterior';
-      const desejaSalvar = window.confirm(`Planilha de fechamento de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
+      const labelServico = servicoPlanilha === 'GAS' ? 'Gás' : servicoPlanilha === 'ENERGIA' ? 'Energia' : 'Água';
+      const desejaSalvar = window.confirm(`Planilha de fechamento de ${labelServico} de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
 
       if (!desejaSalvar) {
         return { cancelado: true };
@@ -726,11 +744,11 @@ export const UCondoImportService = {
       }
 
       try {
-        localStorage.setItem(`leituras_anteriores_${condExistente.id}`, JSON.stringify(leiturasExtraidas));
+        localStorage.setItem(`leituras_anteriores_${condExistente.id}_${servicoPlanilha}`, JSON.stringify(leiturasExtraidas));
       } catch (e) {}
 
       // Envio em lote
-      await this.sincronizarLeiturasAnterioresEmLote(condExistente.id, leiturasExtraidas);
+      await this.sincronizarLeiturasAnterioresEmLote(condExistente.id, leiturasExtraidas, servicoPlanilha);
 
       return {
         tipo: 'atualizado', // Reutilizando a prop 'atualizado' para o Toast no App.jsx funcionar perfeitamente
@@ -747,7 +765,7 @@ export const UCondoImportService = {
    * Função assíncrona que pega o array extraído e faz o envio em massa (lote) 
    * para a tabela no banco de dados, vinculando cada leitura à sua unidade.
    */
-  async sincronizarLeiturasAnterioresEmLote(condominioId, leiturasArray) {
+  async sincronizarLeiturasAnterioresEmLote(condominioId, leiturasArray, servicoPlanilha = 'AGUA') {
     if (!supabase) throw new Error('Supabase não configurado.');
 
     try {
@@ -783,6 +801,7 @@ export const UCondoImportService = {
             condominio_nome: unidadeBanco.condominio_id, // Usando ID temporariamente para manter relação
             leitura_anterior: item.leitura_anterior,
             leiturista_id: activeUserId,
+            servico: servicoPlanilha,
           });
         }
       }

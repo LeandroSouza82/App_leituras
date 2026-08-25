@@ -100,6 +100,92 @@ const MainApp = ({ onLogout }) => {
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
 
+    // Restauração silenciosa das leituras anteriores do Supabase -> localStorage
+    // CICLO CONTÍNUO: Prioriza leituras_detalhes (coletadas pelo app) para o próximo mês.
+    // Fallback para unidades_leituras (planilhas importadas) para novos condomínios.
+    const restaurarLeiturasDaNuvem = async () => {
+      try {
+        if (!supabase) return;
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) return;
+
+        // ── Etapa 1: Ciclo contínuo – busca a ÚLTIMA leitura de cada unidade
+        // coletada pelo próprio app (leituras_detalhes). Isso torna o sistema
+        // 100% autossustentável: a leitura atual do mês vira a anterior do próximo.
+        const { data: detalhes, error: errDetalhes } = await supabase
+          .from('leituras_detalhes')
+          .select('unidade_id, condominio_nome, servico, leitura_atual, data_leitura')
+          .eq('leiturista_id', user.id)
+          .order('data_leitura', { ascending: false });
+
+        // Mapa de chave "condId__servico" -> array de leituras (deduplicado por unidade)
+        const gruposApp = {};
+
+        if (!errDetalhes && Array.isArray(detalhes) && detalhes.length > 0) {
+          // Deduplicar: mantém apenas o registro mais recente por unidade+serviço
+          const vistos = new Set();
+          for (const reg of detalhes) {
+            const condId = reg.condominio_nome; // guarda condominio_id
+            const servico = (reg.servico || 'AGUA').toUpperCase();
+            const chaveUnidade = `${condId}__${servico}__${String(reg.unidade_id).trim()}`;
+
+            if (vistos.has(chaveUnidade)) continue; // já tem registro mais recente
+            vistos.add(chaveUnidade);
+
+            const chaveGrupo = `${condId}__${servico}`;
+            if (!gruposApp[chaveGrupo]) gruposApp[chaveGrupo] = { condId, servico, leituras: [] };
+            gruposApp[chaveGrupo].leituras.push({
+              unidade: String(reg.unidade_id).trim(),
+              leitura_anterior: reg.leitura_atual, // atual de hoje = anterior do próximo mês
+            });
+          }
+        }
+
+        // ── Etapa 2: Fallback – planilhas importadas (unidades_leituras)
+        // Cobre condomínios ainda não operados pelo app ou recém-cadastrados.
+        const { data: planilhas, error: errPlanilhas } = await supabase
+          .from('unidades_leituras')
+          .select('condominio_nome, unidade, leitura_anterior, servico')
+          .eq('leiturista_id', user.id);
+
+        const gruposPlanilha = {};
+        if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
+          for (const reg of planilhas) {
+            const condId = reg.condominio_nome;
+            const servico = (reg.servico || 'AGUA').toUpperCase();
+            const chaveGrupo = `${condId}__${servico}`;
+            // Só usa planilha se o app ainda não tem dados do ciclo contínuo
+            if (gruposApp[chaveGrupo]) continue;
+            if (!gruposPlanilha[chaveGrupo]) gruposPlanilha[chaveGrupo] = { condId, servico, leituras: [] };
+            gruposPlanilha[chaveGrupo].leituras.push({
+              unidade: reg.unidade,
+              leitura_anterior: reg.leitura_anterior,
+            });
+          }
+        }
+
+        // ── Etapa 3: Persiste no localStorage
+        // Dados do ciclo do app SEMPRE sobrescrevem (são mais recentes).
+        // Dados de planilha só gravam se a chave ainda estiver vazia.
+        const todosGrupos = [
+          ...Object.values(gruposApp).map(g => ({ ...g, sobrescrever: true })),
+          ...Object.values(gruposPlanilha).map(g => ({ ...g, sobrescrever: false })),
+        ];
+
+        for (const { condId, servico, leituras, sobrescrever } of todosGrupos) {
+          const storageKey = `leituras_anteriores_${condId}_${servico}`;
+          if (sobrescrever || !localStorage.getItem(storageKey)) {
+            localStorage.setItem(storageKey, JSON.stringify(leituras));
+          }
+        }
+      } catch (_) {
+        // Falha silenciosa — offline ou sem permissão
+      }
+    };
+
+    restaurarLeiturasDaNuvem();
+
     // Inicializa o serviço de recebimento de planilhas via Share Intent (WhatsApp, Arquivos, etc.)
     ShareIntentService.init(async (fileData) => {
       try {

@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import './CustomPrompt.css';
 
 const ConfirmModal = ({ title, message, onResolve }) => {
+  const labelConfirmar = title && title.toLowerCase().includes('excluir') ? 'Excluir' : 'Confirmar';
+
   return (
     <div className="custom-prompt-overlay" onClick={() => onResolve(false)}>
       <div 
@@ -25,7 +27,7 @@ const ConfirmModal = ({ title, message, onResolve }) => {
             className="custom-prompt-btn-confirmar"
             onClick={() => onResolve(true)}
           >
-            Confirmar Envio
+            {labelConfirmar}
           </button>
         </div>
       </div>

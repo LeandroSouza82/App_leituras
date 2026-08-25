@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, RefreshCw, Trash2, Save, RotateCcw } from 'lucide-react';
+import { X, RefreshCw, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
-const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDelete, onSaveReading, initialValue = '', leituraAnterior = null }) => {
+const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituraAnterior = null }) => {
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
@@ -98,8 +98,8 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
               <img src={imageUri} alt="Preview do Medidor" className="preview-full-img" />
             </Zoom>
 
-            {/* Botões flutuantes estilo uCondo */}
-            <div className="preview-floating-actions">
+            {/* Botão flutuante — apenas Alterar. Exclusão via long press no mini card */}
+            <div className="preview-floating-actions" style={{ justifyContent: 'center' }}>
               <button
                 type="button"
                 className="btn-floating btn-floating-retake"
@@ -109,16 +109,6 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onDel
               >
                 <RotateCcw size={16} />
                 <span>Alterar</span>
-              </button>
-              <button
-                type="button"
-                className="btn-floating btn-floating-delete"
-                onClick={onDelete}
-                disabled={isSaving}
-                title="Excluir foto"
-              >
-                <Trash2 size={16} />
-                <span>Excluir</span>
               </button>
             </div>
           </div>
