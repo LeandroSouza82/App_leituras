@@ -15,20 +15,50 @@ import { supabase } from '../../services/supabase';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import './SideMenu.css';
+import { Browser } from '@capacitor/browser';
 
-const SideMenu = ({ isOpen, onClose }) => {
+const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
   const [isFeedbackModalOpen, setFeedbackModalOpen] = useState(false);
+
+  const handleNavigatePerfil = () => {
+    onClose();
+    if (onNavigate) onNavigate('perfil');
+  };
+
+  const handleOpenPrivacy = async () => {
+    try {
+      await Browser.open({ url: 'https://fastleitura.appviper.com.br/privacidade' });
+    } catch (err) {
+      console.error('Erro ao abrir política de privacidade', err);
+    }
+  };
+
+  const handleOpenSupport = async () => {
+    try {
+      await Browser.open({ url: 'https://wa.me/55SEUNUMERO?text=Preciso%20de%20ajuda%20no%20Fast%20Leituras' });
+    } catch (err) {
+      console.error('Erro ao abrir suporte', err);
+    }
+  };
+
+  const handleOpenRating = async () => {
+    try {
+      await Browser.open({ url: 'market://details?id=com.fastleituras.app' });
+    } catch (err) {
+      console.error('Erro ao abrir loja', err);
+    }
+  };
 
   // Mapeamento das opções do menu movido para dentro do componente
   // para ter acesso às funções de state (setCameraModalOpen, setFeedbackModalOpen)
   const MENU_ITEMS = [
     { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
-    { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: () => {} },
+    { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
     { id: 'prefs', label: 'Preferências do App', icon: Settings, onClick: () => {} },
-    { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => {} },
-    { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: () => {} },
-    { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: () => {} },
+    { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: handleOpenPrivacy },
+    { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleOpenSupport },
+    { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleOpenRating },
     { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
   ];
 
@@ -36,18 +66,9 @@ const SideMenu = ({ isOpen, onClose }) => {
 
   const handleLogout = async () => {
     if (!window.confirm('Deseja realmente sair da sua conta?')) return;
-
-    try {
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
-
-      sessionStorage.removeItem('leituras-alerta-aberto');
-      onClose();
-
-      window.location.href = '/';
-    } catch (error) {
-      window.location.href = '/';
+    
+    if (onLogout) {
+      await onLogout();
     }
   };
 

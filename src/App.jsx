@@ -298,6 +298,8 @@ const MainApp = ({ onLogout }) => {
                 onOpenAlerts={handleOpenAlerts}
                 onOpenProgressoModal={() => setShowProgressoModal(true)}
                 onSync={recarregarCondominios}
+                onLogout={onLogout}
+                onNavigate={setAbaAtiva}
               />
             </div>
             <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '100px' }}>

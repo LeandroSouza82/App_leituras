@@ -31,6 +31,8 @@ const Header = ({
   onOpenAlerts,
   onOpenProgressoModal,
   onSync,
+  onLogout,
+  onNavigate,
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
@@ -106,6 +108,8 @@ const Header = ({
       <SideMenu
         isOpen={isSideMenuOpen}
         onClose={() => setIsSideMenuOpen(false)}
+        onLogout={onLogout}
+        onNavigate={onNavigate}
       />
     </header>
   );
