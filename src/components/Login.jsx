@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus, UserRound, Phone, KeyRound, ArrowLeft } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
-import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { useGoogleLogin } from '@react-oauth/google';
+import { loginGoogleNativo } from '../services/googleAuthService';
 import './Login.css';
 
 const RecuperarSenhaModal = ({ isOpen, onClose }) => {
@@ -167,13 +167,12 @@ const Login = ({ onLoginSuccess }) => {
     onSuccess: async (tokenResponse) => {
       try {
         setFeedback(null);
-        // O access_token do Google é passado diretamente para o Supabase via signInWithIdToken
         const { error } = await supabase.auth.signInWithIdToken({
           provider: 'google',
           token: tokenResponse.access_token,
         });
         if (error) throw error;
-        // O onAuthStateChange do App.jsx detecta a sessão automaticamente
+        // onAuthStateChange do App.jsx detecta a sessão automaticamente
       } catch (err) {
         console.error('Erro ao autenticar no Supabase (web):', err);
         setFeedback({ tipo: 'erro', mensagem: 'Falha ao autenticar com o Google. Tente novamente.' });
@@ -187,29 +186,14 @@ const Login = ({ onLoginSuccess }) => {
   // ── Dispatcher: detecta ambiente e escolhe o fluxo correto
   const handleLoginGoogle = async () => {
     if (Capacitor.isNativePlatform()) {
-      // 📱 APK / Android nativo: abre browser externo do sistema e retorna via deep link
-      try {
-        setCarregando(true);
-        setFeedback(null);
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: 'com.fastleituras.app://',
-            skipBrowserRedirect: true, // não redireciona no WebView
-          },
-        });
-        if (error) throw error;
-        if (data?.url) {
-          await Browser.open({ url: data.url, presentationStyle: 'popover' });
-        }
-      } catch (error) {
-        console.error('Erro no login nativo Google:', error);
-        setFeedback({ tipo: 'erro', mensagem: 'Falha ao autenticar com o Google. Tente novamente.' });
-      } finally {
-        setCarregando(false);
-      }
+      // 📱 APK: seletor nativo de contas Google → idToken → Supabase (sem URL, sem browser externo)
+      setCarregando(true);
+      setFeedback(null);
+      const { error } = await loginGoogleNativo();
+      if (error) setFeedback({ tipo: 'erro', mensagem: 'Falha ao autenticar com o Google. Tente novamente.' });
+      setCarregando(false);
     } else {
-      // 🖥️ Web: abre popup nativo do browser com @react-oauth/google
+      // 🖥️ Web: popup nativo do browser via @react-oauth/google
       loginGoogleWeb();
     }
   };

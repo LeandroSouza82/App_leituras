@@ -5,9 +5,13 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import './index.css';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { initGoogleAuth } from './services/googleAuthService';
 
 // Registra os elementos de PWA do Ionic (necessário para a câmera no navegador/WebView)
 defineCustomElements(window);
+
+// Inicializa o plugin nativo de Google Sign-In (no browser é um no-op silencioso)
+initGoogleAuth();
 
 // Proteção cirúrgica contra reloads automáticos ao reconectar à internet ou atualizar Service Worker
 if (typeof window !== 'undefined') {
