@@ -27,6 +27,7 @@ import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
 import { Capacitor } from '@capacitor/core';
 import { logoutGoogleNativo } from './services/googleAuthService';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -496,7 +497,21 @@ const App = () => {
 
   const handleLogout = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
-      await logoutGoogleNativo();
+      try {
+        await logoutGoogleNativo();
+      } catch (err) {
+        console.warn('Erro ao deslogar Google Nativo:', err);
+      }
+
+      try {
+        const pending = await LocalNotifications.getPending();
+        if (pending.notifications.length > 0) {
+          await LocalNotifications.cancel(pending);
+        }
+        await LocalNotifications.removeAllDeliveredNotifications();
+      } catch (err) {
+        console.warn('Erro ao limpar notificações locais:', err);
+      }
     }
 
     if (supabase) {
