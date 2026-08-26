@@ -522,10 +522,8 @@ const App = () => {
       }
     }
 
-    sessionStorage.removeItem('leituras-alerta-aberto');
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith('leiturasapp:'))
-      .forEach((key) => localStorage.removeItem(key));
+    sessionStorage.clear();
+    localStorage.clear();
     setSession(null);
     setShowSplash(true);
     return true;
