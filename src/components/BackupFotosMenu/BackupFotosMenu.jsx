@@ -253,7 +253,13 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     setOnlinePhotos([]);
 
     try {
+      const { data: sessionData } = await supabase.auth.getUser();
+      const userId = sessionData?.user?.id;
+
       let query = supabase.from('leituras_detalhes').select('*');
+      if (userId) {
+        query = query.eq('leiturista_id', userId);
+      }
 
       if (searchQuery.trim()) {
         query = query.ilike('condominio_nome', `%${searchQuery.trim()}%`);
