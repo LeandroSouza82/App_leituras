@@ -3,6 +3,7 @@ import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
 import { supabase } from './supabase';
 import { customPrompt } from '../components/CustomPrompt/CustomPrompt';
+import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
 
 /**
  * Normaliza o nome do condomínio removendo acentos, múltiplos espaços,
@@ -209,26 +210,32 @@ export const UCondoImportService = {
   },
 
   /**
-   * Salva a lista de unidades no Filesystem local, LocalStorage e no Supabase (Batch Insert)
+   * Salva a lista de unidades no LocalStorage e Filesystem local (Offline-First).
+   * A sincronização com o Supabase é feita em background pelo syncOfflineService
+   * quando a conexão for restabelecida — sem bloquear o fluxo de importação.
    */
   async persistirUnidadesLocal(condominioId, unidades) {
     if (!condominioId || !Array.isArray(unidades)) return;
 
-    // 1. LocalStorage
+    // 1. LocalStorage — unidades disponíveis imediatamente
     const storageKey = `unidades_${condominioId}`;
     localStorage.setItem(storageKey, JSON.stringify(unidades));
 
-    // 2. Filesystem (Permanente)
+    // 2. Filesystem — persistência permanente
     const fileName = `unidades_${condominioId}.json`;
     await salvarArquivoSeguro(fileName, JSON.stringify(unidades));
 
-    // 3. Supabase (Persistência em Nuvem com Batch Insert)
+    // 3. INICIALIZAR LEITURAS ANTERIORES ZERADAS
+    const leiturasZeradas = unidades.map(nome => ({
+      unidade: String(nome).trim(),
+      leitura_anterior: 0,
+      leitura_anterior_gas: 0
+    }));
+    localStorage.setItem(`leituras_anteriores_${condominioId}`, JSON.stringify(leiturasZeradas));
+
+    // 4. Supabase — tentativa em background
     if (supabase) {
       try {
-        // Remove unidades antigas vinculadas a este condomínio
-        await supabase.from('unidades').delete().eq('condominio_id', condominioId);
-
-        // Prepara lote com as colunas nome, numero, identificador e status
         const unidadesParaInserir = unidades.map(nome => ({
           condominio_id: condominioId,
           nome: String(nome).trim(),
@@ -236,12 +243,14 @@ export const UCondoImportService = {
           identificador: String(nome).trim(),
           status: 'pendente',
         }));
-
-        const { error: insertError } = await supabase.from('unidades').insert(unidadesParaInserir);
-        if (insertError) {
-        }
-      } catch (err) {
-      }
+        // Fire-and-forget
+        supabase
+          .from('unidades')
+          .delete()
+          .eq('condominio_id', condominioId)
+          .then(() => supabase.from('unidades').insert(unidadesParaInserir))
+          .catch(() => {});
+      } catch { /* Silencioso */ }
     }
   },
 
@@ -325,40 +334,6 @@ export const UCondoImportService = {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
 
-      // ==========================================
-      // BIFURCAÇÃO INTELIGENTE (FORK)
-      // ==========================================
-      let isPlanilhaLeituras = false;
-
-      if (rawData && rawData.length > 0) {
-        const cabecalhoEmTexto = rawData.slice(0, 15).map(row => (row || []).join(' ').toLowerCase()).join(' ');
-        
-        if ((cabecalhoEmTexto.includes('condomínio') || cabecalhoEmTexto.includes('condominio')) && cabecalhoEmTexto.includes('consumo de')) {
-          // Verifica se o condomínio já existe antes de forçar o fluxo de leituras anteriores
-          const metadadosTemp = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
-          const nomeSugeridoTemp = metadadosTemp.nome || this.extrairNomeCondominioDeArquivo(nomeArquivo);
-          const nomeLimpoTemp = normalizarNome(nomeSugeridoTemp);
-          
-          // Faz a busca flexível e já guarda o objeto inteiro (com ID) na variável
-          const condExistente = condominiosExistentes.find(c => {
-            const nomeBanco = normalizarNome(c.nome);
-            if (!nomeBanco || !nomeLimpoTemp) return false;
-            if (nomeBanco === nomeLimpoTemp || nomeBanco.includes(nomeLimpoTemp) || nomeLimpoTemp.includes(nomeBanco)) return true;
-            const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoTemp);
-            return (nomeLimpoTemp.length > 8 && distancia <= 2);
-          });
-
-          const existeNoBanco = !!condExistente;          
-          if (existeNoBanco) {
-            isPlanilhaLeituras = true;
-          }
-        }
-      }
-
-      if (isPlanilhaLeituras) {
-        return await this.processarPlanilhaLeiturasAnteriores(nomeArquivo, rawData, condominiosExistentes);
-      }
-
       // 2. Extrai unidades no formato uCondo
       let unidades = [];
       try {
@@ -391,7 +366,7 @@ export const UCondoImportService = {
         let condExistente = null;
 
         // 2.2 Busca flexível no Supabase (Fonte da Verdade) com correspondência parcial bidirecional
-        if (supabase && nomeLimpoPlanilha) {
+        if (supabase && nomeLimpoPlanilha && navigator.onLine) {
           try {
             const { data: todosConds, error: fetchError } = await supabase
               .from('condominios')
@@ -421,9 +396,16 @@ export const UCondoImportService = {
           }
         }
 
-        // 2.3 Fallback de checagem na lista em memória (condominiosExistentes) com matching parcial
-        if (!condExistente && Array.isArray(condominiosExistentes) && nomeLimpoPlanilha) {
-          condExistente = condominiosExistentes.find(c => {
+        // 2.3 Fallback de checagem na lista em memória (condominiosExistentes) ou cache local com matching parcial
+        if (!condExistente && nomeLimpoPlanilha) {
+          let listaLocal = Array.isArray(condominiosExistentes) && condominiosExistentes.length > 0 ? condominiosExistentes : [];
+          if (listaLocal.length === 0) {
+            try {
+              const cacheData = localStorage.getItem('condominios_cache');
+              if (cacheData) listaLocal = JSON.parse(cacheData) || [];
+            } catch (e) {}
+          }
+          condExistente = listaLocal.find(c => {
             const nomeBanco = normalizarNome(c.nome);
             if (!nomeBanco || !nomeLimpoPlanilha) return false;
             
@@ -443,19 +425,17 @@ export const UCondoImportService = {
         // 2.4 Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
           const querSubstituir = window.confirm(
-            `O condomínio '${condExistente.nome}' já existe. Deseja atualizar a planilha deste condomínio?`
+            `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja importar esta lista para o condomínio '${condExistente.nome}'?`
           );
 
           if (!querSubstituir) {
-            return { cancelado: true }; // Aborta se o usuário cancelar
+            return { cancelado: true };
           }
 
-          // LÓGICA DE ATUALIZAÇÃO:
-          // 1. Deleta as unidades antigas e insere as novas usando o MESMO condominioExistente.id
+          // Atualiza as unidades locais zerando as leituras
           await this.persistirUnidadesLocal(condExistente.id, unidades);
 
-          // 2. Atualiza APENAS a contagem de apartamentos no condomínio existente. 
-          // O campo tipo_leitura do card no banco de dados é intocável durante o processo de importação.
+          // Atualiza contagem no Supabase
           if (supabase) {
             try {
               await supabase
@@ -485,86 +465,30 @@ export const UCondoImportService = {
             contatoSindico: '',
           };
 
-          const condominioSalvo = await salvarCondominio(novoCondominioData);
-
-          if (!condominioSalvo || !condominioSalvo.id) {
-            throw new Error('Não foi possível salvar o novo condomínio no Supabase.');
-          }
-
-          // Insere todas as unidades extraídas com o ID gerado
-          await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
-
-          // ==========================================
-          // MÁGICA ALL-IN-ONE: SE A PLANILHA TIVER LEITURAS, JÁ SALVA JUNTO!
-          // ==========================================
+          let condominioSalvo;
           try {
-            let headerRowIdx = -1;
-            let unidColIdx = -1;
-            let consumoColIdx = -1;
-            let leituraAntColIdx = -1;
-            let servicoPlanilha = 'AGUA';
-
-            for (let i = 0; i < Math.min(10, rawData.length); i++) {
-              const row = rawData[i];
-              if (!row || !Array.isArray(row)) continue;
-              for (let j = 0; j < row.length; j++) {
-                const cellText = String(row[j] || '').trim().toLowerCase();
-                
-                if (cellText.includes('gás') || cellText.includes('gas') || cellText.includes('m3')) {
-                  servicoPlanilha = 'GAS';
-                } else if (cellText.includes('energia') || cellText.includes('luz') || cellText.includes('elétrica') || cellText.includes('eletrica') || cellText.includes('kwh')) {
-                  servicoPlanilha = 'ENERGIA';
-                }
-
-                if (cellText === 'unidade' || cellText === 'unid' || cellText.includes('unidade')) {
-                  if (headerRowIdx === -1 || headerRowIdx === i) {
-                    headerRowIdx = i;
-                    unidColIdx = j;
-                  }
-                }
-                if (cellText.includes('consumo')) {
-                  if (headerRowIdx === -1 || headerRowIdx === i) {
-                    headerRowIdx = i;
-                    consumoColIdx = j;
-                  }
-                }
-              }
+            condominioSalvo = await salvarCondominio(novoCondominioData);
+            if (!condominioSalvo || !condominioSalvo.id) {
+              throw new Error('Não foi possível salvar o novo condomínio no Supabase.');
             }
-
-            if (headerRowIdx !== -1 && unidColIdx !== -1 && consumoColIdx !== -1) {
-              leituraAntColIdx = consumoColIdx > 0 ? consumoColIdx - 1 : 3;
+          } catch (err) {
+            // Fallback Offline-First se falhar a rede (fetch)
+            if (err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('sessão')) {
+              const offId = crypto.randomUUID ? crypto.randomUUID() : `off_${Date.now()}`;
+              condominioSalvo = {
+                ...novoCondominioData,
+                id: offId,
+                data: new Date().toISOString(),
+                completo: false
+              };
+              enfileirarNovoCondominio(condominioSalvo);
             } else {
-              leituraAntColIdx = 3;
-              unidColIdx = 1;
-              headerRowIdx = 5;
+              throw err;
             }
-
-            const leiturasExtraidas = [];
-            for (let i = headerRowIdx + 1; i < rawData.length; i++) {
-              const row = rawData[i];
-              if (!row || !Array.isArray(row) || row.length === 0) continue;
-              const unidade = String(row[unidColIdx] || '').trim();
-              const leituraAnteriorStr = String(row[leituraAntColIdx] || '').trim();
-
-              if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
-                const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
-                if (!isNaN(leituraAnteriorNum)) {
-                  leiturasExtraidas.push({
-                    unidade,
-                    leitura_anterior: leituraAnteriorNum
-                  });
-                }
-              }
-            }
-
-            if (leiturasExtraidas.length > 0) {
-              localStorage.setItem(`leituras_anteriores_${condominioSalvo.id}_${servicoPlanilha}`, JSON.stringify(leiturasExtraidas));
-              await this.sincronizarLeiturasAnterioresEmLote(condominioSalvo.id, leiturasExtraidas, servicoPlanilha);
-            }
-          } catch (errLeituras) {
-            console.error("Erro ao incluir leituras automáticas no cadastro:", errLeituras);
           }
-          // ==========================================
+
+          // Insere todas as unidades extraídas com o ID gerado (e zera o histórico de leituras)
+          await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
 
           return {
             tipo: 'criado',
@@ -588,300 +512,12 @@ export const UCondoImportService = {
   },
 
   /**
-   * FRENTE 3 (FORK): Processamento Dedicado para Planilha de Leituras Anteriores
-   */
-  async processarPlanilhaLeiturasAnteriores(nomeArquivo, rawData, condominiosExistentes) {
-    try {
-      const metadados = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
-      let nomeExtraido = metadados.nome;
-
-      if (!nomeExtraido) {
-        nomeExtraido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
-      }
-      
-      const nomeLimpoPlanilha = normalizarNome(nomeExtraido);
-      let condExistente = null;
-
-      // Busca flexível no Supabase (Fonte da Verdade)
-      if (supabase && nomeLimpoPlanilha) {
-        try {
-          const { data: todosConds, error: fetchError } = await supabase
-            .from('condominios')
-            .select('*');
-
-          if (!fetchError && Array.isArray(todosConds)) {
-            condExistente = todosConds.find(c => {
-              const nomeBanco = normalizarNome(c.nome);
-              if (!nomeBanco || !nomeLimpoPlanilha) return false;
-              
-              if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) return true;
-              
-              const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
-              if (nomeLimpoPlanilha.length > 8 && distancia <= 2) return true;
-              
-              return false;
-            }) || null;
-          }
-        } catch (errDb) {}
-      }
-
-      // Fallback em memória
-      if (!condExistente && Array.isArray(condominiosExistentes) && nomeLimpoPlanilha) {
-        condExistente = condominiosExistentes.find(c => {
-          const nomeBanco = normalizarNome(c.nome);
-          if (!nomeBanco || !nomeLimpoPlanilha) return false;
-          if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) return true;
-          const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
-          if (nomeLimpoPlanilha.length > 8 && distancia <= 2) return true;
-          return false;
-        }) || null;
-      }
-
-      if (!condExistente) {
-        throw new Error(`Condomínio vinculado à planilha "${nomeExtraido}" não foi encontrado. Cadastre o condomínio primeiro.`);
-      }
-
-      // 1. Identificação Dinâmica (A Inteligência)
-      let mesReferencia = '';
-      let headerRowIndex = -1;
-      let unidadeColIndex = -1;
-      let consumoColIndex = -1;
-      let leituraAnteriorColIndex = -1;
-      let servicoPlanilha = 'AGUA';
-
-      // Varrer primeiras 10 linhas
-      for (let i = 0; i < Math.min(10, rawData.length); i++) {
-        const row = rawData[i];
-        if (!row || !Array.isArray(row)) continue;
-
-        for (let j = 0; j < row.length; j++) {
-          const cellText = String(row[j] || '').trim().toLowerCase();
-
-          if (cellText.includes('gás') || cellText.includes('gas') || cellText.includes('m3')) {
-            servicoPlanilha = 'GAS';
-          } else if (cellText.includes('energia') || cellText.includes('luz') || cellText.includes('elétrica') || cellText.includes('eletrica') || cellText.includes('kwh')) {
-            servicoPlanilha = 'ENERGIA';
-          }
-          
-          if (cellText.includes('referência') || cellText.includes('referencia')) {
-            const parts = String(row[j]).split(/refer[êe]ncia/i);
-            if (parts.length > 1 && parts[1].trim() !== '') {
-              mesReferencia = parts[1].trim();
-            } else if (j + 1 < row.length) {
-              mesReferencia = String(row[j + 1] || '').trim();
-            }
-          }
-
-          if (cellText === 'unidade' || cellText === 'unid' || cellText === 'ap' || cellText.includes('unidade')) {
-            if (headerRowIndex === -1 || headerRowIndex === i) {
-              headerRowIndex = i;
-              unidadeColIndex = j;
-            }
-          }
-
-          if (cellText.includes('consumo')) {
-            if (headerRowIndex === -1 || headerRowIndex === i) {
-              headerRowIndex = i;
-              consumoColIndex = j;
-            }
-          }
-        }
-      }
-
-      // Captura Exata
-      if (headerRowIndex !== -1 && unidadeColIndex !== -1 && consumoColIndex !== -1) {
-        if (consumoColIndex > 0) {
-          leituraAnteriorColIndex = consumoColIndex - 1;
-        }
-
-        if (mesReferencia) {
-          const row = rawData[headerRowIndex];
-          const mesRefLimpo = mesReferencia.toLowerCase().split(' ')[0]; // ex: "julho"
-          for (let j = 0; j < row.length; j++) {
-            const headText = String(row[j] || '').trim().toLowerCase();
-            if (headText.includes(mesRefLimpo)) {
-              leituraAnteriorColIndex = j;
-              break;
-            }
-          }
-        }
-      }
-
-      // Fallback
-      if (leituraAnteriorColIndex === -1) leituraAnteriorColIndex = 3;
-      if (unidadeColIndex === -1) unidadeColIndex = 1;
-      if (headerRowIndex === -1) headerRowIndex = 5;
-
-      const nomeRefExibicao = mesReferencia || 'Anterior';
-      const labelServico = servicoPlanilha === 'GAS' ? 'Gás' : servicoPlanilha === 'ENERGIA' ? 'Energia' : 'Água';
-      const desejaSalvar = window.confirm(`Planilha de fechamento de ${labelServico} de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
-
-      if (!desejaSalvar) {
-        return { cancelado: true };
-      }
-
-      const leiturasExtraidas = [];
-      for (let i = headerRowIndex + 1; i < rawData.length; i++) {
-        const row = rawData[i];
-        if (!row || !Array.isArray(row) || row.length === 0) continue;
-        
-        const unidade = String(row[unidadeColIndex] || '').trim();
-        const leituraAnteriorStr = String(row[leituraAnteriorColIndex] || '').trim();
-        
-        if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
-          const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
-          if (!isNaN(leituraAnteriorNum)) {
-            leiturasExtraidas.push({
-              unidade,
-              leitura_anterior: leituraAnteriorNum
-            });
-          }
-        }
-      }
-
-      if (leiturasExtraidas.length === 0) {
-         throw new Error('Nenhuma leitura anterior válida foi encontrada na planilha.');
-      }
-
-      try {
-        localStorage.setItem(`leituras_anteriores_${condExistente.id}_${servicoPlanilha}`, JSON.stringify(leiturasExtraidas));
-      } catch (e) {}
-
-      // Envio em lote
-      await this.sincronizarLeiturasAnterioresEmLote(condExistente.id, leiturasExtraidas, servicoPlanilha);
-
-      return {
-        tipo: 'atualizado', // Reutilizando a prop 'atualizado' para o Toast no App.jsx funcionar perfeitamente
-        condominio: condExistente,
-        totalUnidades: leiturasExtraidas.length
-      };
-
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  /**
-   * Função assíncrona que pega o array extraído e faz o envio em massa (lote) 
-   * para a tabela no banco de dados, vinculando cada leitura à sua unidade.
-   */
-  async sincronizarLeiturasAnterioresEmLote(condominioId, leiturasArray, servicoPlanilha = 'AGUA') {
-    if (!supabase) throw new Error('Supabase não configurado.');
-
-    try {
-      // 0. Captura o usuário ativo para garantir o vínculo multi-tenant (RLS)
-      let activeUserId = null;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user?.id) activeUserId = user.id;
-      } catch { /* Mantém null como fallback seguro */ }
-
-      // 1. Busca as unidades do condomínio para obter os IDs (vinculação relacional)
-      const { data: unidadesBanco, error: errUnidades } = await supabase
-        .from('unidades')
-        .select('id, nome, condominio_id')
-        .eq('condominio_id', condominioId);
-
-      if (errUnidades) throw new Error('Não foi possível carregar os dados das unidades do servidor.');
-      
-      if (!unidadesBanco || unidadesBanco.length === 0) {
-        throw new Error('Nenhuma unidade cadastrada encontrada para este condomínio. Cadastre as unidades primeiro.');
-      }
-
-      // 2. Prepara o lote de atualização
-      const loteParaEnvio = [];
-
-      for (const item of leiturasArray) {
-        // Encontra a unidade correspondente pelo nome normalizado
-        const unidadeBanco = unidadesBanco.find(u => normalizarNome(u.nome) === normalizarNome(item.unidade));
-        
-        if (unidadeBanco) {
-          loteParaEnvio.push({
-            unidade: unidadeBanco.nome,
-            condominio_nome: unidadeBanco.condominio_id, // Usando ID temporariamente para manter relação
-            leitura_anterior: item.leitura_anterior,
-            leiturista_id: activeUserId,
-            servico: servicoPlanilha,
-          });
-        }
-      }
-
-      if (loteParaEnvio.length > 0) {
-        // Correção 1: Apontando para a tabela correta que criamos (unidades_leituras)
-        // Correção 2: Removendo o upsert complexo para um insert simples inicial
-        const { error } = await supabase.from('unidades_leituras').insert(loteParaEnvio);
-        
-        if (error) {
-          console.error("Erro do Supabase:", error);
-          throw new Error('Houve uma falha de comunicação com o servidor ao salvar as leituras. Verifique sua conexão e tente novamente.');
-        }
-      }
-    } catch(err) {
-      // Correção 3: Mensagem amigável capturando o erro tratado
-      throw new Error(err.message || 'Ocorreu um erro inesperado ao salvar as leituras da planilha.');
-    }
-  },
-
-  /**
-   * FRENTE 2: Criação Automática de Novo Condomínio + Unidades em Massa
-   */
-  async criarCondominioComPlanilha(nomeArquivo, fileData, showToast = alert) {
-    try {
-      // 1. Extração das unidades
-      const unidades = this.extrairUnidades(fileData);
-
-      // 2. Extração do Nome Automático
-      let nomeSugerido = this.extrairNomeCondominioDeArquivo(nomeArquivo);
-      let nomeFinal = await customPrompt(
-        'Confirme ou digite o nome deste novo condomínio:', 
-        nomeSugerido || 'Novo Condomínio'
-      );
-
-      if (!nomeFinal || !nomeFinal.trim()) {
-        return null;
-      }
-      nomeFinal = nomeFinal.trim();
-
-      // 3. Criação do Card Pai (Condomínio)
-      const novoCondominioData = {
-        nome: nomeFinal,
-        tipoLeitura: 'Água e Gás',
-        diaLeitura: '10',
-        apartamentos: unidades.length,
-        valor: 0,
-        endereco: '',
-        instrucoesAcesso: '',
-        contatoSindico: '',
-      };
-
-      const condominioSalvo = await salvarCondominio(novoCondominioData);
-
-      if (!condominioSalvo || !condominioSalvo.id) {
-        throw new Error('Não foi possível criar o condomínio no banco de dados.');
-      }
-
-      // 4. Criação dos Cards Filhos (Unidades)
-      await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
-
-      return {
-        condominio: condominioSalvo,
-        totalUnidades: unidades.length,
-      };
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  /**
    * FRENTE 1: Atualização / Substituição de Unidades de Condomínio Existente (com validação de segurança)
    */
   async atualizarUnidadesCondominio(condominioId, fileData, unidadesAtuais = [], condominoAtualNome = '') {
     try {
       // 1. Extração das novas unidades
       const novasUnidades = this.extrairUnidades(fileData);
-
-      let isPlanilhaLeituras = false;
-      let rawDataToExtractLeituras = null;
 
       // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
       let workbook;
@@ -902,17 +538,7 @@ export const UCondoImportService = {
 
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-        rawDataToExtractLeituras = rawData;
         
-        if (rawData && rawData.length > 0) {
-          // Varre as primeiras 15 linhas inteiras procurando as palavras-chave em qualquer coluna
-          const cabecalhoEmTexto = rawData.slice(0, 15).map(row => (row || []).join(' ').toLowerCase()).join(' ');
-          
-          if ((cabecalhoEmTexto.includes('condomínio') || cabecalhoEmTexto.includes('condominio')) && cabecalhoEmTexto.includes('consumo de')) {
-            isPlanilhaLeituras = true;
-          }
-        }
-
         const metadados = this.extrairMetadadosPlanilha(rawData, '');
 
         if (metadados.nome && condominoAtualNome) {
@@ -943,105 +569,6 @@ export const UCondoImportService = {
       }
 
       await this.persistirUnidadesLocal(condominioId, novasUnidades);
-
-      // 3. Se for planilha de leituras, extrai as leituras anteriores e envia em lote para o Supabase
-      if (isPlanilhaLeituras && rawDataToExtractLeituras) {
-        // 1. Identificação Dinâmica (A Inteligência)
-        let mesReferencia = '';
-        let headerRowIndex = -1;
-        let unidadeColIndex = -1;
-        let consumoColIndex = -1;
-        let leituraAnteriorColIndex = -1;
-
-        // Varrer primeiras 10 linhas
-        for (let i = 0; i < Math.min(10, rawDataToExtractLeituras.length); i++) {
-          const row = rawDataToExtractLeituras[i];
-          if (!row || !Array.isArray(row)) continue;
-
-          for (let j = 0; j < row.length; j++) {
-            const cellText = String(row[j] || '').trim().toLowerCase();
-            
-            if (cellText.includes('referência') || cellText.includes('referencia')) {
-              const parts = String(row[j]).split(/refer[êe]ncia/i);
-              if (parts.length > 1 && parts[1].trim() !== '') {
-                mesReferencia = parts[1].trim();
-              } else if (j + 1 < row.length) {
-                mesReferencia = String(row[j + 1] || '').trim();
-              }
-            }
-
-            if (cellText === 'unidade' || cellText === 'unid' || cellText === 'ap' || cellText.includes('unidade')) {
-              if (headerRowIndex === -1 || headerRowIndex === i) {
-                headerRowIndex = i;
-                unidadeColIndex = j;
-              }
-            }
-
-            if (cellText.includes('consumo')) {
-              if (headerRowIndex === -1 || headerRowIndex === i) {
-                headerRowIndex = i;
-                consumoColIndex = j;
-              }
-            }
-          }
-        }
-
-        // Captura Exata
-        if (headerRowIndex !== -1 && unidadeColIndex !== -1 && consumoColIndex !== -1) {
-          if (consumoColIndex > 0) {
-            leituraAnteriorColIndex = consumoColIndex - 1;
-          }
-
-          if (mesReferencia) {
-            const row = rawDataToExtractLeituras[headerRowIndex];
-            const mesRefLimpo = mesReferencia.toLowerCase().split(' ')[0]; // ex: "julho"
-            for (let j = 0; j < row.length; j++) {
-              const headText = String(row[j] || '').trim().toLowerCase();
-              if (headText.includes(mesRefLimpo)) {
-                leituraAnteriorColIndex = j;
-                break;
-              }
-            }
-          }
-        }
-
-        // Fallback
-        if (leituraAnteriorColIndex === -1) leituraAnteriorColIndex = 3;
-        if (unidadeColIndex === -1) unidadeColIndex = 1;
-        if (headerRowIndex === -1) headerRowIndex = 5;
-
-        const nomeRefExibicao = mesReferencia || 'Anterior';
-        const desejaSalvar = window.confirm(`Planilha de fechamento de ${nomeRefExibicao} identificada. Deseja salvar estas leituras como base (Leitura Anterior) para a nova coleta?`);
-
-        if (desejaSalvar) {
-          const leiturasExtraidas = [];
-          for (let i = headerRowIndex + 1; i < rawDataToExtractLeituras.length; i++) {
-            const row = rawDataToExtractLeituras[i];
-            if (!row || !Array.isArray(row) || row.length === 0) continue;
-            
-            const unidade = String(row[unidadeColIndex] || '').trim();
-            const leituraAnteriorStr = String(row[leituraAnteriorColIndex] || '').trim();
-            
-            if (unidade && !unidade.toLowerCase().includes('total') && leituraAnteriorStr) {
-              const leituraAnteriorNum = parseFloat(leituraAnteriorStr.replace(/\./g, '').replace(',', '.'));
-              if (!isNaN(leituraAnteriorNum)) {
-                leiturasExtraidas.push({
-                  unidade,
-                  leitura_anterior: leituraAnteriorNum
-                });
-              }
-            }
-          }
-
-          if (leiturasExtraidas.length > 0) {
-            try {
-              localStorage.setItem(`leituras_anteriores_${condominioId}`, JSON.stringify(leiturasExtraidas));
-            } catch (e) {}
-
-            await this.sincronizarLeiturasAnterioresEmLote(condominioId, leiturasExtraidas);
-          }
-        }
-      }
 
       return novasUnidades;
     } catch (error) {

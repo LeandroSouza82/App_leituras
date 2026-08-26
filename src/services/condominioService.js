@@ -21,17 +21,17 @@ const requireSupabase = () => {
 
 const getAuthenticatedUserId = async () => {
   const client = requireSupabase();
-  const { data, error } = await client.auth.getUser();
+  const { data, error } = await client.auth.getSession();
 
   if (error) {
     throw new Error(`Não foi possível validar a sessão: ${error.message}`);
   }
 
-  if (!data.user) {
+  if (!data.session?.user) {
     throw new Error('É necessário estar autenticado para acessar os condomínios.');
   }
 
-  return data.user.id;
+  return data.session.user.id;
 };
 
 const toDatabaseCondominio = (data, userId) => ({

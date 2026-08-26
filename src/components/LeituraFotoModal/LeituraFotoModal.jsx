@@ -28,6 +28,132 @@ const sanitizeName = (name) => {
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
 };
 
+const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress, onClick }) => {
+  const pressTimer = useRef(null);
+  const pointerStartPos = useRef(null);
+  const hasFiredRef = useRef(false);
+  const [isPressed, setIsPressed] = useState(false);
+
+  const clearLongPressTimer = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+    setIsPressed(false);
+  };
+
+  const startLongPress = (e) => {
+    if (!concluido) return;
+    
+    pointerStartPos.current = { 
+      x: e.clientX ?? (e.touches?.[0]?.clientX || 0), 
+      y: e.clientY ?? (e.touches?.[0]?.clientY || 0) 
+    };
+    hasFiredRef.current = false;
+    setIsPressed(true);
+    
+    if (navigator.vibrate) navigator.vibrate(50);
+    
+    pressTimer.current = setTimeout(() => {
+      hasFiredRef.current = true;
+      setIsPressed(false);
+      if (navigator.vibrate) navigator.vibrate(100);
+      onLongPress(apto);
+    }, 800);
+  };
+
+  const handlePointerDown = (e) => startLongPress(e);
+
+  const handlePointerMove = (e) => {
+    if (!pointerStartPos.current) return;
+    const clientX = e.clientX ?? (e.touches?.[0]?.clientX || 0);
+    const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
+    const diffX = Math.abs(clientX - pointerStartPos.current.x);
+    const diffY = Math.abs(clientY - pointerStartPos.current.y);
+    
+    if (diffY > 10 || diffX > 10) {
+      clearLongPressTimer();
+      pointerStartPos.current = null;
+    }
+  };
+
+  const handlePointerCancel = () => {
+    clearLongPressTimer();
+    pointerStartPos.current = null;
+  };
+
+  const handleClick = (e) => {
+    if (hasFiredRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      hasFiredRef.current = false;
+      return;
+    }
+    onClick(apto, concluido);
+  };
+
+  const handleImageClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (hasFiredRef.current) {
+      hasFiredRef.current = false;
+      return;
+    }
+    onClick(apto, concluido);
+  };
+
+  return (
+    <button
+      type="button"
+      className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerCancel}
+      onPointerCancel={handlePointerCancel}
+      onPointerLeave={handlePointerCancel}
+      onTouchEnd={handlePointerCancel}
+      onMouseUp={handlePointerCancel}
+      onMouseLeave={handlePointerCancel}
+      onClick={handleClick}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    >
+      <span className="apto-number">{apto}</span>
+      {concluido ? (
+        <div className="concluido-container">
+          {thumbnail ? (
+            <img 
+              src={thumbnail} 
+              alt="Preview" 
+              className="unit-miniature" 
+              style={{ opacity: isPressed ? 0.5 : 1, transition: 'opacity 0.2s' }}
+              onClick={handleImageClick}
+            />
+          ) : (
+            <div className="unit-sync-done-icon">
+              <CheckCircle size={22} color="#16a34a" />
+            </div>
+          )}
+          <div className="concluido-label">
+            <CheckCircle size={12} />
+            ✓ OK
+          </div>
+        </div>
+      ) : (
+        <div className="camera-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <CameraIcon size={20} />
+          <span>Fotografar</span>
+          {leituraAnterior !== undefined && (
+            <span style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+              Ant: {leituraAnterior}
+            </span>
+          )}
+        </div>
+      )}
+    </button>
+  );
+};
+
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 1. DECLARAÇÃO DE TODOS OS HOOKS NO TOPO ABSOLUTO
   const [fotosCapturadas, setFotosCapturadas] = useState({});
@@ -44,17 +170,38 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [showToast, setShowToast] = useState(false);
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [pressedApto, setPressedApto] = useState(null);
+  const [hydrationCounter, setHydrationCounter] = useState(0);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
-  const longPressFiredRef = useRef(false);
-  const pointerStartPos = useRef(null);
 
   // NOVO: Estado e busca da leitura anterior (Offline-first)
   const [leituraAnteriorAtiva, setLeituraAnteriorAtiva] = useState(null);
+  const [todasLeiturasAnteriores, setTodasLeiturasAnteriores] = useState({});
 
   useEffect(() => {
     if (isOpen && activeApto) {
+      const modal = document.querySelector('.leitura-modal-overlay');
+      if (modal) {
+        modal.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [isOpen, activeApto]);
+
+  // Listener para hidratar a tela caso a sincronização de background aconteça enquanto o modal está aberto
+  useEffect(() => {
+    const handleHydration = () => {
+      setHydrationCounter(prev => prev + 1);
+    };
+    window.addEventListener('offline_cache_hydrated', handleHydration);
+    return () => window.removeEventListener('offline_cache_hydrated', handleHydration);
+  }, []);
+
+  // Busca a leitura anterior APENAS do apartamento selecionado (offline-first fallback)
+  useEffect(() => {
+    if (isOpen && activeApto && leitura) {
       const fetchLeituraAnterior = async () => {
         let valueEncontrado = null;
         const apString = String(activeApto).trim();
@@ -64,16 +211,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         try {
           const status = await Network.getStatus();
           if (status.connected && supabase && condId) {
+            const colunaAlvo = tipoMedicaoAtivo === 'gas' ? 'leitura_anterior_gas' : 'leitura_anterior';
+            
             const { data: undData, error: undErr } = await supabase
               .from('unidades')
-              .select('leitura_anterior')
+              .select(colunaAlvo)
               .eq('condominio_id', condId)
               .eq('nome', apString)
               .limit(1)
               .single();
               
-            if (!undErr && undData && undData.leitura_anterior !== null && undData.leitura_anterior !== undefined) {
-               valueEncontrado = undData.leitura_anterior;
+            if (!undErr && undData && undData[colunaAlvo] !== null && undData[colunaAlvo] !== undefined) {
+               valueEncontrado = undData[colunaAlvo];
             }
           }
         } catch (e) {
@@ -83,13 +232,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // 2. Fallback para o celular (localStorage)
         if (valueEncontrado === null) {
           try {
-            const chaveStorage = `leituras_anteriores_${condId}_${tipoMedicaoAtivo.toUpperCase()}`;
+            const chaveStorage = `leituras_anteriores_${condId}`;
             const str = localStorage.getItem(chaveStorage);
             if (str) {
               const arr = JSON.parse(str);
               const obj = arr.find(l => String(l.unidade).trim() === apString);
-              if (obj && obj.leitura_anterior !== undefined && obj.leitura_anterior !== null) {
-                 valueEncontrado = obj.leitura_anterior;
+              if (obj) {
+                 const propCorreta = tipoMedicaoAtivo === 'gas' ? obj.leitura_anterior_gas : obj.leitura_anterior;
+                 if (propCorreta !== undefined && propCorreta !== null) {
+                    valueEncontrado = propCorreta;
+                 }
               }
             }
           } catch(e) {
@@ -105,6 +257,32 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setLeituraAnteriorAtiva(null);
     }
   }, [isOpen, activeApto, leitura, tipoMedicaoAtivo]);
+
+  // Busca TODAS as leituras anteriores para exibir no grid
+  useEffect(() => {
+    if (isOpen && leitura) {
+      const condId = leitura?.id || leitura?.condominio_id;
+      const chaveStorage = `leituras_anteriores_${condId}`;
+      try {
+        const str = localStorage.getItem(chaveStorage);
+        if (str) {
+          const arr = JSON.parse(str);
+          const mapeado = {};
+          arr.forEach(l => {
+            const propCorreta = tipoMedicaoAtivo === 'gas' ? l.leitura_anterior_gas : l.leitura_anterior;
+            if (propCorreta !== undefined && propCorreta !== null) {
+               mapeado[String(l.unidade).trim()] = propCorreta;
+            }
+          });
+          setTodasLeiturasAnteriores(mapeado);
+        } else {
+          setTodasLeiturasAnteriores({});
+        }
+      } catch (e) {
+        setTodasLeiturasAnteriores({});
+      }
+    }
+  }, [isOpen, leitura, tipoMedicaoAtivo, isPreviewOpen, hydrationCounter]);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -173,27 +351,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           verificarFotosSalvas();
 
           const condId = leitura?.id || leitura?.condominio_id;
-
-          // Seleção dinâmica da aba (Água, Gás, Energia) baseada em dados existentes
-          const tipoLeituraStr = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase();
-          const temAguaDb = tipoLeituraStr.includes('agua') || tipoLeituraStr === 'água';
-          const temGasDb = tipoLeituraStr.includes('gas') || tipoLeituraStr === 'gás';
-          const temEnergiaDb = tipoLeituraStr.includes('energia');
-
-          const temAguaPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_AGUA`);
-          const temGasPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_GAS`);
-          const temEnergiaPlanilha = !!localStorage.getItem(`leituras_anteriores_${condId}_ENERGIA`);
-
-          if (temAguaDb || temAguaPlanilha) {
-            setTipoMedicaoAtivo('agua');
-          } else if (temGasDb || temGasPlanilha) {
-            setTipoMedicaoAtivo('gas');
-          } else if (temEnergiaDb || temEnergiaPlanilha) {
-            setTipoMedicaoAtivo('energia');
-          } else {
-            setTipoMedicaoAtivo('agua'); // Fallback padrão
-          }
-
           // Restauração silenciosa: reconstrói a gaveta local se o app foi reinstalado
           sincronizarLeiturasNuvemParaLocal(condId).catch(() => {});
 
@@ -258,6 +415,47 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           } else {
             setUnidadesAtualizadas([]);
           }
+
+          // Seleção dinâmica da aba com proteção de Race Condition:
+          // Só define a aba ativa após ter certeza que a estrutura do condomínio está na memória local
+          const tipoLeituraStr = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // limpa acentos
+          
+          let abaInicial = 'agua';
+
+          if (tipoLeituraStr === 'somente gas' || tipoLeituraStr === 'gas') {
+            abaInicial = 'gas';
+          } else if (tipoLeituraStr === 'somente agua' || tipoLeituraStr === 'agua') {
+            abaInicial = 'agua';
+          } else {
+            const temAguaDb = tipoLeituraStr.includes('agua');
+            const temGasDb = tipoLeituraStr.includes('gas');
+            const temEnergiaDb = tipoLeituraStr.includes('energia');
+
+            const parseCheck = (key) => {
+              try {
+                const str = localStorage.getItem(key);
+                if (!str) return false;
+                const arr = JSON.parse(str);
+                return Array.isArray(arr) && arr.length > 0;
+              } catch(e) { return false; }
+            };
+
+            const temAguaPlanilha = parseCheck(`leituras_anteriores_${condId}_AGUA`);
+            const temGasPlanilha = parseCheck(`leituras_anteriores_${condId}_GAS`);
+            const temEnergiaPlanilha = parseCheck(`leituras_anteriores_${condId}_ENERGIA`);
+
+            if (temAguaDb || temAguaPlanilha) {
+              abaInicial = 'agua';
+            } else if (temGasDb || temGasPlanilha) {
+              abaInicial = 'gas';
+            } else if (temEnergiaDb || temEnergiaPlanilha) {
+              abaInicial = 'energia';
+            }
+          }
+          
+          setTipoMedicaoAtivo(abaInicial);
         } catch (error) {
         }
       };
@@ -580,82 +778,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       console.error('Erro ao excluir foto:', err);
       alert('Ocorreu um erro ao excluir a foto. Tente novamente.');
     }
-  };
-
-  const longPressRef = useRef(null);
-
-  const startLongPress = (apto, concluido) => {
-    if (!concluido) return;
-    
-    setPressedApto(apto);
-    longPressFiredRef.current = false;
-    
-    if (navigator.vibrate) {
-      navigator.vibrate(50);
-    }
-    
-    longPressRef.current = setTimeout(async () => {
-      longPressFiredRef.current = true;
-      setPressedApto(null);
-      
-      if (navigator.vibrate) {
-        navigator.vibrate(100);
-      }
-      const isConfirmed = await customConfirm(
-        'Deseja realmente excluir esta foto?',
-        'Excluir Foto'
-      );
-      if (isConfirmed) {
-        handleExcluirFoto(apto, true);
-      }
-    }, 1000);
-  };
-
-  const handlePointerDown = (e, apto, concluido) => {
-    pointerStartPos.current = { x: e.clientX, y: e.clientY };
-    startLongPress(apto, concluido);
-  };
-
-  const handlePointerMove = (e) => {
-    if (!pointerStartPos.current) return;
-    const diffY = Math.abs(e.clientY - pointerStartPos.current.y);
-    const diffX = Math.abs(e.clientX - pointerStartPos.current.x);
-    // Se arrastou mais de 10px, considera scroll e cancela o clique/long press
-    if (diffY > 10 || diffX > 10) {
-      setPressedApto(null);
-      if (longPressRef.current) {
-        clearTimeout(longPressRef.current);
-        longPressRef.current = null;
-      }
-      pointerStartPos.current = null;
-    }
-  };
-
-  const handlePointerUp = (e, apto, concluido) => {
-    if (!pointerStartPos.current) return; // scroll cancelado
-    pointerStartPos.current = null;
-    cancelLongPress(apto, concluido);
-  };
-
-  const handlePointerCancel = () => {
-    pointerStartPos.current = null;
-    setPressedApto(null);
-    if (longPressRef.current) {
-      clearTimeout(longPressRef.current);
-      longPressRef.current = null;
-    }
-  };
-
-  const cancelLongPress = (apto, concluido) => {
-    setPressedApto(null);
-    if (longPressRef.current) {
-      clearTimeout(longPressRef.current);
-      longPressRef.current = null;
-    }
-    if (!longPressFiredRef.current) {
-      handleUnitClick(apto, concluido);
-    }
-    longPressFiredRef.current = false;
   };
 
   const handleSaveReading = async (valor, fotoUrlOverride = null, fileNameOverride = null) => {
@@ -1223,44 +1345,23 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
 
                   return (
-                    <button
+                    <UnidadeCard
                       key={apto}
-                      type="button"
-                      className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
-                      style={{ touchAction: 'pan-y' }}
-                      onPointerDown={(e) => handlePointerDown(e, apto, concluido)}
-                      onPointerMove={handlePointerMove}
-                      onPointerUp={(e) => handlePointerUp(e, apto, concluido)}
-                      onPointerCancel={handlePointerCancel}
-                      onPointerLeave={handlePointerCancel}
-                    >
-                      <span className="apto-number">{apto}</span>
-                      {concluido ? (
-                        <div className="concluido-container">
-                          {thumbnail ? (
-                            <img 
-                              src={thumbnail} 
-                              alt="Preview" 
-                              className="unit-miniature" 
-                              style={{ opacity: pressedApto === apto ? 0.5 : 1, transition: 'opacity 0.2s' }}
-                            />
-                          ) : (
-                            <div className="unit-sync-done-icon">
-                              <CheckCircle size={22} color="#16a34a" />
-                            </div>
-                          )}
-                          <div className="concluido-label">
-                            <CheckCircle size={12} />
-                            ✓ {tipoMedicaoAtivo.toUpperCase()} OK
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="camera-placeholder">
-                          <CameraIcon size={20} />
-                          <span>Fotografar</span>
-                        </div>
-                      )}
-                    </button>
+                      apto={apto}
+                      concluido={concluido}
+                      thumbnail={thumbnail}
+                      leituraAnterior={todasLeiturasAnteriores[apto]}
+                      onClick={handleUnitClick}
+                      onLongPress={async (aptoAlvo) => {
+                        const isConfirmed = await customConfirm(
+                          'Deseja realmente excluir esta foto?',
+                          'Excluir Foto'
+                        );
+                        if (isConfirmed) {
+                          handleExcluirFoto(aptoAlvo, true);
+                        }
+                      }}
+                    />
                   );
                 })}
               </div>

@@ -15,6 +15,7 @@ import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondo
 import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
+import { hidratarCacheLeiturasOffline } from './services/leiturasAnterioresService';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
@@ -99,6 +100,10 @@ const MainApp = ({ onLogout }) => {
   useEffect(() => {
     // Inicializa o observador de conectividade para sincronização automática
     iniciarObservadorRede();
+
+    // Rotina de Hidratação Global de Descida (Sync Down)
+    // Substitui o cache sujo/incompleto pelo espelho real da nuvem (Unidades e Leituras Anteriores)
+    hidratarCacheLeiturasOffline();
 
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
