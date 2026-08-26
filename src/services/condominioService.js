@@ -73,10 +73,11 @@ const throwDatabaseError = (action, error) => {
 export const buscarCondominios = async () => {
   try {
     const client = requireSupabase();
-    await getAuthenticatedUserId();
+    const userId = await getAuthenticatedUserId();
     const { data, error } = await client
       .from('condominios')
-      .select('*, leituras(*)');
+      .select('*, leituras(*)')
+      .eq('user_id', userId);
 
     if (error) {
       throwDatabaseError('Não foi possível buscar os condomínios', error);
@@ -173,6 +174,7 @@ export const atualizarCondominio = async (id, condominioData) => {
       .from('condominios')
       .update(payload)
       .eq('id', id)
+      .eq('user_id', userId)
       .select('*, leituras(*)')
       .single();
 
@@ -189,8 +191,8 @@ export const atualizarCondominio = async (id, condominioData) => {
 export const deletarCondominio = async (id) => {
   try {
     const client = requireSupabase();
-    await getAuthenticatedUserId();
-    const { error } = await client.from('condominios').delete().eq('id', id);
+    const userId = await getAuthenticatedUserId();
+    const { error } = await client.from('condominios').delete().eq('id', id).eq('user_id', userId);
 
     if (error) {
       throwDatabaseError('Não foi possível excluir o condomínio', error);
