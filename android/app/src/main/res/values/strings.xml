@@ -4,4 +4,6 @@
     <string name="title_activity_main">Fast Leituras</string>
     <string name="package_name">com.fastleituras.app</string>
     <string name="custom_url_scheme">com.fastleituras.app</string>
+    <!-- Client ID Web do Google Cloud para autenticação nativa (Google Sign-In) -->
+    <string name="server_client_id">754351603454-6rppvn63citj0rqtobico7tbhp868o1r.apps.googleusercontent.com</string>
 </resources>
