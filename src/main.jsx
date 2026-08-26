@@ -4,6 +4,7 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import './index.css';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 // Registra os elementos de PWA do Ionic (necessário para a câmera no navegador/WebView)
 defineCustomElements(window);
@@ -23,10 +24,14 @@ if (typeof window !== 'undefined') {
   }
 }
 
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <GoogleOAuthProvider clientId={googleClientId}>
+        <App />
+      </GoogleOAuthProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 );

@@ -25,6 +25,8 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -568,10 +570,52 @@ const App = () => {
       }
     });
 
+    // Listener para capturar Deep Link de OAuth (ex: com.fastleituras.app://#access_token=... ou ?code=...)
+    // Fecha o browser nativo e injeta a sessão no Supabase ao retornar do login Google.
+    let appUrlHandle = null;
+    try {
+      appUrlHandle = CapApp.addListener('appUrlOpen', async (data) => {
+        const url = data?.url || '';
+        if (url.startsWith('com.fastleituras.app://')) {
+          // Fecha o browser nativo imediatamente
+          try { await Browser.close(); } catch (_) {}
+
+          if (url.includes('access_token=') && url.includes('refresh_token=')) {
+            const hashIndex = url.indexOf('#');
+            if (hashIndex !== -1) {
+              const hash = url.substring(hashIndex + 1);
+              const params = new URLSearchParams(hash);
+              const accessToken = params.get('access_token');
+              const refreshToken = params.get('refresh_token');
+              if (accessToken && refreshToken) {
+                await supabase.auth.setSession({
+                  access_token: accessToken,
+                  refresh_token: refreshToken,
+                });
+              }
+            }
+          } else if (url.includes('code=')) {
+            const queryIndex = url.indexOf('?');
+            if (queryIndex !== -1) {
+              const query = url.substring(queryIndex + 1);
+              const params = new URLSearchParams(query);
+              const code = params.get('code');
+              if (code) {
+                await supabase.auth.exchangeCodeForSession(code);
+              }
+            }
+          }
+        }
+      });
+    } catch (_) {}
+
     return () => {
       isMounted = false;
       if (subscription) {
         subscription.unsubscribe();
+      }
+      if (appUrlHandle) {
+        appUrlHandle.then((h) => h?.remove?.()).catch(() => {});
       }
     };
   }, []);
