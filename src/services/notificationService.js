@@ -22,8 +22,9 @@ export const NotificationService = {
   async cancelAll() {
     if (!Capacitor.isNativePlatform()) return;
     const pending = await LocalNotifications.getPending();
-    if (pending.notifications.length > 0) {
-      await LocalNotifications.cancel(pending);
+    if (pending.notifications && pending.notifications.length > 0) {
+      const toCancel = pending.notifications.map(n => ({ id: n.id }));
+      await LocalNotifications.cancel({ notifications: toCancel });
     }
   },
 
