@@ -25,6 +25,8 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
+import { Capacitor } from '@capacitor/core';
+import { logoutGoogleNativo } from './services/googleAuthService';
 
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -493,6 +495,10 @@ const App = () => {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      await logoutGoogleNativo();
+    }
+
     if (supabase) {
       const { error } = await supabase.auth.signOut();
       if (error) {

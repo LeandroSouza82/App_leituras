@@ -53,3 +53,15 @@ export async function loginGoogleNativo() {
     return { data: null, error: err };
   }
 }
+
+/**
+ * Realiza o logout nativo do Google, desconectando a conta atual.
+ * Isso força o seletor de contas a aparecer novamente no próximo login.
+ */
+export async function logoutGoogleNativo() {
+  try {
+    await GoogleAuth.signOut();
+  } catch (err) {
+    console.warn('Erro ao deslogar nativamente do Google (ou plugin não inicializado):', err);
+  }
+}
