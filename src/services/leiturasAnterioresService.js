@@ -1,5 +1,93 @@
 import { supabase } from './supabase';
 import { Network } from '@capacitor/network';
+import { enfileirarLeiturasAnteriores, sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
+
+const PROPRIEDADE_POR_SERVICO = {
+  AGUA: 'leitura_anterior',
+  GAS: 'leitura_anterior_gas',
+  ENERGIA: 'leitura_anterior_energia',
+};
+
+/**
+ * Rotaciona organicamente a leitura anterior no cache local após salvar uma leitura.
+ * O valor digitado passa a ser a nova leitura_anterior da aba correspondente.
+ *
+ * @param {string|number} condominioId
+ * @param {string} unidadeId
+ * @param {'agua'|'gas'|'energia'|string} tipoLeitura
+ * @param {string|number} valorDigitado
+ * @returns {{ ok: boolean, unidadeLocal: object|null }}
+ */
+export const rotacionarLeituraAnteriorLocal = (condominioId, unidadeId, tipoLeitura, valorDigitado) => {
+  if (!condominioId || !unidadeId) return { ok: false, unidadeLocal: null };
+
+  const valorNumerico = parseFloat(String(valorDigitado).replace(',', '.'));
+  if (isNaN(valorNumerico)) return { ok: false, unidadeLocal: null };
+
+  const servico = String(tipoLeitura || 'agua').toUpperCase();
+  const propAlvo = PROPRIEDADE_POR_SERVICO[servico] || 'leitura_anterior';
+  const unidadeTrim = String(unidadeId).trim();
+  const condId = String(condominioId);
+  let unidadeLocal = null;
+
+  // Gaveta unificada: { unidade, leitura_anterior, leitura_anterior_gas, leitura_anterior_energia }
+  const chaveUnificada = `leituras_anteriores_${condId}`;
+  try {
+    let lista = [];
+    const raw = localStorage.getItem(chaveUnificada);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      lista = Array.isArray(parsed) ? parsed : [];
+    }
+
+    const idx = lista.findIndex((l) => String(l.unidade).trim() === unidadeTrim);
+    if (idx !== -1) {
+      unidadeLocal = { ...lista[idx], [propAlvo]: valorNumerico };
+      lista[idx] = unidadeLocal;
+    } else {
+      unidadeLocal = { unidade: unidadeTrim, [propAlvo]: valorNumerico };
+      lista.push(unidadeLocal);
+    }
+    localStorage.setItem(chaveUnificada, JSON.stringify(lista));
+  } catch (err) {
+    console.error('[rotacionarLeituraAnteriorLocal] Erro na gaveta unificada:', err);
+    return { ok: false, unidadeLocal: null };
+  }
+
+  // Gaveta por serviço (compatibilidade com App.jsx e importação de planilhas)
+  const chaveServico = `leituras_anteriores_${condId}_${servico}`;
+  try {
+    let listaServico = [];
+    const rawServico = localStorage.getItem(chaveServico);
+    if (rawServico) {
+      const parsed = JSON.parse(rawServico);
+      listaServico = Array.isArray(parsed) ? parsed : [];
+    }
+
+    const idxServico = listaServico.findIndex((l) => String(l.unidade).trim() === unidadeTrim);
+    if (idxServico !== -1) {
+      listaServico[idxServico] = { ...listaServico[idxServico], leitura_anterior: valorNumerico };
+    } else {
+      listaServico.push({ unidade: unidadeTrim, leitura_anterior: valorNumerico });
+    }
+    localStorage.setItem(chaveServico, JSON.stringify(listaServico));
+
+    // Enfileira lote completo do serviço para sync com Supabase quando houver rede
+    enfileirarLeiturasAnteriores(condId, listaServico, servico);
+  } catch (err) {
+    console.warn('[rotacionarLeituraAnteriorLocal] Erro na gaveta por serviço:', err);
+  }
+
+  window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId } }));
+
+  Network.getStatus()
+    .then((status) => {
+      if (status.connected) sincronizarLeiturasAnterioresOffline();
+    })
+    .catch(() => {});
+
+  return { ok: true, unidadeLocal };
+};
 
 /**
  * Restaura silenciosamente a gaveta local `leituras_anteriores_${condominioId}`
