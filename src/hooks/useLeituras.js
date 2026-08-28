@@ -132,32 +132,30 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const editarLeitura = async (idTarget, novosDados) => {
-    // 1. Atualização Otimista no Estado (UI Instantânea)
-    setLeituras((previous) =>
-      previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...novosDados } : item))
-    );
-
-    // 2. Atualização Otimista no Cache Local (Offline-First)
     try {
-      const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
-      const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...novosDados } : c);
-      localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
-    } catch (e) {}
+      // 1. Sincronização direta com o Supabase (garantia de salvamento)
+      const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
 
-    // 3. Atualização Assíncrona no Supabase (Background silencioso)
-    atualizarCondominio(idTarget, novosDados)
-      .then(leituraAtualizada => {
-        // Confirma com os dados re-processados do backend (se necessário)
-        setLeituras((previous) =>
-          previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
-        );
-      })
-      .catch((error) => {
-        // Falha de rede silenciosa. O dado já está salvo no cache para próxima vez.
-        console.warn('Sincronização em background de edição falhou:', error);
-      });
+      // 2. Atualização da Interface Pós-Sucesso
+      setLeituras((previous) =>
+        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
+      );
 
-    return true;
+      // 3. Atualização no Cache Local para refletir a nova verdade
+      try {
+        const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
+        const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...leituraAtualizada } : c);
+        localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
+      } catch (e) {
+        console.warn('Erro ao atualizar cache local após edição', e);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Erro ao editar condomínio:', error);
+      onFeedback('Não foi possível salvar as alterações. Verifique sua conexão e tente novamente.', 'error');
+      return false;
+    }
   };
 
   const adicionarEmLote = async (novosCondominios) => {

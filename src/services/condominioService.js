@@ -132,7 +132,7 @@ export const salvarCondominio = async (condominioData) => {
 export const atualizarCondominio = async (id, condominioData) => {
   try {
     const client = requireSupabase();
-    await getAuthenticatedUserId();
+    const userId = await getAuthenticatedUserId();
     
     // Constrói um payload seguro com apenas os campos fornecidos e válidos
     const payload = {};
