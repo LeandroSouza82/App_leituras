@@ -82,7 +82,8 @@ const gerarFotoMockBase64 = () => {
  *   onCapture(base64: string) — chamado após captura bem-sucedida
  *   onClose()                 — chamado ao fechar sem capturar
  */
-const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnterior = null }) => {
+const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}, unidadeAtiva = '' }) => {
+  const leituraAnterior = leituras?.[unidadeAtiva] ?? 0;
   const [isReady, setIsReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFlashOn, setIsFlashOn] = useState(false);
@@ -96,7 +97,7 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnteri
     return num.toFixed(4).replace(".", ",");
   };
 
-  const [leituraValue, setLeituraValue] = useState(() => formatInitialValue(initialValue));
+  const [leituraValue, setLeituraValue] = useState(''); // CIRÚRGICO: inicia sempre limpo
   const [erroValidacao, setErroValidacao] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);
   
@@ -304,7 +305,7 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnteri
       e.preventDefault();
     }
     setCapturedPhoto(null);
-    setLeituraValue(formatInitialValue(initialValue));
+    setLeituraValue(''); // CIRÚRGICO: garante limpeza ao refazer a foto
     setIsZoomed(false);
   };
 

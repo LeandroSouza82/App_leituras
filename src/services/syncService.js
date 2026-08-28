@@ -41,13 +41,19 @@ export const writeFilaSync = (items) => {
 // ─── Conversor Base64 para Blob ─────────────────────────────────────────────
 
 const base64ToBlob = (base64, mimeType = 'image/jpeg') => {
-  const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
-  const byteCharacters = atob(cleanBase64);
-  const byteNumbers = new Uint8Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  try {
+    if (!base64 || typeof base64 !== 'string') return null;
+    const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+    const byteCharacters = atob(cleanBase64);
+    const byteNumbers = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    return new Blob([byteNumbers], { type: mimeType });
+  } catch (e) {
+    console.warn('Erro ao decodificar base64:', e);
+    return null;
   }
-  return new Blob([byteNumbers], { type: mimeType });
 };
 
 // ─── 1. Salvar Leitura Offline ──────────────────────────────────────────────
@@ -177,6 +183,8 @@ export async function sincronizarFilaEmBackground() {
 
           if (fileResult?.data) {
             const blob = base64ToBlob(fileResult.data, 'image/jpeg');
+            if (!blob) throw new Error("A imagem armazenada localmente está corrompida.");
+            
             const remotePath = `leituras/${Date.now()}_${item.fileName}`;
 
             let uploadSuccess = false;
@@ -210,24 +218,26 @@ export async function sincronizarFilaEmBackground() {
           }
         }
 
-        // 2. Inserção / Upsert no Supabase Database
-        const payloadEnvio = {
-          unidade_id: item.unidade_id,
-          condominio_nome: item.condominio_nome || null,
-          servico: item.servico,
-          leitura_atual: item.leitura_atual,
-          foto_url: publicPhotoUrl || '',
-          leiturista_id: item.leiturista_id || userIdPadrao,
-          data_leitura: item.data_leitura || new Date().toISOString()
-        };
+          // 2. Inserção / Upsert no Supabase Database
+          const payloadEnvio = {
+            condominio_nome: item.condominio_nome || null,
+            unidade_id: item.unidade_id,
+            servico: item.servico,
+            leitura_atual: item.leitura_atual,
+            foto_url: publicPhotoUrl || '',
+            leiturista_id: item.leiturista_id || userIdPadrao,
+            data_leitura: item.data_leitura || new Date().toISOString()
+          };
 
-        const { error: dbError } = await supabase
-          .from('leituras_detalhes')
-          .insert([payloadEnvio]);
+          const { error: dbError } = await supabase
+            .from('leituras_detalhes')
+            .insert([payloadEnvio]);
 
-        if (dbError) {
-          throw new Error("Erro DB insert: " + dbError.message);
-        }
+          if (dbError) {
+            console.error("Erro absoluto no insert leituras_detalhes:", dbError);
+            alert(`ERRO BD (leituras_detalhes): ${dbError.message || JSON.stringify(dbError)}`);
+            throw new Error("Erro DB insert: " + dbError.message);
+          }
 
         // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês
         if (item.condominio_id && item.unidade_id && item.leitura_atual !== undefined && item.leitura_atual !== null) {

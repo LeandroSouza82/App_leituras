@@ -184,7 +184,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const fileInputRef = useRef(null);
 
   // NOVO: Estado e busca da leitura anterior (Offline-first)
-  const [leituraAnteriorAtiva, setLeituraAnteriorAtiva] = useState(null);
   const [todasLeiturasAnteriores, setTodasLeiturasAnteriores] = useState({});
 
   useEffect(() => {
@@ -258,12 +257,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
         }
 
-        setLeituraAnteriorAtiva(valueEncontrado);
       };
       
       fetchLeituraAnterior();
     } else {
-      setLeituraAnteriorAtiva(null);
     }
   }, [isOpen, activeApto, leitura, tipoMedicaoAtivo]);
 
@@ -856,7 +853,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       return novo;
     });
 
-    setLeituraAnteriorAtiva(null);
     setPreviewSessionKey((k) => k + 1);
   };
 
@@ -938,6 +934,28 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }));
       // NOTA: 'limparCardUnidadeAposSalvar' removido intencionalmente para não perder o preview da foto.
 
+      // NOVO: Atualiza a Leitura Anterior imediatamente (UI State)
+      setTodasLeiturasAnteriores(prev => ({
+        ...prev,
+        [unidadeId]: valorNumerico
+      }));
+
+      // NOVO: Persiste no LocalStorage (Garantia de Sobreviv�ncia)
+      try {
+        const chaveStorage = `leituras_anteriores_${condId}`;
+        const str = localStorage.getItem(chaveStorage);
+        if (str) {
+          const arr = JSON.parse(str);
+          const idx = arr.findIndex(l => String(l.unidade).trim() === String(unidadeId));
+          if (idx !== -1) {
+             const propCorreta = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || "leitura_anterior";
+             arr[idx][propCorreta] = valorNumerico;
+             localStorage.setItem(chaveStorage, JSON.stringify(arr));
+          }
+        }
+      } catch(e) {
+        console.error("Erro ao atualizar localStorage", e);
+      }
       exibirToastSucesso();
       setIsPreviewOpen(false);
       setActiveApto(null);
@@ -1665,7 +1683,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
-        leituraAnterior={leituraAnteriorAtiva}
+        leituras={todasLeiturasAnteriores}
+        unidadeAtiva={activeApto}
       />
 
       {/* 4. Feedback Toast */}
@@ -1682,7 +1701,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
           initialValue={leiturasValores[activeApto]?.[tipoMedicaoAtivo] || ''}
-          leituraAnterior={leituraAnteriorAtiva}
+        leituras={todasLeiturasAnteriores}
+        unidadeAtiva={activeApto}
         />
       )}
 

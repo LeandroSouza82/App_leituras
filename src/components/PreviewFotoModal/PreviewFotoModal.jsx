@@ -4,7 +4,8 @@ import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
-const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituraAnterior = null }) => {
+const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituras = {}, unidadeAtiva = '' }) => {
+  const leituraAnterior = leituras?.[unidadeAtiva] ?? 0;
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
@@ -46,25 +47,13 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
     }
   };
 
-  // Garante sincronização com o valor inicial formatado ao abrir
+  // Garante limpeza e estado pronto para digitação sempre que o modal abrir
   useEffect(() => {
     if (isOpen) {
-      const valorFormatado = initialValue ? formatarComMascara(initialValue) : '';
-      setLeituraValor(valorFormatado);
-      
-      if (valorFormatado && leituraAnterior) {
-        const valorAtualFloat = parseFloat(valorFormatado.replace(',', '.'));
-        const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
-        if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
-          setErroValidacao('A leitura não pode ser menor que o mês anterior');
-        } else {
-          setErroValidacao('');
-        }
-      } else {
-        setErroValidacao('');
-      }
+      setLeituraValor(''); // CIRÚRGICO: força string vazia sempre que abrir
+      setErroValidacao('');
     }
-  }, [isOpen, initialValue, leituraAnterior]);
+  }, [isOpen, leituraAnterior]);
 
   if (!isOpen) return null;
 

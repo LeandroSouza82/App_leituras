@@ -160,6 +160,7 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
               unidade: unidadeBanco.nome,
               condominio_nome: item.condominioId, // Campo usado conforme schema existente
               leitura_anterior: leitura.leitura_anterior,
+              mes_referencia: leitura.mes_referencia || null, // Garante que o mês correto suba para o BD
               leiturista_id: activeUserId,
               servico: item.servico,
             });
@@ -173,13 +174,14 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
           continue;
         }
 
-        // 3. Insert em lote
+        // 3. Insere em lote
         const { error: insertError } = await supabase
           .from('unidades_leituras')
           .insert(loteParaEnvio);
 
         if (insertError) {
-          console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError.message);
+          console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);
+          alert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);
           continue; // Mantém na fila, tenta novamente na próxima janela de rede
         }
 
