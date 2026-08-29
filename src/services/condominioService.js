@@ -163,11 +163,11 @@ export const atualizarCondominio = async (id, condominioData) => {
     if (condominioData.contatoSindico !== undefined) {
       payload.telefone_sindico = condominioData.contatoSindico?.trim() || null;
     }
-    if (condominioData.latitude !== undefined && condominioData.latitude !== null) {
-      payload.latitude = Number(condominioData.latitude);
+    if (condominioData.latitude !== undefined) {
+      payload.latitude = condominioData.latitude === null ? null : Number(condominioData.latitude);
     }
-    if (condominioData.longitude !== undefined && condominioData.longitude !== null) {
-      payload.longitude = Number(condominioData.longitude);
+    if (condominioData.longitude !== undefined) {
+      payload.longitude = condominioData.longitude === null ? null : Number(condominioData.longitude);
     }
     
     const { data, error } = await client
@@ -179,6 +179,7 @@ export const atualizarCondominio = async (id, condominioData) => {
       .single();
 
     if (error) {
+      console.error('Erro detalhado Supabase:', error);
       throwDatabaseError('Não foi possível atualizar o condomínio', error);
     }
 
