@@ -24,6 +24,7 @@ import { Browser } from '@capacitor/browser';
 const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
   const [isFeedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -33,6 +34,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     try {
       await sincronizarFilaEmBackground();
       await customAlert('Fila processada e dados da nuvem atualizados.', 'Sincronização Concluída');
+      setShowSyncModal(false);
       window.dispatchEvent(new CustomEvent('offline_cache_hydrated'));
     } catch (error) {
       await customAlert('Erro ao atualizar os dados.', 'Erro de Sincronização');
@@ -46,13 +48,6 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     if (onNavigate) onNavigate('perfil');
   };
 
-  const handleOpenPrivacy = async () => {
-    try {
-      await Browser.open({ url: 'https://fastleitura.appviper.com.br/privacidade' });
-    } catch (err) {
-      console.error('Erro ao abrir política de privacidade', err);
-    }
-  };
 
   const handleOpenSupport = async () => {
     try {
@@ -76,7 +71,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
     { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
     { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
-    { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: handleOpenPrivacy },
+    { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
     { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleOpenSupport },
     { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleOpenRating },
     { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
@@ -164,7 +159,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
       {showSyncModal && (
         <div className="side-menu-overlay" style={{ zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowSyncModal(false)}>
-          <div className="side-menu-container" style={{ width: '90%', maxWidth: '400px', background: '#fff', borderRadius: '12px', padding: '20px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '360px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', height: 'auto', maxHeight: '90vh', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
             <button type="button" onClick={() => setShowSyncModal(false)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none' }}>
               <X size={20} color="#64748b" />
             </button>
@@ -188,6 +183,38 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
               <RefreshCw className={isSyncing ? 'perfil-spin' : ''} size={17} />
               {isSyncing ? 'Atualizando...' : 'Forçar Sincronização'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showPrivacyModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setShowPrivacyModal(false)}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }} onClick={(e) => e.stopPropagation()}>
+            
+            <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Política e Termos</h3>
+              <button onClick={() => setShowPrivacyModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', color: '#64748b', cursor: 'pointer', padding: 0 }}>&times;</button>
+            </div>
+            
+            <div style={{ padding: '20px', overflowY: 'auto', fontSize: '14px', color: '#475569', lineHeight: '1.6', textAlign: 'left' }}>
+              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>1. Termos de Uso</h4>
+              <p style={{ marginBottom: '16px' }}>Bem-vindo ao Fast Leituras. Ao utilizar o nosso aplicativo, concorda com a recolha e processamento dos dados estritamente necessários para a gestão de leituras de condomínios.</p>
+              
+              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>2. Privacidade e Dados</h4>
+              <p style={{ marginBottom: '16px' }}>Os dados capturados, incluindo fotografias e localização GPS, são guardados localmente no seu dispositivo e sincronizados com segurança. Não partilhamos as suas informações com terceiros.</p>
+              
+              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>3. Funcionamento Offline</h4>
+              <p style={{ marginBottom: '16px' }}>O aplicativo guarda dados em cache (memória local) para garantir o funcionamento sem internet. Ao desinstalar o app ou limpar os dados, as leituras não sincronizadas poderão ser perdidas.</p>
+              
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '24px', textAlign: 'center' }}>Última atualização: Agosto de 2026</p>
+            </div>
+            
+            <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0' }}>
+              <button onClick={() => setShowPrivacyModal(false)} style={{ width: '100%', backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>
+                Entendi e Concordo
+              </button>
+            </div>
+            
           </div>
         </div>
       )}
