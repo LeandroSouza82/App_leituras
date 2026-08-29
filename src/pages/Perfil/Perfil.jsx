@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Cloud,
   KeyRound,
   LogOut,
   Mail,
   Phone,
-  RefreshCw,
   Save,
   ShieldCheck,
   UserRound,
   WalletCards,
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
-import { sincronizarFilaEmBackground } from '../../services/syncService';
 import './Perfil.css';
 
 const FALLBACK_USER = {
@@ -64,7 +61,6 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
   const [phone, setPhone] = useState('');
   const [loadingUser, setLoadingUser] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -143,18 +139,6 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
     setSaving(false);
   };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await sincronizarFilaEmBackground();
-      await onRefresh();
-      onShowToast('Fila processada e dados da nuvem atualizados.');
-    } catch (error) {
-      onShowToast('Erro ao atualizar os dados.', 'error');
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const handlePasswordChange = async () => {
     if (!supabase || user.id === FALLBACK_USER.id) {
@@ -249,21 +233,6 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
         </button>
       </form>
 
-      <section className="perfil-card" aria-labelledby="perfil-sync-title">
-        <div className="perfil-card-heading">
-          <div className="perfil-card-icon perfil-card-icon-green"><Cloud size={19} /></div>
-          <div>
-            <h2 id="perfil-sync-title">Sincronização e sistema</h2>
-            <p>Veja o estado da sua conexão e dos dados.</p>
-          </div>
-        </div>
-        <div className="perfil-sync-status"><span /> Banco Supabase Sincronizado</div>
-        <button className="perfil-button perfil-button-secondary" type="button" onClick={handleRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? 'perfil-spin' : ''} size={17} aria-hidden="true" />
-          {refreshing ? 'Atualizando...' : 'Forçar Sincronização'}
-        </button>
-        <p className="perfil-version">Fast Leitura Mobile <span>•</span> v1.0.0</p>
-      </section>
 
       <section className="perfil-card" aria-labelledby="perfil-security-title">
         <div className="perfil-card-heading">

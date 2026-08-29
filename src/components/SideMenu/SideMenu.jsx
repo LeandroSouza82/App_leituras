@@ -9,9 +9,13 @@ import {
   ShieldCheck, 
   Headset, 
   Star, 
-  MessageSquare 
+  MessageSquare,
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
+import { sincronizarFilaEmBackground } from '../../services/syncService';
 import { supabase } from '../../services/supabase';
+import { customAlert } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import './SideMenu.css';
@@ -20,6 +24,22 @@ import { Browser } from '@capacitor/browser';
 const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
   const [isFeedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleForceSync = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setIsSyncing(true);
+    try {
+      await sincronizarFilaEmBackground();
+      await customAlert('Fila processada e dados da nuvem atualizados.', 'Sincronização Concluída');
+      window.dispatchEvent(new CustomEvent('offline_cache_hydrated'));
+    } catch (error) {
+      await customAlert('Erro ao atualizar os dados.', 'Erro de Sincronização');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleNavigatePerfil = () => {
     onClose();
@@ -55,7 +75,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const MENU_ITEMS = [
     { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
     { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
-    { id: 'prefs', label: 'Preferências do App', icon: Settings, onClick: () => {} },
+    { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
     { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: handleOpenPrivacy },
     { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleOpenSupport },
     { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleOpenRating },
@@ -141,6 +161,36 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
         isOpen={isFeedbackModalOpen} 
         onClose={() => setFeedbackModalOpen(false)} 
       />
+
+      {showSyncModal && (
+        <div className="side-menu-overlay" style={{ zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setShowSyncModal(false)}>
+          <div className="side-menu-container" style={{ width: '90%', maxWidth: '400px', background: '#fff', borderRadius: '12px', padding: '20px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setShowSyncModal(false)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none' }}>
+              <X size={20} color="#64748b" />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+              <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '8px', color: '#0ea5e9' }}><Cloud size={19} /></div>
+              <div>
+                <h2 style={{ fontSize: '1.1rem', margin: 0, color: '#0f172a' }}>Sincronização e sistema</h2>
+                <p style={{ fontSize: '0.85rem', margin: 0, color: '#64748b' }}>Veja o estado da sua conexão e dos dados.</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#0f172a', marginBottom: '20px', fontWeight: '500' }}>
+              <span style={{ width: '8px', height: '8px', background: '#22c55e', borderRadius: '50%', display: 'inline-block' }} /> 
+              Banco Supabase Sincronizado
+            </div>
+            <button 
+              type="button" 
+              onClick={handleForceSync} 
+              disabled={isSyncing}
+              style={{ width: '100%', padding: '10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#0f172a', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' }}
+            >
+              <RefreshCw className={isSyncing ? 'perfil-spin' : ''} size={17} />
+              {isSyncing ? 'Atualizando...' : 'Forçar Sincronização'}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };
