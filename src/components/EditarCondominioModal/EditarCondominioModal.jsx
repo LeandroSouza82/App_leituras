@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
-import { supabase } from '../../services/supabaseClient';
+
 import './EditarCondominioModal.css';
 
 const parseCurrencyToNumber = (value) => {
@@ -65,20 +65,44 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
   };
 
   const handleLimparGps = async () => {
-    if (!confirm('Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado.')) {
+    if (!window.confirm('Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado.')) {
       return;
     }
 
-    // 1. Limpeza otimista na tela atual
-    setForm((prev) => ({ ...prev, latitude: null, longitude: null }));
+    setSalvando(true);
+    setFeedback(null);
 
-    // 2. Aciona o fluxo Offline-First do useLeituras (que já grava no cache local e em background)
-    if (onSave) {
-      await onSave(condominio.id, { latitude: null, longitude: null });
+    try {
+      const valorNumerico = parseCurrencyToNumber(form.valor);
+      
+      // Usa o fluxo oficial de salvamento, forçando os campos de GPS para null
+      const dadosAtualizados = {
+        nome: form.nome.trim(),
+        tipoLeitura: form.tipoLeitura,
+        diaLeitura: String(form.diaLeitura).trim(),
+        apartamentos: Number(form.apartamentos),
+        valor: valorNumerico,
+        endereco: form.endereco.trim(),
+        instrucoesAcesso: form.instrucoesAcesso.trim(),
+        contatoSindico: form.contatoSindico.trim(),
+        latitude: null,
+        longitude: null,
+      };
+
+      const sucesso = await onSave(condominio.id, dadosAtualizados);
+
+      if (sucesso === false) {
+        throw new Error('Falha no onSave');
+      }
+
+      setForm((prev) => ({ ...prev, latitude: null, longitude: null }));
+      showToast('GPS removido com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover GPS:', error);
+      setFeedback({ tipo: 'erro', mensagem: 'Não foi possível salvar as alterações. Verifique sua conexão e tente novamente.' });
+    } finally {
+      setSalvando(false);
     }
-
-    // 3. Feedback visual elegante
-    showToast('GPS removido com sucesso. As alterações foram salvas localmente.');
   };
 
   const handleSalvar = async (event) => {

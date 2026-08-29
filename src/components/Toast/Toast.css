@@ -2,7 +2,7 @@
   position: fixed;
   top: max(18px, env(safe-area-inset-top));
   left: 50%;
-  z-index: 9999;
+  z-index: 99999 !important;
   display: flex;
   align-items: center;
   gap: 10px;

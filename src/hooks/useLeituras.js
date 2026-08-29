@@ -136,15 +136,15 @@ export const useLeituras = (onFeedback = () => {}) => {
       // 1. Sincronização direta com o Supabase (garantia de salvamento)
       const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
 
-      // 2. Atualização da Interface Pós-Sucesso
+      // 2. Atualização da Interface Pós-Sucesso (Forçando a entrada dos novosDados incluindo os nulls)
       setLeituras((previous) =>
-        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada } : item))
+        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada, ...novosDados } : item))
       );
 
       // 3. Atualização no Cache Local para refletir a nova verdade
       try {
         const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
-        const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...leituraAtualizada } : c);
+        const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...leituraAtualizada, ...novosDados } : c);
         localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
       } catch (e) {
         console.warn('Erro ao atualizar cache local após edição', e);
