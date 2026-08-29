@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { App } from '@capacitor/app';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
@@ -87,7 +88,7 @@ export const ShareIntentService = {
           }
 
           if (isPlanilhaLeitura) {
-            const desejaSalvar = window.confirm("Planilha de leitura anterior detectada. Deseja salvar os dados?");
+            const desejaSalvar = await customConfirm("Planilha de leitura anterior detectada. Deseja salvar os dados?");
             if (desejaSalvar) {
               const leiturasAnteriores = [];
               let startRow = 6; // linha 7 (índice 6)
@@ -130,9 +131,9 @@ export const ShareIntentService = {
 
               if (leiturasAnteriores.length > 0) {
                  localStorage.setItem('leituras_anteriores', JSON.stringify(leiturasAnteriores));
-                 window.alert(`✅ ${leiturasAnteriores.length} leituras anteriores salvas no dispositivo!`);
+                 await customAlert(`✅ ${leiturasAnteriores.length} leituras anteriores salvas no dispositivo!`);
               } else {
-                 window.alert('Nenhuma leitura válida encontrada na planilha.');
+                 await customAlert('Nenhuma leitura válida encontrada na planilha.');
               }
             }
             // Aborta o fluxo padrão para planilhas de leitura anterior, não importando como cadastro
@@ -172,7 +173,7 @@ export const ShareIntentService = {
 
         try {
           // Indicador visual temporário
-          window.alert('Sincronizando... Iniciando leitura e atualização.');
+          await customAlert('Sincronizando... Iniciando leitura e atualização.');
           
           // Import dinâmico para evitar dependência circular se houver
           const { UCondoImportService } = await import('./ucondoImportService');
@@ -195,7 +196,7 @@ export const ShareIntentService = {
 
         try {
           // Indicador visual temporário
-          window.alert('Sincronizando... Iniciando leitura e atualização.');
+          await customAlert('Sincronizando... Iniciando leitura e atualização.');
           
           // Lê os dados recém-salvos para enviar ao processamento
           const lido = await Filesystem.readFile({ path: targetPath, directory: Directory.Data });

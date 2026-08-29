@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useEffect } from 'react';
 import { X, Camera as CameraIcon, Check, RefreshCw } from 'lucide-react';
 import { CameraService } from '../../services/cameraService';
@@ -27,7 +28,7 @@ const CameraModal = ({ isOpen, onClose, onCapture, unitInfo }) => {
     } catch (err) {
       const msg = String(err?.message || '');
       if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('cancelled')) {
-        alert('Erro ao acessar a câmera: ' + msg);
+        await customAlert('Erro ao acessar a câmera: ' + msg);
       }
       onClose();
     } finally {

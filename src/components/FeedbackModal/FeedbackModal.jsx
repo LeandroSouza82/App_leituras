@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { MessageSquare, X, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
@@ -71,7 +72,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
   const handleEnviarFeedback = async (textoFeedback, imagemOriginalUri = null) => {
     try {
       if (!textoFeedback || !textoFeedback.trim()) {
-        alert('Por favor, digite sua mensagem antes de enviar.');
+        await customAlert('Por favor, digite sua mensagem antes de enviar.');
         return false;
       }
 
@@ -96,12 +97,12 @@ const FeedbackModal = ({ isOpen, onClose }) => {
         }
       }
 
-      alert('Feedback enviado com sucesso! Muito obrigado.');
+      await customAlert('Feedback enviado com sucesso! Muito obrigado.');
       if (typeof onClose === 'function') onClose();
       return true;
     } catch (err) {
       console.error('Erro ao enviar feedback:', err);
-      alert('Não foi possível enviar o feedback no momento. Verifique sua conexão e tente novamente.');
+      await customAlert('Não foi possível enviar o feedback no momento. Verifique sua conexão e tente novamente.');
       return false;
     }
   };

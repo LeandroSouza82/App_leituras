@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useEffect } from 'react';
 import { X, RefreshCw, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
@@ -67,7 +68,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
       setLeituraValor('');
       onClose();
     } catch (error) {
-      alert('Erro ao sincronizar leitura: ' + error.message);
+      await customAlert('Erro ao sincronizar leitura: ' + error.message);
     } finally {
       setIsSaving(false);
     }

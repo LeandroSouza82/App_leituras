@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import { useState } from 'react';
 import { Bell, Menu, Share2 } from 'lucide-react';
 import './Header.css';
@@ -42,7 +43,7 @@ const Header = ({
     try {
       await gerarRelatorioLeiturasExcel(leituras || [], mesAnoFormatado || title, 1650);
     } catch (error) {
-      alert('Erro ao exportar Excel: ' + error.message);
+      await customAlert('Erro ao exportar Excel: ' + error.message);
     }
   };
 

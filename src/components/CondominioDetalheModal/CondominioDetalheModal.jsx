@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import { useState, useEffect } from 'react';
 import { Building2, Calendar, Gauge, KeyRound, MapPin, Navigation, Phone, X, LocateFixed } from 'lucide-react';
 import { Browser } from '@capacitor/browser';
@@ -67,7 +68,7 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
 
       // 3. Se o usuário negar, avisa e aborta
       if (permStatus.location !== 'granted') {
-        alert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.');
+        await customAlert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.');
         setCapturandoGps(false);
         return;
       }
@@ -103,9 +104,9 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
         .then(() => {})
         .catch(() => {});
 
-      alert('📍 Localização GPS salva com sucesso no aparelho!');
+      await customAlert('📍 Localização GPS salva com sucesso no aparelho!');
     } catch (error) {
-      alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
+      await customAlert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
     } finally {
       setCapturandoGps(false);
     }

@@ -10,6 +10,8 @@ import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModa
 import LeituraFotoModal from '../LeituraFotoModal/LeituraFotoModal';
 import ContactActionModal from '../ContactActionModal/ContactActionModal';
 import { supabase } from '../../services/supabaseClient';
+import { customAlert } from '../CustomPrompt/CustomPrompt';
+import Toast, { useToast } from '../Toast/Toast';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -41,6 +43,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const [mostrarModalFoto, setMostrarModalFoto] = useState(false);
   const [capturandoGpsId, setCapturandoGpsId] = useState(null);
   const [modalContato, setModalContato] = useState(null);
+  const { toast, showToast, dismissToast } = useToast();
 
   const { statusLabel, statusClass, statusEmoji } = leitura.completo
     ? { statusLabel: 'Concluído', statusClass: 'status-success', statusEmoji: '🟢' }
@@ -95,7 +98,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
 
       // 3. Se o usuário negar, avisa e aborta
       if (permStatus.location !== 'granted') {
-        alert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.');
+        await customAlert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.', 'Permissão Necessária');
         setCapturandoGpsId(null);
         return;
       }
@@ -111,9 +114,9 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
 
       // Chama a edição otimista (já tratada offline-first no useLeituras)
       onEdit(leitura.id, { latitude, longitude });
-      alert('📍 Localização GPS salva com sucesso no aparelho!');
+      showToast('📍 Localização GPS salva com sucesso no aparelho!');
     } catch (error) {
-      alert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.');
+      await customAlert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.', 'Erro de GPS');
     } finally {
       setCapturandoGpsId(null);
     }
@@ -315,6 +318,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
       contatoBruto={modalContato} 
       onClose={() => setModalContato(null)} 
     />
+    <Toast {...toast} onClose={dismissToast} />
     </>
   );
 };

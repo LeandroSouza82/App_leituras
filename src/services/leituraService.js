@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { StorageService } from './storageService';
@@ -219,7 +220,7 @@ export const LeituraService = {
       const unidades = await this.obterUnidadesCondominio(leitura, unidadesParam);
 
       if (!unidades || unidades.length === 0) {
-        alert('Nenhuma unidade cadastrada encontrada para este condomínio.');
+        await customAlert('Nenhuma unidade cadastrada encontrada para este condomínio.');
         return false;
       }
 
@@ -302,7 +303,7 @@ export const LeituraService = {
       if (error.name === 'AbortError' || error.message?.includes('canceled') || error.message?.includes('cancelled')) {
         return false;
       }
-      alert('Erro ao gerar planilha uCondo: ' + error.message);
+      await customAlert('Erro ao gerar planilha uCondo: ' + error.message);
       return false;
     }
   },

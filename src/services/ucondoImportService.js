@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
 import { supabase } from './supabase';
-import { customPrompt } from '../components/CustomPrompt/CustomPrompt';
+import { customPrompt, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
 
 /**
@@ -424,7 +424,7 @@ export const UCondoImportService = {
 
         // 2.4 Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
-          const querSubstituir = window.confirm(
+          const querSubstituir = await customConfirm(
             `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja importar esta lista para o condomínio '${condExistente.nome}'?`
           );
 
@@ -548,7 +548,7 @@ export const UCondoImportService = {
           const temCorrespondencia = nomePlanilhaNorm.includes(nomeAtualNorm) || nomeAtualNorm.includes(nomePlanilhaNorm);
 
           if (!temCorrespondencia) {
-            const confirmarDivergencia = window.confirm(
+            const confirmarDivergencia = await customConfirm(
               `⚠️ Aviso de Segurança:\nA planilha selecionada é do condomínio "${metadados.nome}", mas você está no condomínio "${condominoAtualNome}".\n\nDeseja realmente vincular estas ${novasUnidades.length} unidades aqui?`
             );
             if (!confirmarDivergencia) {
@@ -560,7 +560,7 @@ export const UCondoImportService = {
       }
 
       if (unidadesAtuais && unidadesAtuais.length > 0) {
-        const confirmar = window.confirm(
+        const confirmar = await customConfirm(
           `Este condomínio já possui ${unidadesAtuais.length} unidades cadastradas.\n\nDeseja substituir a lista atual pelas ${novasUnidades.length} unidades da nova planilha?`
         );
         if (!confirmar) {

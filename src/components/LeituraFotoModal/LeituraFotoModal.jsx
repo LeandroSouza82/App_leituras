@@ -332,10 +332,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           });
         } catch (e) {}
 
-        alert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
+        await customAlert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
       }
     } catch (err) {
-      alert('Erro ao processar a planilha: ' + err.message);
+      await customAlert('Erro ao processar a planilha: ' + err.message);
     } finally {
       if (e.target) e.target.value = '';
       setIsProcessing(false);
@@ -692,7 +692,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   const handleExcluirFoto = async (overrideApto = null, skipConfirm = false) => {
     if (!skipConfirm) {
-      if (!window.confirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
+      if (!await customConfirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
     }
 
     try {
@@ -798,7 +798,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setActiveApto(null);
     } catch (err) {
       console.error('Erro ao excluir foto:', err);
-      alert('Ocorreu um erro ao excluir a foto. Tente novamente.');
+      await customAlert('Ocorreu um erro ao excluir a foto. Tente novamente.');
     }
   };
 
@@ -863,7 +863,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const fotoUrl = fotoUrlOverride || fotosCapturadas[unidadeId]?.[tipoMedicaoAtivo];
 
       if (!fotoUrl || fotoUrl.trim() === '') {
-        alert('Falha ao processar a foto. A imagem não foi anexada corretamente.');
+        await customAlert('Falha ao processar a foto. A imagem não foi anexada corretamente.');
         return;
       }
 
@@ -974,7 +974,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setActiveApto(null);
 
     } catch (error) {
-      alert('❌ Erro inesperado ao salvar: ' + error.message);
+      await customAlert('❌ Erro inesperado ao salvar: ' + error.message);
       throw error;
     }
   };
@@ -1050,7 +1050,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     } catch (error) {
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
-      alert('⚠️ Erro ao processar a foto. Tente novamente.\n(Detalhe: ' + errMsg + ')');
+      await customAlert('⚠️ Erro ao processar a foto. Tente novamente.\n(Detalhe: ' + errMsg + ')');
       setCustomCameraOpen(true); // mantém câmera aberta para nova tentativa
     } finally {
       setIsProcessing(false);
@@ -1400,7 +1400,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         exibirToastSucesso();
       }
     } catch (err) {
-      alert('Ocorreu um erro ao salvar as leituras. Tente novamente.');
+      await customAlert('Ocorreu um erro ao salvar as leituras. Tente novamente.');
     } finally {
       setExportando(false);
     }
@@ -1419,10 +1419,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     const condId = leitura?.id || leitura?.condominio_id;
     try {
       await resetarEstadoLeiturasAtivas(condId);
-      alert('Condomínio limpo e finalizado com sucesso! Pronto para o próximo mês.');
+      await customAlert('Condomínio limpo e finalizado com sucesso! Pronto para o próximo mês.');
       onClose();
     } catch (err) {
-      alert('Erro ao limpar condomínio: ' + err.message);
+      await customAlert('Erro ao limpar condomínio: ' + err.message);
     }
   };
 

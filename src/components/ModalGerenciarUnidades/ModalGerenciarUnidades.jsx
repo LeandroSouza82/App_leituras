@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -28,7 +29,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   const storageKey = `unidades_${condominioId}`;
 
-  const processarWorkbook = (workbook) => {
+  const processarWorkbook = async (workbook) => {
     try {
       const firstSheetName = workbook.SheetNames[0];
       const firstSheet = workbook.Sheets[firstSheetName];
@@ -41,9 +42,9 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       }
 
       setUnidadesTemp(prev => [...new Set([...prev, ...unicas])]);
-      alert(`✅ ${unicas.length} unidades identificadas com sucesso!`);
+      await customAlert(`✅ ${unicas.length} unidades identificadas com sucesso!`);
     } catch (err) {
-      alert('Erro ao processar planilha: ' + err.message);
+      await customAlert('Erro ao processar planilha: ' + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -73,7 +74,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
         }
       }
     } catch (err) {
-      alert('Erro ao selecionar planilha: ' + err.message);
+      await customAlert('Erro ao selecionar planilha: ' + err.message);
       setIsProcessing(false);
     }
   };
@@ -88,7 +89,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       const workbook = XLSX.read(data, { type: 'array' });
       processarWorkbook(workbook);
     } catch (err) {
-      alert('Erro ao ler planilha: ' + err.message);
+      await customAlert('Erro ao ler planilha: ' + err.message);
       setIsProcessing(false);
     } finally {
       if (event.target) event.target.value = '';
@@ -120,7 +121,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   const salvarLocal = async () => {
     if (unidadesTemp.length === 0) {
-      alert('Nenhuma unidade para salvar.');
+      await customAlert('Nenhuma unidade para salvar.');
       return;
     }
 
@@ -133,15 +134,15 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       await salvarArquivoSeguro(fileName, JSON.stringify(unidadesTemp));
 
       onUnidadesAtualizadas(unidadesTemp);
-      alert('✅ Unidades salvas permanentemente no dispositivo!');
+      await customAlert('✅ Unidades salvas permanentemente no dispositivo!');
       onClose();
     } catch (error) {
-      alert('Erro ao persistir dados: ' + error.message);
+      await customAlert('Erro ao persistir dados: ' + error.message);
     }
   };
 
-  const limparLista = () => {
-    if (window.confirm('Deseja limpar a lista temporária?')) {
+  const limparLista = async () => {
+    if (await customConfirm('Deseja limpar a lista temporária?')) {
       setUnidadesTemp([]);
     }
   };

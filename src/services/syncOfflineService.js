@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { Network } from '@capacitor/network';
 import { supabase } from './supabase';
 import { normalizarNome } from './ucondoImportService';
@@ -181,7 +182,7 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 
         if (insertError) {
           console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);
-          alert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);
+          await customAlert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);
           continue; // Mantém na fila, tenta novamente na próxima janela de rede
         }
 

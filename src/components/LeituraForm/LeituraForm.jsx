@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import { useRef, useState } from 'react';
 import { FileSpreadsheet, Plus } from 'lucide-react';
 import { processarPlanilhaExcel } from '../../utils/importExcel';
@@ -89,7 +90,7 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
         }
 
         if (resultado?.tipo === 'atualizado') {
-          alert(`✅ Sucesso! ${resultado.totalUnidades} unidades atualizadas no condomínio "${resultado.condominio.nome}".`);
+          await customAlert(`✅ Sucesso! ${resultado.totalUnidades} unidades atualizadas no condomínio "${resultado.condominio.nome}".`);
           showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas com sucesso!`, 'success');
           if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
           if (typeof onImportSuccess === 'function') onImportSuccess(1);
@@ -98,7 +99,7 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
         }
 
         if (resultado?.tipo === 'criado') {
-          alert(`✅ Sucesso! Condomínio "${resultado.condominio.nome}" criado com ${resultado.totalUnidades} unidades importadas.`);
+          await customAlert(`✅ Sucesso! Condomínio "${resultado.condominio.nome}" criado com ${resultado.totalUnidades} unidades importadas.`);
           showToast(`Condomínio "${resultado.condominio.nome}" criado com sucesso!`, 'success');
           if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
           if (typeof onImportSuccess === 'function') onImportSuccess(1);
@@ -111,19 +112,19 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
       // 3. Fallback: Lista geral de condomínios
       const registros = await processarPlanilhaExcel(file);
       if (!registros.length) {
-        alert('Erro na importação: Nenhum condomínio ou unidade válida encontrada na planilha.');
+        await customAlert('Erro na importação: Nenhum condomínio ou unidade válida encontrada na planilha.');
         showToast('Nenhum condomínio válido encontrado na planilha.', 'error');
         return;
       }
 
       adicionarEmLote(registros);
       setForm(initialState);
-      alert(`✅ Sucesso! ${registros.length} condomínios importados da planilha.`);
+      await customAlert(`✅ Sucesso! ${registros.length} condomínios importados da planilha.`);
       if (typeof onImportSuccess === 'function') {
         onImportSuccess(registros.length);
       }
     } catch (err) {
-      alert('Erro na importação: ' + (err?.message || 'Arquivo incompatível'));
+      await customAlert('Erro na importação: ' + (err?.message || 'Arquivo incompatível'));
       showToast('Erro ao importar planilha: ' + (err?.message || 'Arquivo incompatível'), 'error');
     } finally {
       if (event.target) event.target.value = '';

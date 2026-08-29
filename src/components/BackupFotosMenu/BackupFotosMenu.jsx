@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useEffect } from 'react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -230,7 +231,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
 
   const handleExcluirLote = async (e, condo) => {
     e.stopPropagation();
-    if (!window.confirm("Deseja realmente excluir este lote de fotos do dispositivo?")) return;
+    if (!await customConfirm("Deseja realmente excluir este lote de fotos do dispositivo?")) return;
 
     try {
       await filesystemService.excluirLote(condo.pathFisico);
@@ -240,7 +241,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         setExpandedCondo(null);
       }
     } catch (err) {
-      alert('Ocorreu um erro ao excluir o lote: ' + err.message);
+      await customAlert('Ocorreu um erro ao excluir o lote: ' + err.message);
     }
   };
 

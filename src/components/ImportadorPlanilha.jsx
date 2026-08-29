@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { useState, useEffect } from 'react';
 import { CheckCircle2, Loader2, Upload, FileSpreadsheet, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -228,7 +229,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
         if (resultadoUCondo?.tipo === 'atualizado') {
           const msg = `✅ ${resultadoUCondo.totalUnidades} unidades sincronizadas com sucesso no Supabase para o condomínio "${resultadoUCondo.condominio.nome}"!`;
-          alert(msg);
+          await customAlert(msg);
           emitStatus(msg);
           if (onImportComplete) onImportComplete(1);
           carregarArquivosLocais();
@@ -237,7 +238,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
         if (resultadoUCondo?.tipo === 'criado') {
           const msg = `✅ Condomínio "${resultadoUCondo.condominio.nome}" e ${resultadoUCondo.totalUnidades} unidades sincronizados com sucesso no Supabase!`;
-          alert(msg);
+          await customAlert(msg);
           emitStatus(msg);
           if (onImportComplete) onImportComplete(1);
           carregarArquivosLocais();
@@ -278,7 +279,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       const totalImportado = await syncCondominios(listaCondominios);
 
       const msg = `✅ Sucesso! ${totalImportado} condomínios sincronizados.`;
-      alert(msg);
+      await customAlert(msg);
       emitStatus(msg);
       if (onImportComplete) {
         onImportComplete(totalImportado);
@@ -288,7 +289,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       carregarArquivosLocais();
     } catch (error) {
       const errMsg = 'Erro na importação: ' + (error?.message || 'Arquivo incompatível');
-      alert(errMsg);
+      await customAlert(errMsg);
       emitStatus(errMsg);
     } finally {
       setIsProcessing(false);
@@ -312,7 +313,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
       await processarBufferExcel(fileContents.data, fileData.name);
     } catch (error) {
-      alert('Erro na seleção do arquivo: ' + (error?.message || ''));
+      await customAlert('Erro na seleção do arquivo: ' + (error?.message || ''));
       emitStatus('Falha na seleção do arquivo.');
     }
   };

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import './ModalConfirmacao.css';
 
 const ModalConfirmacao = ({
@@ -14,8 +15,8 @@ const ModalConfirmacao = ({
     return null;
   }
 
-  return (
-    <div className="modal-overlay">
+  return createPortal(
+    <div className="modal-confirmacao-overlay" style={{ position: 'fixed', inset: 0, zIndex: 2147483647, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="modal-content">
         <h3>{titulo}</h3>
         <p>{mensagem}</p>
@@ -28,7 +29,8 @@ const ModalConfirmacao = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

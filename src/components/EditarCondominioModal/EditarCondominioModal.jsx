@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
+import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
 
 import './EditarCondominioModal.css';
 
@@ -41,6 +42,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
   const [form, setForm] = useState(() => buildFormState(condominio));
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [mostrarConfirmacaoGps, setMostrarConfirmacaoGps] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
 
   useEffect(() => {
@@ -64,11 +66,12 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
     onClose();
   };
 
-  const handleLimparGps = async () => {
-    if (!window.confirm('Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado.')) {
-      return;
-    }
+  const handleLimparGps = () => {
+    setMostrarConfirmacaoGps(true);
+  };
 
+  const confirmarLimparGps = async () => {
+    setMostrarConfirmacaoGps(false);
     setSalvando(true);
     setFeedback(null);
 
@@ -253,6 +256,14 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
         </form>
         </div>
       </div>
+      <ModalConfirmacao
+        isOpen={mostrarConfirmacaoGps}
+        titulo="Remover GPS"
+        mensagem="Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado."
+        onConfirm={confirmarLimparGps}
+        onCancel={() => setMostrarConfirmacaoGps(false)}
+        textoConfirmar="Remover"
+      />
       <Toast {...toast} onClose={dismissToast} />
     </>
   );

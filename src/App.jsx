@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, CheckCircle2, DollarSign, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
 import './index.css';
@@ -221,19 +222,19 @@ const MainApp = ({ onLogout }) => {
           }
 
           if (resultado?.tipo === 'atualizado') {
-            alert(`✅ ${resultado.totalUnidades} unidades sincronizadas com sucesso para o condomínio "${resultado.condominio.nome}"!`);
+            await customAlert(`✅ ${resultado.totalUnidades} unidades sincronizadas com sucesso para o condomínio "${resultado.condominio.nome}"!`);
             showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas!`, 'success');
             await recarregarCondominios();
             setAbaAtiva('leituras');
           } else if (resultado?.tipo === 'criado') {
-            alert(`✅ Condomínio "${resultado.condominio.nome}" e ${resultado.totalUnidades} unidades criados com sucesso!`);
+            await customAlert(`✅ Condomínio "${resultado.condominio.nome}" e ${resultado.totalUnidades} unidades criados com sucesso!`);
             showToast(`Condomínio "${resultado.condominio.nome}" importado com sucesso!`, 'success');
             await recarregarCondominios();
             setAbaAtiva('leituras');
           }
         }
       } catch (err) {
-        alert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
+        await customAlert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
         showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
       }
     });

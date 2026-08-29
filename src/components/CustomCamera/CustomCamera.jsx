@@ -1,3 +1,4 @@
+import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -152,7 +153,7 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}
     } catch (err) {
       const msg = err?.message || '';
       if (!msg.includes('User cancelled') && !msg.includes('cancel')) {
-        alert("⚠️ Erro ao capturar foto. Tente novamente.\n(Detalhe técnico: " + msg + ")");
+        await customAlert("⚠️ Erro ao capturar foto. Tente novamente.\n(Detalhe técnico: " + msg + ")");
       } else {
         if (!capturedPhoto) {
           onClose(); // Se cancelou e não tinha foto prévia, fecha o modal
@@ -176,9 +177,9 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}
     handleCapture();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!leituraValue) {
-      alert("Por favor, insira o valor da leitura.");
+      await customAlert("Por favor, insira o valor da leitura.");
       return;
     }
     onSaveReading(capturedPhoto, leituraValue);

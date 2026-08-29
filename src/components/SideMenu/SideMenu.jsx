@@ -83,7 +83,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   if (!isOpen) return null;
 
   const handleLogout = async () => {
-    if (!window.confirm('Deseja realmente sair da sua conta?')) return;
+    if (!await customConfirm('Deseja realmente sair da sua conta?')) return;
     
     if (onLogout) {
       await onLogout();

@@ -2,6 +2,7 @@ import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
 import { sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
+import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 
 /**
  * syncService - Arquitetura Offline-First com Sincronização Automática em Background e Auditoria Visual.
@@ -235,7 +236,7 @@ export async function sincronizarFilaEmBackground() {
 
           if (dbError) {
             console.error("Erro absoluto no insert leituras_detalhes:", dbError);
-            alert(`ERRO BD (leituras_detalhes): ${dbError.message || JSON.stringify(dbError)}`);
+            await customAlert(`ERRO BD (leituras_detalhes): ${dbError.message || JSON.stringify(dbError)}`, 'Erro de Sincronização');
             throw new Error("Erro DB insert: " + dbError.message);
           }
 
