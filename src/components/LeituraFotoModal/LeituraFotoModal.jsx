@@ -19,7 +19,7 @@ import { enfileirarLeiturasAnteriores } from '../../services/syncOfflineService'
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
-import { customConfirm } from '../CustomPrompt/CustomPrompt';
+import { customConfirm, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
 
@@ -111,6 +111,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
 
   return (
     <button
+      id={`card-unidade-${apto}`}
       type="button"
       className={`btn-apto-simples ${concluido ? 'concluido' : ''}`}
       style={{ touchAction: 'pan-y' }}
@@ -930,15 +931,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }));
       setLeiturasValores(prev => ({
         ...prev,
-        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor }
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor },
+        [`${unidadeId}_${tipoMedicaoAtivo}`]: valor // INJEÇÃO CRÍTICA PARA O VALIDADOR DE EXPORTAÇÃO
       }));
       // NOTA: 'limparCardUnidadeAposSalvar' removido intencionalmente para não perder o preview da foto.
 
-      // NOVO: Atualiza a Leitura Anterior imediatamente (UI State)
-      setTodasLeiturasAnteriores(prev => ({
-        ...prev,
-        [unidadeId]: valorNumerico
-      }));
+      // NOVO: Atualiza a Leitura Atual imediatamente (UI State)
+      setTodasLeiturasAnteriores(prev => {
+        const oldValue = prev[unidadeId];
+        const ant = (typeof oldValue === 'object' && oldValue !== null) ? oldValue.leitura_anterior : oldValue;
+        return {
+          ...prev,
+          [unidadeId]: {
+            ...(typeof oldValue === 'object' ? oldValue : {}),
+            leitura_anterior: ant,
+            leitura_atual: valorNumerico
+          }
+        };
+      });
 
       // NOVO: Persiste no LocalStorage (Garantia de Sobreviv�ncia)
       try {
@@ -948,8 +958,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const arr = JSON.parse(str);
           const idx = arr.findIndex(l => String(l.unidade).trim() === String(unidadeId));
           if (idx !== -1) {
-             const propCorreta = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || "leitura_anterior";
-             arr[idx][propCorreta] = valorNumerico;
+             // ESTRITAMENTE salvar na chave leitura_atual, preservando a leitura_anterior
+             arr[idx] = {
+               ...arr[idx],
+               leitura_atual: valorNumerico
+             };
              localStorage.setItem(chaveStorage, JSON.stringify(arr));
           }
         }
@@ -1194,27 +1207,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleExportar = () => {
-    // 1. Validação Pré-Envio (Trava de Segurança Crítica)
-    for (const apto of listaCompleta) {
-      const fotoServicos = fotosCapturadas[apto] || {};
-      const concluidoServicos = concluidosMemoria[apto] || {};
-      const valorServicos = leiturasValores[apto] || {};
-
-      const servicosComRegistro = new Set([
-        ...Object.keys(fotoServicos),
-        ...Object.keys(concluidoServicos)
-      ]);
-
-      for (const servico of servicosComRegistro) {
-        const valor = valorServicos[servico];
-        if (valor === undefined || valor === null || String(valor).trim() === '') {
-          alert(`Atenção: O apartamento ${apto} possui foto ou registro mas está sem a leitura digitada. Preencha antes de enviar!`);
-          return; // Bloqueia o envio
-        }
-      }
-    }
-
-    // 2. Análise Automática de Utilitários (Offline-First UX)
+    // Análise Automática de Utilitários e Roteamento (Offline-First UX)
     const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     if (tipo.includes('somente agua') || tipo === 'agua') {
@@ -1224,9 +1217,52 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     } else if (tipo.includes('energia')) {
       executeExport('energia');
     } else {
-      // Caso Misto (Água e Gás) ou indefinido, abre o modal de opções
+      // Caso Misto ou indefinido, abre o modal de opções
       setIsExportModalOpen(true);
     }
+  };
+
+  // FUNÇÃO MODULAR DE VALIDAÇÃO RIGOROSA ANTES DO ENVIO
+  const validarLeiturasLote = (scopeParam, tipoCondominioOrig, unidadesList, leiturasVal) => {
+    const tipo = String(tipoCondominioOrig || '').toLowerCase();
+    const isMisto = !tipo.includes('somente') && !tipo.includes('energia');
+
+    let servicosParaValidar = [];
+    if (scopeParam === 'todos') {
+      if (isMisto) servicosParaValidar = ['agua', 'gas'];
+      else if (tipo.includes('agua')) servicosParaValidar = ['agua'];
+      else if (tipo.includes('gas')) servicosParaValidar = ['gas'];
+      else if (tipo.includes('energia')) servicosParaValidar = ['energia'];
+    } else {
+      servicosParaValidar = [scopeParam];
+    }
+
+    for (const uni of unidadesList) {
+      const apStr = String(uni.unidade || uni.nome || uni).trim();
+      for (const srv of servicosParaValidar) {
+
+        // Checa se o usuário tirou foto ou interagiu com este apartamento
+        const statusFoto = fotosCapturadas[apStr] || {};
+        const statusConcluido = concluidosMemoria[apStr] || {};
+        const hasInteraction = statusFoto[srv] || statusConcluido[srv] || leiturasVal[apStr]?.[srv] !== undefined;
+
+        // Se não mexeu no apartamento, pula a validação dele (permite lote parcial)
+        if (!hasInteraction) continue;
+
+        // Se interagiu, verifica se a leitura é válida e maior que zero
+        const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv];
+        let numVal = NaN;
+        if (val !== undefined && val !== null && val !== '') {
+          const valLimpo = String(val).replace(/\./g, '').replace(',', '.').trim();
+          numVal = Number(valLimpo);
+        }
+
+        if (val === undefined || val === null || val === '' || numVal === 0 || Number.isNaN(numVal)) {
+          return { isValid: false, unidade: apStr, servico: srv };
+        }
+      }
+    }
+    return { isValid: true };
   };
 
   const executeExport = async (scope) => {
@@ -1236,6 +1272,32 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     const servico = (scope && ['agua', 'gas', 'energia', 'todos'].includes(scope)) 
       ? scope 
       : tipoMedicaoAtivo;
+
+    // VALIDAÇÃO RIGOROSA ANTES DO ENVIO
+    const validacao = validarLeiturasLote(
+      servico, 
+      leitura?.tipoLeitura || leitura?.tipo_leitura, 
+      unidadesCarregadas, 
+      leiturasValores,
+      fotosCapturadas,
+      concluidosMemoria
+    );
+    if (!validacao.isValid) {
+      const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
+      
+      // Usa o customAlert para esperar o clique do "OK"
+      await customAlert(msg, 'Leitura Pendente');
+      
+      setTimeout(() => {
+        const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
+        if (cardErro) {
+          cardErro.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          cardErro.classList.add('highlight-pulse');
+          setTimeout(() => cardErro.classList.remove('highlight-pulse'), 3000);
+        }
+      }, 300);
+      return; // Interrompe o fluxo imediatamente
+    }
     
     // 1. Confirmação Elegante de Envio
     const nomeAmigavel = servico === 'todos' ? 'Consolidado (Todos)' : servico.toUpperCase();
@@ -1276,13 +1338,21 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             const valAtualAgua = leiturasValores[`${apString}_agua`];
             const valAtualGas = leiturasValores[`${apString}_gas`];
             
-            // O valor digitado agora vira a base oficial no banco
-            const novaLeituraAnterior = (valAtualAgua !== undefined && valAtualAgua !== null && valAtualAgua !== '') 
-              ? Number(valAtualAgua) 
+            const parseValorLeituraLocal = (val) => {
+              if (val === null || val === undefined || val === '') return null;
+              const limpo = String(val).replace(/\./g, '').replace(',', '.').trim();
+              const num = parseFloat(limpo);
+              return isNaN(num) ? null : num;
+            };
+            
+            const pAgua = parseValorLeituraLocal(valAtualAgua);
+            const novaLeituraAnterior = (pAgua !== null) 
+              ? pAgua 
               : unidade.leitura_anterior;
 
-            const novaLeituraAnteriorGas = (valAtualGas !== undefined && valAtualGas !== null && valAtualGas !== '') 
-              ? Number(valAtualGas) 
+            const pGas = parseValorLeituraLocal(valAtualGas);
+            const novaLeituraAnteriorGas = (pGas !== null) 
+              ? pGas 
               : unidade.leitura_anterior_gas;
 
             payloadLote.push({
@@ -1382,13 +1452,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const valAtualAgua = leiturasValores[apString]?.agua;
           const valAtualGas = leiturasValores[apString]?.gas;
           
+          const parseValorLeituraLocal = (val) => {
+            if (val === null || val === undefined || val === '') return null;
+            const limpo = String(val).replace(/\./g, '').replace(',', '.').trim();
+            const num = parseFloat(limpo);
+            return isNaN(num) ? null : num;
+          };
+          
           // 1. O valor atual digitado embaixo vira a nova leitura anterior em cima
-          const novaLeituraAnterior = (valAtualAgua !== undefined && valAtualAgua !== null && valAtualAgua !== '') 
-            ? Number(valAtualAgua)
+          const pAgua = parseValorLeituraLocal(valAtualAgua);
+          const novaLeituraAnterior = (pAgua !== null) 
+            ? pAgua 
             : unidade.leitura_anterior;
 
-          const novaLeituraAnteriorGas = (valAtualGas !== undefined && valAtualGas !== null && valAtualGas !== '') 
-            ? Number(valAtualGas)
+          const pGas = parseValorLeituraLocal(valAtualGas);
+          const novaLeituraAnteriorGas = (pGas !== null) 
+            ? pGas 
             : unidade.leitura_anterior_gas;
 
           return {
@@ -1627,7 +1706,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       apto={apto}
                       concluido={concluido}
                       thumbnail={thumbnail}
-                      leituraAnterior={todasLeiturasAnteriores[apto]}
+                      leituraAnterior={(typeof todasLeiturasAnteriores[apto] === 'object' && todasLeiturasAnteriores[apto] !== null) ? todasLeiturasAnteriores[apto].leitura_anterior : todasLeiturasAnteriores[apto]}
                       onClick={handleUnitClick}
                       onLongPress={async (aptoAlvo) => {
                         const isConfirmed = await customConfirm(

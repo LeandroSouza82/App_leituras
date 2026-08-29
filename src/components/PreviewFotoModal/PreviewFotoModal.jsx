@@ -5,7 +5,8 @@ import 'react-medium-image-zoom/dist/styles.css';
 import './PreviewFotoModal.css';
 
 const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituras = {}, unidadeAtiva = '' }) => {
-  const leituraAnterior = leituras?.[unidadeAtiva] ?? 0;
+  const objOuVal = leituras?.[unidadeAtiva];
+  const leituraAnterior = (typeof objOuVal === 'object' && objOuVal !== null) ? (objOuVal.leitura_anterior ?? 0) : (objOuVal ?? 0);
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
@@ -50,10 +51,10 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
   // Garante limpeza e estado pronto para digitação sempre que o modal abrir
   useEffect(() => {
     if (isOpen) {
-      setLeituraValor(''); // CIRÚRGICO: força string vazia sempre que abrir
+      setLeituraValor(initialValue || ''); // CIRÚRGICO: carrega o valor pré-salvo, se existir
       setErroValidacao('');
     }
-  }, [isOpen, leituraAnterior]);
+  }, [isOpen, initialValue, leituraAnterior]);
 
   if (!isOpen) return null;
 

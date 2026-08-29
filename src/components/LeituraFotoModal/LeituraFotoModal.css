@@ -650,3 +650,19 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+
+/* Highlight Pulse for Validation Warning */
+@keyframes highlight-pulse-anim {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); border-color: rgba(239, 68, 68, 1); transform: scale(1); }
+  50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); border-color: rgba(239, 68, 68, 0.5); transform: scale(1.03); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); border-color: inherit; transform: scale(1); }
+}
+
+.btn-apto-simples.highlight-pulse {
+  animation: highlight-pulse-anim 1.5s ease-in-out 2;
+  border-width: 2px;
+  border-style: solid;
+  border-color: #ef4444;
+  z-index: 10;
+  position: relative;
+}
