@@ -63,12 +63,9 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     }
   };
 
-  const handleOpenRating = async () => {
-    try {
-      await Browser.open({ url: 'market://details?id=com.fastleituras.app' });
-    } catch (err) {
-      console.error('Erro ao abrir loja', err);
-    }
+  const handleAvaliarApp = async () => {
+    // TODO: Substituir pelo link da Play Store após o lançamento
+    await customAlert('A avaliação estará disponível assim que o app for lançado na Play Store.', 'Em Breve! 🌟');
   };
 
   // Mapeamento das opções do menu movido para dentro do componente
@@ -79,7 +76,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
     { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
     { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleSuporteTecnico },
-    { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleOpenRating },
+    { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleAvaliarApp },
     { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
   ];
 
