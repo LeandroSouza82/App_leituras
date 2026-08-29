@@ -49,11 +49,17 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   };
 
 
-  const handleOpenSupport = async () => {
+  const handleSuporteTecnico = async () => {
+    // Substitua pelo número real de suporte com código do país (55) e DDD
+    const numeroWhatsApp = "5548996525008"; 
+    const mensagem = "Olá! Preciso de suporte com o aplicativo Fast Leituras.";
+    const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensagem)}`;
+
     try {
-      await Browser.open({ url: 'https://wa.me/55SEUNUMERO?text=Preciso%20de%20ajuda%20no%20Fast%20Leituras' });
-    } catch (err) {
-      console.error('Erro ao abrir suporte', err);
+      await Browser.open({ url });
+    } catch (error) {
+      // Fallback para web caso o Capacitor falhe
+      window.open(url, '_blank');
     }
   };
 
@@ -72,7 +78,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
     { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
     { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
-    { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleOpenSupport },
+    { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleSuporteTecnico },
     { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleOpenRating },
     { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
   ];

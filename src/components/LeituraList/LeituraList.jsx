@@ -58,7 +58,7 @@ const LeituraList = ({
         item.condominio?.nome
       ];
 
-      return valoresParaVerificar.some((valor) => 
+      return valoresParaVerificar.some((valor) =>
         normalizarTexto(valor).includes(termoBusca)
       );
     });
