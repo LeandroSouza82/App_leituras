@@ -306,6 +306,11 @@
   background-color: #ffffff;
 }
 
+.backup-tab.online-tab.active {
+  color: #10b981;
+  border-bottom-color: #10b981;
+}
+
 .backup-online-section {
   padding: 16px;
   display: flex;

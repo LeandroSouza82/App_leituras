@@ -1,4 +1,5 @@
 import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
 import React, { useState, useEffect } from 'react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -7,7 +8,7 @@ import { X, Folder, Image as ImageIcon, Share2, ChevronDown, ChevronRight, Loade
 import { buscarCondominios } from '../../services/condominioService';
 import { supabase } from '../../services/supabase';
 import { filesystemService } from '../../services/filesystemService';
-import { readFilaSync } from '../../services/syncService';
+import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
 import './BackupFotosMenu.css';
 
 const sanitizeName = (name) => {
@@ -32,7 +33,78 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
   const [searchError, setSearchError] = useState('');
   const [fotosSelecionadas, setFotosSelecionadas] = useState([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [expandedCondoOnline, setExpandedCondoOnline] = useState(null);
+  const [backupParaExcluir, setBackupParaExcluir] = useState(null);
+  
+  const longPressTimerRef = React.useRef(null);
+  const [fotoParaExcluir, setFotoParaExcluir] = useState(null);
+
+  const startLongPress = (type, item) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setFotoParaExcluir({ type, item });
+    }, 1000);
+  };
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleExcluirFotoConfirm = async () => {
+    if (!fotoParaExcluir) return;
+    const { type, item } = fotoParaExcluir;
+    
+    // Fecha o modal IMEDIATAMENTE para não ficar travado
+    setFotoParaExcluir(null);
+
+    try {
+      if (type === 'offline') {
+        const filePath = item.path || `Backups/${item.condominio_nome}/${item.name}`;
+        await Filesystem.deleteFile({
+          path: filePath,
+          directory: Directory.Data
+        });
+        
+        try {
+          const chaveFila = 'fila_sync_auto';
+          let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
+          let novaFila = fila.filter(f => f.fileName !== filePath && !(f.fileName && f.fileName.endsWith(item.name)));
+          localStorage.setItem(chaveFila, JSON.stringify(novaFila));
+        } catch(e) {}
+        
+        await carregarPastas();
+      } else if (type === 'online') {
+        try {
+          const chaveFila = 'fila_sync_auto';
+          let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
+          let novaFila = fila.filter(f => f.id !== item.id);
+          localStorage.setItem(chaveFila, JSON.stringify(novaFila));
+        } catch(e) {}
+
+        if (item.foto_url && typeof item.foto_url === 'string' && item.foto_url.includes('fotos_leituras')) {
+          const match = item.foto_url.match(/fotos_leituras\/(.+)$/);
+          if (match && match[1]) {
+             await supabase.storage.from('fotos_leituras').remove([match[1]]);
+          }
+        }
+        
+        if (item.id && !item.isPending) {
+           await supabase.from('leituras_detalhes').delete().eq('id', item.id);
+        }
+        
+        setOnlinePhotos(prev => prev.filter(p => p.id !== item.id));
+      }
+      
+      window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
+      await customAlert('Foto excluída com sucesso!');
+    } catch (err) {
+      console.error('Erro ao excluir foto:', err);
+      await customAlert('Erro ao excluir foto: ' + err.message);
+    }
+  };
 
   const toggleCondoOnline = (pathFisico) => {
     setExpandedCondoOnline(prev => prev === pathFisico ? null : pathFisico);
@@ -92,6 +164,25 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
   }, [isOpen, activeTab]);
 
   // ================= Offline Functions =================
+  const handleSincronizacaoManual = async () => {
+    setSincronizando(true);
+    try {
+      await sincronizarFilaEmBackground();
+      
+      if (activeTab === 'offline') {
+        await carregarPastas();
+      } else {
+        await handleSearchOnline();
+      }
+
+      await customAlert('Sincronização concluída com sucesso!');
+    } catch (err) {
+      await customAlert('Erro na sincronização: ' + err.message);
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
   const carregarPastas = async () => {
     setIsLoadingOffline(true);
     console.log('[BackupFotosMenu] Iniciando leitura da raiz de backups...');
@@ -139,7 +230,9 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                    return {
                       name: fName,
                       dataUrl: webPath,
-                      isPending: isPending
+                      isPending: isPending,
+                      path: sourcePath,
+                      condominio_nome: nomePasta
                    };
                 }
                 return null;
@@ -307,10 +400,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     }
   };
 
-      useEffect(() => {
-    // Moved to the top to avoid re-declaring multiple effects with activeTab logic.
-  }, []);
-
   const handleShareWhatsAppOnline = async (itemClicked) => {
     if (isSharing) return;
     setIsSharing(true);
@@ -404,8 +493,8 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
             <h3>Gerenciador de Backups</h3>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button type="button" className="btn-refresh" onClick={carregarPastas} disabled={isLoadingOffline} style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: '#64748b' }} title="Recarregar Pastas">
-              <RefreshCw size={20} className={isLoadingOffline ? "spin" : ""} />
+            <button type="button" className="btn-refresh" onClick={handleSincronizacaoManual} disabled={sincronizando} style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: '#64748b' }} title="Sincronizar Arquivos">
+              <RefreshCw size={20} className={sincronizando ? "spin" : ""} />
             </button>
             <button type="button" className="btn-close-modal" onClick={onClose} style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: '#64748b' }}>
               <X size={24} />
@@ -421,10 +510,10 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
             <Folder size={16} /> Lotes Offline
           </button>
           <button 
-            className={`backup-tab ${activeTab === 'online' ? 'active' : ''}`}
+            className={`backup-tab online-tab ${activeTab === 'online' ? 'active' : ''}`}
             onClick={() => setActiveTab('online')}
           >
-            <Cloud size={16} /> Busca Online (Supabase)
+            <Cloud size={16} /> Busca Online em Nuvem
           </button>
         </div>
 
@@ -481,8 +570,14 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                                 <img 
                                   src={arq.dataUrl} 
                                   alt={arq.name} 
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} 
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }} 
                                   onClick={() => setFotoAmpliada(arq.dataUrl)}
+                                  onTouchStart={() => startLongPress('offline', arq)}
+                                  onTouchEnd={clearLongPress}
+                                  onMouseDown={() => startLongPress('offline', arq)}
+                                  onMouseUp={clearLongPress}
+                                  onMouseLeave={clearLongPress}
+                                  onContextMenu={(e) => e.preventDefault()}
                                 />
                                 <div style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: 'white', borderRadius: '50%', padding: '2px', display: 'flex', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
                                   {arq.isPending ? <Clock size={12} color="#f59e0b" title="Pendente (só no celular)" /> : <Cloud size={12} color="#10b981" title="Sincronizado" />}
@@ -557,10 +652,21 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                           {expandedCondoOnline === condo.pathFisico ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                           <span className="condo-name">{condo.nome}</span>
                         </div>
-                        <div className="backup-item-actions">
+                        <div className="backup-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span className="backup-item-count">
                             {condo.arquivos.length} foto(s)
                           </span>
+                          <button 
+                            type="button" 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setBackupParaExcluir(condo); 
+                            }} 
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+                            title="Excluir do Banco de Dados"
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </div>
                       </div>
 
@@ -576,12 +682,18 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                               <div key={item.id} className="file-preview-item" style={{ width: '70px', height: '70px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                 <div 
                                   className="online-photo-img-container" 
-                                  style={{ position: 'relative', width: '100%', height: '100%', cursor: item.isPending ? 'default' : 'pointer', backgroundColor: item.isPending ? '#f8fafc' : 'transparent' }}
+                                  style={{ position: 'relative', width: '100%', height: '100%', cursor: item.isPending ? 'default' : 'pointer', backgroundColor: item.isPending ? '#f8fafc' : 'transparent', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
                                   onClick={() => {
                                     if (!item.isPending && item.foto_url) {
                                       setFotoAmpliada(item.foto_url);
                                     }
                                   }}
+                                  onTouchStart={() => startLongPress('online', item)}
+                                  onTouchEnd={clearLongPress}
+                                  onMouseDown={() => startLongPress('online', item)}
+                                  onMouseUp={clearLongPress}
+                                  onMouseLeave={clearLongPress}
+                                  onContextMenu={(e) => e.preventDefault()}
                                 >
                                   {item.isPending ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', color: '#94a3b8' }}>
@@ -612,20 +724,130 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       </div>
       {fotoAmpliada && (
         <div 
-          style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0, 0, 0, 0.8)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
           onClick={() => setFotoAmpliada(null)}
         >
-          <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%' }} onClick={(e) => e.stopPropagation()}>
-            <img src={fotoAmpliada} alt="Ampliada" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+          <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }} onClick={e => e.stopPropagation()}>
             <button 
+              type="button" 
               onClick={() => setFotoAmpliada(null)} 
-              style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'white', borderRadius: '50%', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}
+              style={{ position: 'absolute', top: '-40px', right: '0', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
             >
-              <X size={20} color="black" />
+              <X size={32} />
             </button>
+            <img src={fotoAmpliada} alt="Ampliada" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
           </div>
         </div>
       )}
+      
+      <ModalConfirmacao
+        isOpen={!!fotoParaExcluir}
+        onCancel={(e) => {
+          if (e && e.stopPropagation) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          setFotoParaExcluir(null);
+        }}
+        onConfirm={(e) => {
+          if (e && e.stopPropagation) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          handleExcluirFotoConfirm();
+        }}
+        titulo="Excluir Foto"
+        mensagem="Tem certeza que deseja excluir esta foto permanentemente? Esta ação não poderá ser desfeita."
+        textoCancelar="Cancelar"
+        textoConfirmar="Excluir Foto"
+        btnConfirmarClasse="btn-excluir"
+      />
+
+      <ModalConfirmacao
+        isOpen={!!backupParaExcluir}
+        titulo="Excluir Backup Online"
+        mensagem={`Tem certeza que deseja excluir os dados do condomínio ${backupParaExcluir?.nome || ''}? Esta ação apagará as fotos da nuvem permanentemente e NÃO poderá ser desfeita.`}
+        textoCancelar="Cancelar"
+        textoConfirmar="Excluir Permanentemente"
+        btnConfirmarClasse="btn-excluir"
+        onConfirm={async (e) => {
+          if (e && e.stopPropagation) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          
+          const backupAtual = backupParaExcluir;
+          setBackupParaExcluir(null);
+          
+          try {
+            const { data: sessionData } = await supabase.auth.getUser();
+            const userId = sessionData?.user?.id;
+            if (userId && backupAtual?.nome) {
+              
+              // 0. Remover da fila de sincronização no localStorage para o item não voltar
+              try {
+                const chaveFila = 'fila_sync_auto';
+                let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
+                let novaFila = fila.filter(f => f.condominio_nome !== backupAtual.nome);
+                localStorage.setItem(chaveFila, JSON.stringify(novaFila));
+              } catch (err) {
+                console.error('Erro ao purgar item local da fila:', err);
+              }
+
+              // 1. Apagar as fotos do Storage
+              const pathsParaDeletar = backupAtual.arquivos
+                .map(arq => {
+                  if (arq.foto_url && typeof arq.foto_url === 'string') {
+                    const match = arq.foto_url.match(/\/public\/fotos_leituras\/(.+)$/);
+                    if (match && match[1]) {
+                      try {
+                        return decodeURIComponent(match[1]);
+                      } catch (e) {
+                        return match[1];
+                      }
+                    }
+                  }
+                  return null;
+                })
+                .filter(Boolean);
+
+              if (pathsParaDeletar.length > 0) {
+                const { error: storageError } = await supabase.storage
+                  .from('fotos_leituras')
+                  .remove(pathsParaDeletar);
+                if (storageError) {
+                  console.error('Erro ao deletar arquivos do storage:', storageError);
+                  throw new Error('Falha ao remover as fotos do armazenamento na nuvem.');
+                }
+              }
+
+              // 2. Apagar o registro da tabela
+              const { error } = await supabase
+                .from('leituras_detalhes')
+                .delete()
+                .eq('condominio_nome', backupAtual.nome)
+                .eq('leiturista_id', userId);
+              
+              if (error) throw error;
+              
+              // 3. Atualizar a UI e fechar modal
+              setOnlinePhotos(prev => prev.filter(item => item.condominio_nome !== backupAtual.nome));
+              window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
+              await customAlert('Backup e fotos excluídos permanentemente!');
+            }
+          } catch (err) {
+            console.error('Erro ao excluir backup online:', err);
+            await customAlert('Erro ao excluir backup da nuvem: ' + err.message);
+          }
+        }}
+        onCancel={(e) => {
+          if (e && e.stopPropagation) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+          setBackupParaExcluir(null);
+        }}
+      />
     </div>
   );
 };

@@ -177,10 +177,51 @@ export async function sincronizarFilaEmBackground() {
 
         // 1. Upload da Foto para o Supabase Storage
         if (item.fileName) {
-          const fileResult = await Filesystem.readFile({
-            path: item.fileName,
-            directory: Directory.Data
-          });
+          let fileResult;
+          try {
+            fileResult = await Filesystem.readFile({
+              path: item.fileName,
+              directory: Directory.Data
+            });
+          } catch (fileError) {
+            console.warn(`[Sync] Removendo arquivo fantasma da fila: ${item.id || item.fileName}`);
+            
+            // 1. Puxar a fila atual do localStorage 
+            const chaveFila = 'fila_sync_auto';
+            let filaAtual = JSON.parse(localStorage.getItem(chaveFila) || '[]');
+            
+            // 2. Filtrar removendo o item corrompido
+            let novaFila = filaAtual.filter(f => f.id !== item.id && f.fileName !== item.fileName);
+            
+            // 3. Salvar a nova fila limpa no localStorage
+            localStorage.setItem(chaveFila, JSON.stringify(novaFila));
+
+            // 2. Remove do array de fotos/dados locais para sumir da interface imediatamente
+            if (item.condominio_id && item.unidade_id) {
+              try {
+                const chaveLocal = `leituras_anteriores_${item.condominio_id}`;
+                const rawLeituras = localStorage.getItem(chaveLocal);
+                if (rawLeituras) {
+                  let leiturasLocais = JSON.parse(rawLeituras);
+                  leiturasLocais = leiturasLocais.map(L => {
+                    if (String(L.unidade).trim() === String(item.unidade_id).trim()) {
+                      return { ...L, fileName: null, foto_url: null, leitura_atual: null };
+                    }
+                    return L;
+                  });
+                  localStorage.setItem(chaveLocal, JSON.stringify(leiturasLocais));
+                }
+              } catch (e) {
+                console.warn('[Sync] Erro ao limpar fantasma do array local', e);
+              }
+            }
+
+            // Garante re-render na tela para o usuário ver sumir na hora
+            window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
+            
+            // Pula para o próximo item da fila silenciosamente
+            continue; 
+          }
 
           if (fileResult?.data) {
             const blob = base64ToBlob(fileResult.data, 'image/jpeg');
@@ -236,7 +277,6 @@ export async function sincronizarFilaEmBackground() {
 
           if (dbError) {
             console.error("Erro absoluto no insert leituras_detalhes:", dbError);
-            await customAlert(`ERRO BD (leituras_detalhes): ${dbError.message || JSON.stringify(dbError)}`, 'Erro de Sincronização');
             throw new Error("Erro DB insert: " + dbError.message);
           }
 
@@ -259,12 +299,14 @@ export async function sincronizarFilaEmBackground() {
         writeFilaSync(filaAtualizada);
 
       } catch (itemErr) {
+        console.error(`[Sync] Falha na sincronização do item ${item.id}. Será tentado novamente no próximo ciclo. Detalhes:`, itemErr);
       }
     }
 
     window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
 
   } catch (globalErr) {
+    console.error('Erro global na sincronização:', globalErr);
   } finally {
     isSyncRunning = false;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));

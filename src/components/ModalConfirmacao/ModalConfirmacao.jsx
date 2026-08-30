@@ -16,8 +16,8 @@ const ModalConfirmacao = ({
   }
 
   return createPortal(
-    <div className="modal-confirmacao-overlay" style={{ position: 'fixed', inset: 0, zIndex: 2147483647, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="modal-content">
+    <div className="modal-confirmacao-overlay" style={{ position: 'fixed', inset: 0, zIndex: 999999, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="modal-content" style={{ position: 'relative', zIndex: 999999 }}>
         <h3>{titulo}</h3>
         <p>{mensagem}</p>
         <div className="modal-acoes">

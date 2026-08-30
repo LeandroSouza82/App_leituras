@@ -332,7 +332,6 @@ const MainApp = ({ onLogout }) => {
                     </div>
                     <div>
                       <p>Informações do Condomínio</p>
-                      <strong>{leituras.length}</strong>
                     </div>
                   </article>
 
