@@ -1,5 +1,7 @@
-import React from 'react';
-import { DollarSign } from 'lucide-react';
+import React, { useState } from 'react';
+import { DollarSign, Share2, Loader2 } from 'lucide-react';
+import { gerarRelatorioLeiturasExcel } from '../../services/relatorioExcelService';
+import { customAlert } from '../CustomPrompt/CustomPrompt';
 import './AReceberModal.css';
 
 const formatCurrency = (value) =>
@@ -8,8 +10,24 @@ const formatCurrency = (value) =>
     currency: 'BRL',
   });
 
-const AReceberModal = ({ isOpen, onClose, leituras, totalValor }) => {
+const AReceberModal = ({ isOpen, onClose, leituras, totalValor, mesAnoFormatado }) => {
+  const [isSending, setIsSending] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleEnviarPlanilha = async () => {
+    try {
+      setIsSending(true);
+      await gerarRelatorioLeiturasExcel(leituras || [], mesAnoFormatado || '', 1650);
+    } catch (err) {
+      const msg = err?.message || '';
+      if (!msg.includes('cancel') && !msg.includes('Cancel') && !msg.includes('AbortError')) {
+        await customAlert('Erro ao gerar planilha: ' + msg);
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -67,6 +85,21 @@ const AReceberModal = ({ isOpen, onClose, leituras, totalValor }) => {
               ))}
             </ul>
           )}
+        </div>
+
+        {/* RODAPÉ COM BOTÃO DE ENVIO */}
+        <div className="a-receber-footer">
+          <button
+            type="button"
+            className="btn-enviar-planilha"
+            onClick={handleEnviarPlanilha}
+            disabled={isSending || leituras.length === 0}
+          >
+            {isSending
+              ? <><Loader2 size={18} className="spin" /> Gerando planilha...</>
+              : <><Share2 size={18} /> Enviar planilha para WhatsApp</>
+            }
+          </button>
         </div>
 
       </div>

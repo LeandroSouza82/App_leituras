@@ -61,12 +61,14 @@ select {
 }
 
 /* Evita que a tela inteira role quando estiver nas abas principais */
-.app-shell:has(.list-card), .app-shell:has(.dashboard-summary) {
+.app-shell:has(.list-card),
+.app-shell:has(.dashboard-summary),
+.app-shell:has(.dashboard-shell) {
   height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding-bottom: 0; /* A lista gerencia seu próprio espaçamento inferior */
+  padding-bottom: 0;
 }
 
 .app-shell:has(.list-card) .app-content {
@@ -111,6 +113,98 @@ select {
   padding: 0 16px;
 }
 
+/* ===== DASHBOARD SHELL ===== */
+.dashboard-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #EFF6FF;
+}
+
+.dashboard-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-section-label {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.dashboard-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.dashboard-acao-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.dashboard-acao-btn:last-child {
+  border-bottom: none;
+}
+
+.dashboard-acao-btn:active {
+  background: #f8fafc;
+}
+
+.dashboard-acao-icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+}
+
+.dashboard-acao-icon--blue {
+  background: #e0f2fe;
+  color: #1e88e5;
+}
+
+.dashboard-acao-icon--purple {
+  background: #f3e8ff;
+  color: #a855f7;
+}
+
+.dashboard-acao-label {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.dashboard-acao-chevron {
+  font-size: 1.4rem;
+  color: #94a3b8;
+  line-height: 1;
+}
+
+/* Legado preservado para outras telas que usem dashboard-summary */
 .dashboard-summary {
   display: flex;
   flex-direction: column;
@@ -226,7 +320,7 @@ select {
 }
 
 .progress-track {
-  height: 10px;
+  height: 8px;
   background: #e2e8f0;
   border-radius: 999px;
   overflow: hidden;

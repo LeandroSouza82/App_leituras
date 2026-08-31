@@ -1,6 +1,6 @@
 import { customAlert, customConfirm } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, CheckCircle2, DollarSign, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
+import { Building2, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -291,127 +291,60 @@ const MainApp = ({ onLogout }) => {
         )}
 
         {abaAtiva === 'dashboard' && (
-          <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: '#DBEAFE' }}>
-            <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: '#2563EB' }}>
-              <Header
-                mesAnoFormatado={mesAnoFormatado}
-                totalCondominios={leituras.length}
-                totalConcluidos={totalConcluidos}
-                percentualConcluido={percentualConcluido}
-                totalValor={totalValor}
-                leituras={leituras}
-                totalPendentes={totalPendentes}
-                onOpenAlerts={handleOpenAlerts}
-                onOpenProgressoModal={() => setShowProgressoModal(true)}
-                onSync={recarregarCondominios}
-                onLogout={onLogout}
-                onNavigate={setAbaAtiva}
+          <div className="dashboard-shell">
+            <Header
+              mesAnoFormatado={mesAnoFormatado}
+              totalCondominios={leituras.length}
+              totalConcluidos={totalConcluidos}
+              percentualConcluido={percentualConcluido}
+              totalValor={totalValor}
+              leituras={leituras}
+              totalPendentes={totalPendentes}
+              onOpenAlerts={handleOpenAlerts}
+              onOpenProgressoModal={() => setShowProgressoModal(true)}
+              onOpenFaturamento={() => setShowAReceberModal(true)}
+              onSync={recarregarCondominios}
+              onLogout={onLogout}
+              onNavigate={setAbaAtiva}
+            />
+            <div className="dashboard-body">
+              <AlertaBanner
+                leiturasHoje={leiturasHoje}
+                leiturasAtrasadas={leiturasAtrasadas}
+                onFocarAtrasado={handleNavegarParaAtrasados}
               />
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '100px' }}>
-              <section className="dashboard-summary">
-                <AlertaBanner
-                  leiturasHoje={leiturasHoje}
-                  leiturasAtrasadas={leiturasAtrasadas}
-                  onFocarAtrasado={handleNavegarParaAtrasados}
-                />
-                <div className="dashboard-grid">
-                  <article
-                    className="metric-card metric-blue"
-                    onClick={() => setModalCondominiosAberto(true)}
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                    onMouseEnter={(event) => {
-                      event.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(event) => {
-                      event.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <div className="metric-icon">
-                      <Building2 size={20} />
-                    </div>
-                    <div>
-                      <p>Informações do Condomínio</p>
-                    </div>
-                  </article>
 
-                  <article className="metric-card metric-green">
-                    <div className="metric-icon">
-                      <CheckCircle2 size={20} />
-                    </div>
-                    <div>
-                      <p>Concluídos no mês</p>
-                      <strong>{totalConcluidos}</strong>
-                    </div>
-                  </article>
+              <p className="dashboard-section-label">Ações</p>
 
-                  <article
-                    className="metric-card metric-gold"
-                    onClick={() => setShowAReceberModal(true)}
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                    onMouseEnter={(event) => {
-                      event.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(event) => {
-                      event.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <div className="metric-icon">
-                      <DollarSign size={20} />
-                    </div>
-                    <div>
-                      <p>A receber / Faturado</p>
-                      <strong>R$ {totalValor.toFixed(2).replace('.', ',')}</strong>
-                    </div>
-                  </article>
-
-                  <article
-                    className="metric-card metric-purple"
-                    onClick={() => setShowBackupFotosModal(true)}
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                    onMouseEnter={(event) => {
-                      event.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(event) => {
-                      event.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <div className="metric-icon">
-                      <FolderSync size={20} />
-                    </div>
-                    <div>
-                      <p>Gerenciar Fotos</p>
-                      <strong>Backups</strong>
-                    </div>
-                  </article>
-                </div>
-
-                <div
-                  className="completion-card"
-                  onClick={() => setShowProgressoModal(true)}
-                  style={{ cursor: 'pointer', transition: 'transform 0.2s ease' }}
-                  onMouseEnter={(event) => {
-                    event.currentTarget.style.transform = 'translateY(-2px)';
-                  }}
-                  onMouseLeave={(event) => {
-                    event.currentTarget.style.transform = 'translateY(0)';
-                  }}
+              <div className="dashboard-acoes">
+                <button
+                  type="button"
+                  className="dashboard-acao-btn"
+                  onClick={() => setModalCondominiosAberto(true)}
                 >
-                  <div className="completion-header">
-                    <div>
-                      <h3>Progresso do mês</h3>
-                      <p>{percentualConcluido}% concluído</p>
-                    </div>
-                    <strong>{totalConcluidos}/{leituras.length}</strong>
+                  <div className="dashboard-acao-icon dashboard-acao-icon--blue">
+                    <Building2 size={20} />
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${percentualConcluido}%` }} />
+                  <span className="dashboard-acao-label">Informações do condomínio</span>
+                  <span className="dashboard-acao-chevron">›</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="dashboard-acao-btn"
+                  onClick={() => setShowBackupFotosModal(true)}
+                >
+                  <div className="dashboard-acao-icon dashboard-acao-icon--purple">
+                    <FolderSync size={20} />
                   </div>
-                </div>
-              </section>
+                  <span className="dashboard-acao-label">Gerenciar fotos e backups</span>
+                  <span className="dashboard-acao-chevron">›</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
+
 
         {abaAtiva === 'leituras' && (
           <div className="app-content">
@@ -475,6 +408,7 @@ const MainApp = ({ onLogout }) => {
           onClose={() => setShowAReceberModal(false)}
           leituras={leituras}
           totalValor={totalValor}
+          mesAnoFormatado={mesAnoFormatado}
         />
 
         <BottomNavbar activeTab={abaAtiva} onChange={setAbaAtiva} />

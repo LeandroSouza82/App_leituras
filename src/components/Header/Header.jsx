@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import { useState } from 'react';
 import { Bell, Menu, Share2 } from 'lucide-react';
 import './Header.css';
@@ -31,6 +31,7 @@ const Header = ({
   totalPendentes,
   onOpenAlerts,
   onOpenProgressoModal,
+  onOpenFaturamento,
   onSync,
   onLogout,
   onNavigate,
@@ -49,7 +50,8 @@ const Header = ({
 
   return (
     <header className="header-card">
-      <div className="header-title">
+      {/* Linha 1: Menu + Título + Sino */}
+      <div className="header-topbar">
         <button
           type="button"
           className="header-icon-btn"
@@ -58,46 +60,68 @@ const Header = ({
         >
           <Menu size={22} />
         </button>
-        <div>
+
+        <div className="header-title-block">
           <p className="eyebrow">Fast Leituras</p>
           <h1>{title}</h1>
         </div>
-      </div>
 
-      <div className="header-actions">
-        <button type="button" className="alert-button" onClick={onOpenAlerts} aria-label="Abrir alertas">
-          <Bell size={18} />
-          {totalPendentes > 0 && <span className="alert-badge">{totalPendentes}</span>}
+        <button
+          type="button"
+          className="header-icon-btn"
+          onClick={onOpenAlerts}
+          aria-label="Abrir alertas"
+        >
+          <Bell size={20} />
+          {totalPendentes > 0 && (
+            <span className="alert-badge">{totalPendentes}</span>
+          )}
         </button>
       </div>
 
-      <div className="header-stats">
+      {/* Linha 2: Valor a receber em destaque */}
+      <div className="header-valor-destaque" onClick={handleExportClick} title="Exportar relatório">
+        <span className="header-valor-label">
+          A receber
+          <Share2 size={14} style={{ marginLeft: 6, opacity: 0.8 }} />
+        </span>
+        <strong className="header-valor-numero">{formatCurrency(totalValor)}</strong>
+      </div>
+
+      {/* Linha 3: Barra de progresso */}
+      <div
+        className="header-progresso"
+        onClick={onOpenProgressoModal}
+        style={{ cursor: 'pointer' }}
+        aria-label="Ver progresso"
+      >
+        <div className="header-progresso-track">
+          <div className="header-progresso-fill" style={{ width: `${percentualConcluido}%` }} />
+        </div>
+        <span className="header-progresso-texto">
+          {totalConcluidos}/{totalCondominios} concluídos
+        </span>
+      </div>
+
+      {/* Linha 4: Métricas secundárias lado a lado */}
+      <div className="header-metricas">
         <div
-          className="stat-card"
+          className="header-metrica-bloco"
           onClick={() => setModalCondominiosAberto(true)}
           style={{ cursor: 'pointer' }}
+          aria-label="Ver condomínios"
         >
-          <span>Condomínios</span>
-          <strong>{totalCondominios}</strong>
+          <span className="header-metrica-label">Condomínios</span>
+          <strong className="header-metrica-valor">{totalCondominios}</strong>
         </div>
         <div
-          className="stat-card stat-card-action"
-          onClick={onOpenProgressoModal || (() => setModalCondominiosAberto(true))}
-          style={{ cursor: 'pointer' }}
+          className="header-metrica-bloco header-metrica-bloco--clickable"
+          onClick={onOpenFaturamento}
+          aria-label="Ver faturamento detalhado"
         >
-          <span>Progresso</span>
-          <strong>{totalConcluidos}/{totalCondominios}</strong>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${percentualConcluido}%` }} />
-          </div>
+          <span className="header-metrica-label">Faturado</span>
+          <strong className="header-metrica-valor">{formatCurrency(totalValor)}</strong>
         </div>
-        <button type="button" className="stat-card stat-card-action" onClick={handleExportClick}>
-          <div className="stat-card-label">
-            <span>A receber</span>
-            <Share2 size={16} />
-          </div>
-          <strong>{formatCurrency(totalValor)}</strong>
-        </button>
       </div>
 
       <ListaCondominiosModal
@@ -117,4 +141,3 @@ const Header = ({
 };
 
 export default Header;
-

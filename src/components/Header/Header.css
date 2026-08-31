@@ -1,32 +1,58 @@
+/* ===== HEADER CARD ===== */
 .header-card {
   z-index: 10;
   background: var(--primary-color);
   border-radius: 0;
-  padding: 22px 16px 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 18px 16px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.header-title {
+/* ===== TOPBAR: menu + título + sino ===== */
+.header-topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
+.header-title-block {
+  flex: 1;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.header-title-block h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: capitalize;
+}
+
+/* ===== ICON BUTTON (menu e sino) ===== */
 .header-icon-btn {
-  width: 50px;
-  height: 50px;
+  position: relative;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
   display: grid;
   place-items: center;
-  border-radius: 16px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.16);
   border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(10px);
   color: #ffffff;
   cursor: pointer;
   padding: 0;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
 
 .header-icon-btn:hover {
@@ -38,127 +64,121 @@
   transform: scale(0.96);
 }
 
-.eyebrow {
-  margin: 0 0 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.25em;
-  font-size: 0.78rem;
-  opacity: 0.9;
-}
-
-.header-title h1 {
-  margin: 0;
-  font-size: 1.75rem;
-  line-height: 1.1;
-  text-transform: capitalize;
-}
-
-.header-actions {
-  position: absolute;
-  top: 24px;
-  right: 16px;
-}
-
-.alert-button {
-  position: relative;
-  border: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
 .alert-badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: -4px;
+  right: -4px;
   min-width: 18px;
   height: 18px;
   border-radius: 999px;
   background: #dc2626;
   color: #fff;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0 4px;
+  pointer-events: none;
 }
 
-.header-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.stat-card,
-.stat-card-action {
-  background: rgba(255, 255, 255, 0.16);
+/* ===== VALOR EM DESTAQUE ===== */
+.header-valor-destaque {
+  cursor: pointer;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(12px);
-  border-radius: 8px;
-  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  transition: background 0.2s ease;
 }
 
-.stat-card-action {
-  cursor: pointer;
-  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+.header-valor-destaque:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
-.stat-card-action:hover,
-.stat-card-action:focus-visible {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.28);
+.header-valor-label {
+  font-size: 0.8rem;
+  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  letter-spacing: 0.02em;
 }
 
-.stat-card span,
-.stat-card-action span {
-  font-size: 0.85rem;
-  opacity: 0.8;
+.header-valor-numero {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
-.stat-card strong,
-  .stat-card-action strong {
-    font-size: 1.3rem;
-    letter-spacing: -0.02em;
-  }
-
-  .stat-card-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+/* ===== BARRA DE PROGRESSO ===== */
+.header-progresso {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.progress-track {
+.header-progresso-track {
   height: 8px;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 999px;
   overflow: hidden;
-  margin-top: 8px;
 }
 
-.progress-fill {
+.header-progresso-fill {
   height: 100%;
   background: linear-gradient(90deg, #34d399, #22c55e);
   border-radius: 999px;
+  transition: width 0.5s ease;
 }
 
-@media (max-width: 639px) {
-  .header-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.header-progresso-texto {
+  font-size: 0.82rem;
+  opacity: 0.9;
+  letter-spacing: 0.01em;
+}
 
-  .stat-card,
-  .stat-card-action { padding: 12px 10px; }
+/* ===== MÉTRICAS SECUNDÁRIAS ===== */
+.header-metricas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 
-  .stat-card strong,
-  .stat-card-action strong { font-size: 1rem; }
+.header-metrica-bloco {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.2s ease;
+}
+
+.header-metrica-bloco:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.header-metrica-label {
+  font-size: 0.78rem;
+  opacity: 0.82;
+  letter-spacing: 0.01em;
+}
+
+.header-metrica-valor {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.header-metrica-bloco--clickable {
+  cursor: pointer;
+}
+
+.header-metrica-bloco--clickable:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
