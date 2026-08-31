@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
-import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
+import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
 
 import './EditarCondominioModal.css';
 
@@ -256,12 +256,13 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
         </form>
         </div>
       </div>
-      <ModalConfirmacao
+      <ModalConfirmacaoDestrutiva
         isOpen={mostrarConfirmacaoGps}
         titulo="Remover GPS"
-        mensagem="Deseja remover a localização GPS salva deste condomínio? O app voltará a usar o endereço digitado."
+        mensagem="Deseja remover a localização GPS salva deste condomínio? Essa ação não pode ser desfeita."
         onConfirm={confirmarLimparGps}
         onCancel={() => setMostrarConfirmacaoGps(false)}
+        textoCancelar="Cancelar"
         textoConfirmar="Remover"
       />
       <Toast {...toast} onClose={dismissToast} />

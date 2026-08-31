@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
 import { supabase } from './supabase';
-import { customPrompt, customConfirm } from '../components/CustomPrompt/CustomPrompt';
+import { customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
 import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
 
 /**
@@ -424,8 +424,10 @@ export const UCondoImportService = {
 
         // 2.4 Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
-          const querSubstituir = await customConfirm(
-            `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja importar esta lista para o condomínio '${condExistente.nome}'?`
+          const querSubstituir = await customConfirmDestrutivo(
+            `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja substituir a lista no condomínio '${condExistente.nome}'?`,
+            "Substituir Unidades",
+            "Substituir"
           );
 
           if (!querSubstituir) {
@@ -560,8 +562,10 @@ export const UCondoImportService = {
       }
 
       if (unidadesAtuais && unidadesAtuais.length > 0) {
-        const confirmar = await customConfirm(
-          `Este condomínio já possui ${unidadesAtuais.length} unidades cadastradas.\n\nDeseja substituir a lista atual pelas ${novasUnidades.length} unidades da nova planilha?`
+        const confirmar = await customConfirmDestrutivo(
+          `Este condomínio já possui ${unidadesAtuais.length} unidades cadastradas.\n\nDeseja substituir a lista atual pelas ${novasUnidades.length} unidades da nova planilha?`,
+          "Substituir Unidades",
+          "Substituir"
         );
         if (!confirmar) {
           return null;

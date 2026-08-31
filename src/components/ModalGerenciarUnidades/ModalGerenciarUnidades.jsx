@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert, customConfirm, customConfirmDestrutivo } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -142,7 +142,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
   };
 
   const limparLista = async () => {
-    if (await customConfirm('Deseja limpar a lista temporária?')) {
+    if (await customConfirmDestrutivo('Deseja limpar a lista temporária?', 'Limpar Lista', 'Limpar')) {
       setUnidadesTemp([]);
     }
   };

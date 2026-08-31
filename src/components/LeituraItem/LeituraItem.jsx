@@ -6,6 +6,7 @@ import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed,
 import { ChevronDown, ChevronUp, AlertCircle, Camera, Search, RefreshCw, Smartphone } from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
+import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
 import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModal';
 import LeituraFotoModal from '../LeituraFotoModal/LeituraFotoModal';
 import ContactActionModal from '../ContactActionModal/ContactActionModal';
@@ -288,13 +289,12 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
       onConfirm={handleConfirmar}
       onCancel={handleCancelar}
     />
-    <ModalConfirmacao
+    <ModalConfirmacaoDestrutiva
       isOpen={mostrarModalDeletar}
-      titulo="Excluir Condomínio"
-      mensagem="Tem certeza que deseja excluir este condomínio?"
+      titulo="Excluir condomínio"
+      mensagem="Tem certeza que deseja excluir este condomínio? Essa ação não pode ser desfeita."
       textoCancelar="Cancelar"
       textoConfirmar="Excluir"
-      btnConfirmarClasse="btn-excluir"
       onConfirm={() => {
         onDelete(leitura.id);
         setMostrarModalDeletar(false);

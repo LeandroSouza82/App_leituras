@@ -19,7 +19,7 @@ import { enfileirarLeiturasAnteriores } from '../../services/syncOfflineService'
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
-import { customConfirm, customAlert } from '../CustomPrompt/CustomPrompt';
+import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import './LeituraFotoModal.css';
 
@@ -692,7 +692,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   const handleExcluirFoto = async (overrideApto = null, skipConfirm = false) => {
     if (!skipConfirm) {
-      if (!await customConfirm('Deseja realmente excluir esta foto e as evidências locais?')) return;
+      if (!await customConfirmDestrutivo('Deseja realmente excluir esta foto e as evidências locais?', 'Excluir Foto')) return;
     }
 
     try {
@@ -1409,9 +1409,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const handleLimparMes = async () => {
     setIsExportModalOpen(false);
 
-    const isConfirmed = await customConfirm(
+    const isConfirmed = await customConfirmDestrutivo(
       'Deseja realmente finalizar o mês e LIMPAR todas as leituras da tela deste condomínio? Esta ação o preparará para o próximo ciclo.',
-      'Limpar Condomínio'
+      'Limpar Condomínio',
+      'Limpar Tudo'
     );
 
     if (!isConfirmed) return;
@@ -1709,7 +1710,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       leituraAnterior={(typeof todasLeiturasAnteriores[apto] === 'object' && todasLeiturasAnteriores[apto] !== null) ? todasLeiturasAnteriores[apto].leitura_anterior : todasLeiturasAnteriores[apto]}
                       onClick={handleUnitClick}
                       onLongPress={async (aptoAlvo) => {
-                        const isConfirmed = await customConfirm(
+                        const isConfirmed = await customConfirmDestrutivo(
                           'Deseja realmente excluir esta foto?',
                           'Excluir Foto'
                         );

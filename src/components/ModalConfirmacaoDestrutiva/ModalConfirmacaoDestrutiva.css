@@ -1,0 +1,72 @@
+.modal-destrutiva-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(107, 114, 128, 0.75); /* grayish overlay like in many modern apps */
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 999999;
+}
+
+.modal-destrutiva-content {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.modal-destrutiva-titulo {
+  margin: 0 0 8px;
+  color: #111827; /* dark slate/gray */
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-destrutiva-mensagem {
+  margin: 0 0 24px;
+  color: #6b7280; /* lighter gray */
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.modal-destrutiva-acoes {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.btn-destrutiva-cancelar,
+.btn-destrutiva-confirmar {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.btn-destrutiva-cancelar {
+  background: transparent;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.btn-destrutiva-cancelar:hover {
+  background: #f3f4f6;
+}
+
+.btn-destrutiva-confirmar {
+  background: #dc2626; /* red */
+  color: #ffffff;
+  border: none;
+}
+
+.btn-destrutiva-confirmar:hover {
+  background: #b91c1c; /* darker red on hover */
+}

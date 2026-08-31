@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
 import './CustomPrompt.css';
 
 const ConfirmModal = ({ title, message, onResolve }) => {
@@ -123,6 +124,40 @@ export const customConfirm = (message, title = 'Confirmar Ação') => {
         title={title} 
         message={message} 
         onResolve={handleResolve} 
+      />
+    );
+  });
+};
+
+export const customConfirmDestrutivo = (message, title = 'Excluir', textoConfirmar = null) => {
+  return new Promise((resolve) => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    const handleResolve = (result) => {
+      root.unmount();
+      container.remove();
+      resolve(result);
+    };
+
+    let btnText = textoConfirmar;
+    if (!btnText) {
+      const titleLower = (title || '').toLowerCase();
+      if (titleLower.includes('remover')) btnText = 'Remover';
+      else if (titleLower.includes('apagar')) btnText = 'Apagar';
+      else if (titleLower.includes('limpar')) btnText = 'Limpar';
+      else btnText = 'Excluir';
+    }
+
+    root.render(
+      <ModalConfirmacaoDestrutiva 
+        isOpen={true}
+        titulo={title} 
+        mensagem={message} 
+        onConfirm={() => handleResolve(true)}
+        onCancel={() => handleResolve(false)}
+        textoConfirmar={btnText}
       />
     );
   });

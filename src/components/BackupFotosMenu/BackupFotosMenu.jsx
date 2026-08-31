@@ -1,5 +1,6 @@
 import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
+import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
 import React, { useState, useEffect } from 'react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -39,6 +40,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
   
   const longPressTimerRef = React.useRef(null);
   const [fotoParaExcluir, setFotoParaExcluir] = useState(null);
+  const [loteParaExcluir, setLoteParaExcluir] = useState(null);
 
   const startLongPress = (type, item) => {
     longPressTimerRef.current = setTimeout(() => {
@@ -103,6 +105,72 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     } catch (err) {
       console.error('Erro ao excluir foto:', err);
       await customAlert('Erro ao excluir foto: ' + err.message);
+    }
+  };
+
+  const handleExcluirBackupConfirm = async () => {
+    const backupAtual = backupParaExcluir;
+    setBackupParaExcluir(null);
+    
+    try {
+      const { data: sessionData } = await supabase.auth.getUser();
+      const userId = sessionData?.user?.id;
+      if (userId && backupAtual?.nome) {
+        
+        // 0. Remover da fila de sincronização no localStorage para o item não voltar
+        try {
+          const chaveFila = 'fila_sync_auto';
+          let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
+          let novaFila = fila.filter(f => f.condominio_nome !== backupAtual.nome);
+          localStorage.setItem(chaveFila, JSON.stringify(novaFila));
+        } catch (err) {
+          console.error('Erro ao purgar item local da fila:', err);
+        }
+
+        // 1. Apagar as fotos do Storage
+        const pathsParaDeletar = backupAtual.arquivos
+          .map(arq => {
+            if (arq.foto_url && typeof arq.foto_url === 'string') {
+              const match = arq.foto_url.match(/\/public\/fotos_leituras\/(.+)$/);
+              if (match && match[1]) {
+                try {
+                  return decodeURIComponent(match[1]);
+                } catch (e) {
+                  return match[1];
+                }
+              }
+            }
+            return null;
+          })
+          .filter(Boolean);
+
+        if (pathsParaDeletar.length > 0) {
+          const { error: storageError } = await supabase.storage
+            .from('fotos_leituras')
+            .remove(pathsParaDeletar);
+          if (storageError) {
+            console.error('Erro ao deletar arquivos do storage:', storageError);
+            throw new Error('Falha ao remover as fotos do armazenamento na nuvem.');
+          }
+        }
+
+        // 2. Apagar o registro da tabela
+        const { error } = await supabase
+          .from('leituras_detalhes')
+          .delete()
+          .eq('condominio_nome', backupAtual.nome)
+          .eq('leiturista_id', userId);
+        
+        if (error) throw error;
+        
+        // 3. Atualizar a UI e fechar modal
+        setOnlinePhotos(prev => prev.filter(item => item.condominio_nome !== backupAtual.nome));
+        window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
+        await customAlert('Backup e fotos excluídos permanentemente!');
+      }
+    } catch (err) {
+      console.error('Erro ao excluir backup online:', err);
+      await customAlert('Erro ao excluir backup da nuvem: ' + err.message);
     }
   };
 
@@ -322,9 +390,15 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleExcluirLote = async (e, condo) => {
+  const handleExcluirLoteClick = (e, condo) => {
     e.stopPropagation();
-    if (!await customConfirm("Deseja realmente excluir este lote de fotos do dispositivo?")) return;
+    setLoteParaExcluir(condo);
+  };
+
+  const handleExcluirLoteConfirm = async () => {
+    if (!loteParaExcluir) return;
+    const condo = loteParaExcluir;
+    setLoteParaExcluir(null);
 
     try {
       await filesystemService.excluirLote(condo.pathFisico);
@@ -549,7 +623,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                           </span>
                           <button 
                             className="btn-delete-batch" 
-                            onClick={(e) => handleExcluirLote(e, condo)} 
+                            onClick={(e) => handleExcluirLoteClick(e, condo)}
                             title="Excluir Lote"
                           >
                             <Trash2 size={18} color="#ef4444" />
@@ -740,7 +814,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         </div>
       )}
       
-      <ModalConfirmacao
+      <ModalConfirmacaoDestrutiva
         isOpen={!!fotoParaExcluir}
         onCancel={(e) => {
           if (e && e.stopPropagation) {
@@ -756,89 +830,34 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
           }
           handleExcluirFotoConfirm();
         }}
-        titulo="Excluir Foto"
-        mensagem="Tem certeza que deseja excluir esta foto permanentemente? Esta ação não poderá ser desfeita."
+        titulo="Excluir foto"
+        mensagem="Tem certeza que deseja excluir esta foto permanentemente? Essa ação não pode ser desfeita."
         textoCancelar="Cancelar"
-        textoConfirmar="Excluir Foto"
-        btnConfirmarClasse="btn-excluir"
+        textoConfirmar="Excluir"
       />
 
-      <ModalConfirmacao
-        isOpen={!!backupParaExcluir}
-        titulo="Excluir Backup Online"
-        mensagem={`Tem certeza que deseja excluir os dados do condomínio ${backupParaExcluir?.nome || ''}? Esta ação apagará as fotos da nuvem permanentemente e NÃO poderá ser desfeita.`}
+      <ModalConfirmacaoDestrutiva
+        isOpen={!!loteParaExcluir}
+        titulo="Excluir lote"
+        mensagem="Deseja realmente excluir este lote de fotos do dispositivo? Essa ação não pode ser desfeita."
         textoCancelar="Cancelar"
-        textoConfirmar="Excluir Permanentemente"
-        btnConfirmarClasse="btn-excluir"
-        onConfirm={async (e) => {
+        textoConfirmar="Excluir"
+        onConfirm={handleExcluirLoteConfirm}
+        onCancel={() => setLoteParaExcluir(null)}
+      />
+
+      <ModalConfirmacaoDestrutiva
+        isOpen={!!backupParaExcluir}
+        titulo="Excluir backup"
+        mensagem={`Tem certeza que deseja excluir o backup de ${backupParaExcluir?.nome || ''}? Essa ação não pode ser desfeita.`}
+        textoCancelar="Cancelar"
+        textoConfirmar="Excluir"
+        onConfirm={(e) => {
           if (e && e.stopPropagation) {
             e.stopPropagation();
             e.preventDefault();
           }
-          
-          const backupAtual = backupParaExcluir;
-          setBackupParaExcluir(null);
-          
-          try {
-            const { data: sessionData } = await supabase.auth.getUser();
-            const userId = sessionData?.user?.id;
-            if (userId && backupAtual?.nome) {
-              
-              // 0. Remover da fila de sincronização no localStorage para o item não voltar
-              try {
-                const chaveFila = 'fila_sync_auto';
-                let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
-                let novaFila = fila.filter(f => f.condominio_nome !== backupAtual.nome);
-                localStorage.setItem(chaveFila, JSON.stringify(novaFila));
-              } catch (err) {
-                console.error('Erro ao purgar item local da fila:', err);
-              }
-
-              // 1. Apagar as fotos do Storage
-              const pathsParaDeletar = backupAtual.arquivos
-                .map(arq => {
-                  if (arq.foto_url && typeof arq.foto_url === 'string') {
-                    const match = arq.foto_url.match(/\/public\/fotos_leituras\/(.+)$/);
-                    if (match && match[1]) {
-                      try {
-                        return decodeURIComponent(match[1]);
-                      } catch (e) {
-                        return match[1];
-                      }
-                    }
-                  }
-                  return null;
-                })
-                .filter(Boolean);
-
-              if (pathsParaDeletar.length > 0) {
-                const { error: storageError } = await supabase.storage
-                  .from('fotos_leituras')
-                  .remove(pathsParaDeletar);
-                if (storageError) {
-                  console.error('Erro ao deletar arquivos do storage:', storageError);
-                  throw new Error('Falha ao remover as fotos do armazenamento na nuvem.');
-                }
-              }
-
-              // 2. Apagar o registro da tabela
-              const { error } = await supabase
-                .from('leituras_detalhes')
-                .delete()
-                .eq('condominio_nome', backupAtual.nome)
-                .eq('leiturista_id', userId);
-              
-              if (error) throw error;
-              
-              // 3. Atualizar a UI e fechar modal
-              setOnlinePhotos(prev => prev.filter(item => item.condominio_nome !== backupAtual.nome));
-              window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
-              await customAlert('Backup e fotos excluídos permanentemente!');
-            }
-          } catch (err) {
-            console.error('Erro ao excluir backup online:', err);
-            await customAlert('Erro ao excluir backup da nuvem: ' + err.message);
-          }
+          handleExcluirBackupConfirm();
         }}
         onCancel={(e) => {
           if (e && e.stopPropagation) {
