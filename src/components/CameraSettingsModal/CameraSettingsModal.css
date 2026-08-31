@@ -1,79 +1,107 @@
-.btn-3d {
-  position: relative;
+.section-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: var(--primary-color, #1e62c9);
+  margin: 0 0 8px 0;
+}
+
+.section-description {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0 0 10px 0;
+  line-height: 1.25;
+}
+
+.segmented-control {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 12px 16px;
-  font-weight: 700;
-  font-size: 0.95rem;
+  flex-direction: column;
   border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.segment-btn {
+  padding: 10px 16px;
+  background: #ffffff;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.segment-btn:last-child {
+  border-bottom: none;
+}
+
+.segment-active {
+  background: var(--primary-color, #1e62c9);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.toggle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggle-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.toggle-subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.toggle-switch {
+  width: 50px;
+  height: 28px;
+  border-radius: 28px;
   border: none;
   cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  text-align: center;
-  user-select: none;
-  flex: 1; /* Para distribuir por igual no container flex */
+  position: relative;
+  transition: background-color 0.2s;
+  padding: 0;
 }
 
-/* Estado Ativo/Selecionado (Azul vibrante) */
-.btn-3d-primary {
-  background-color: #3b82f6; /* Azul vibrante */
-  color: #ffffff;
-  box-shadow: 0 4px 0 #2563eb; /* Sombra sólida azul escuro */
+.toggle-off {
+  background-color: #cbd5e1;
 }
 
-.btn-3d-primary:active {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 #2563eb;
+.toggle-on {
+  background-color: var(--primary-color, #1e62c9);
 }
 
-/* Estado Inativo/Desmarcado (Neutro) */
-.btn-3d-outline {
-  background-color: #f8fafc;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 0 #cbd5e1; /* Sombra neutra */
+.toggle-knob {
+  width: 24px;
+  height: 24px;
+  background: #ffffff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-.btn-3d-outline:active {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 #cbd5e1;
-}
-
-/* Toggle Switch Habilitado (Verde) */
-.btn-3d-toggle-on {
-  background-color: #10b981;
-  color: #ffffff;
-  box-shadow: 0 4px 0 #059669;
-  flex: none; /* Para não esticar no flex */
-  padding: 8px 16px;
-  font-size: 0.85rem;
-}
-
-.btn-3d-toggle-on:active {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 #059669;
-}
-
-/* Toggle Switch Desabilitado (Amarelo/Laranja) */
-.btn-3d-toggle-off {
-  background-color: #f59e0b;
-  color: #ffffff;
-  box-shadow: 0 4px 0 #d97706;
-  flex: none;
-  padding: 8px 16px;
-  font-size: 0.85rem;
-}
-
-.btn-3d-toggle-off:active {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 #d97706;
-}
-
-/* Ajuste no container de botões de compressão */
-.camera-botoes-container {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
+.toggle-on .toggle-knob {
+  transform: translateX(22px);
 }

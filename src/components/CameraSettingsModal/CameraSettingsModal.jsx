@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, X, Image, Save } from 'lucide-react';
 import '../CondominioDetalheModal/CondominioDetalheModal.css';
 import './CameraSettingsModal.css';
@@ -27,9 +28,9 @@ const CameraSettingsModal = ({ isOpen, onClose }) => {
     localStorage.setItem('config_copia_galeria', String(novoEstado));
   };
 
-  return (
-    <div className="condominio-detalhe-overlay" onClick={onClose}>
-      <div className="condominio-detalhe-container" onClick={(event) => event.stopPropagation()}>
+  return createPortal(
+    <div className="condominio-detalhe-overlay" style={{ zIndex: 99999 }} onClick={onClose}>
+      <div className="condominio-detalhe-container" style={{ margin: 'auto' }} onClick={(event) => event.stopPropagation()}>
         
         {/* CABEÇALHO */}
         <div className="condominio-detalhe-header">
@@ -47,29 +48,29 @@ const CameraSettingsModal = ({ isOpen, onClose }) => {
           
           {/* SEÇÃO 1: COMPRESSÃO */}
           <section className="detalhe-secao">
-            <h3><Image size={16} /> Compressão de Imagem</h3>
-            <p className={compressao ? '' : 'detalhe-vazio'} style={{ marginBottom: '16px', fontSize: '0.9rem' }}>
+            <h3 className="section-title">COMPRESSÃO DE IMAGEM</h3>
+            <p className="section-description">
               A compressão máxima é recomendada para otimizar espaço no banco de dados e acelerar envios.
             </p>
             
-            <div className="camera-botoes-container">
+            <div className="segmented-control">
               <button 
                 type="button" 
-                className={`btn-3d ${compressao === 'maxima' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
+                className={`segment-btn ${compressao === 'maxima' ? 'segment-active' : ''}`}
                 onClick={() => handleMudarCompressao('maxima')}
               >
-                Máxima (Ideal)
+                Máxima
               </button>
               <button 
                 type="button" 
-                className={`btn-3d ${compressao === 'media' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
+                className={`segment-btn ${compressao === 'media' ? 'segment-active' : ''}`}
                 onClick={() => handleMudarCompressao('media')}
               >
                 Média
               </button>
               <button 
                 type="button" 
-                className={`btn-3d ${compressao === 'baixa' ? 'btn-3d-primary' : 'btn-3d-outline'}`}
+                className={`segment-btn ${compressao === 'baixa' ? 'segment-active' : ''}`}
                 onClick={() => handleMudarCompressao('baixa')}
               >
                 Baixa
@@ -78,27 +79,33 @@ const CameraSettingsModal = ({ isOpen, onClose }) => {
           </section>
 
           {/* SEÇÃO 2: SALVAR NA GALERIA */}
-          <section className="detalhe-secao">
-            <h3><Save size={16} /> Salvar no Aparelho</h3>
-            <p className="detalhe-vazio" style={{ marginBottom: '16px', fontSize: '0.9rem' }}>
-              Mantém uma cópia de segurança das fotos na galeria do seu dispositivo.
+          <section className="detalhe-secao" style={{ marginTop: '16px' }}>
+            <h3 className="section-title">ARMAZENAMENTO</h3>
+            <p className="section-description">
+              Ative abaixo se quiser manter também uma cópia extra no seu aparelho.
             </p>
-            <div className="detalhe-status-linha">
-              <span className="dia-leitura-badge">Cópia Local (Galeria)</span>
-              
+            
+            <div className="toggle-card">
+              <div className="toggle-info">
+                <span className="toggle-title">Cópia local (galeria)</span>
+                <span className="toggle-subtitle">{salvarGaleria ? 'Ativado' : 'Desabilitado'}</span>
+              </div>
               <button 
                 type="button"
-                className={`btn-3d ${salvarGaleria ? 'btn-3d-toggle-on' : 'btn-3d-toggle-off'}`}
+                className={`toggle-switch ${salvarGaleria ? 'toggle-on' : 'toggle-off'}`}
                 onClick={handleToggleGaleria}
+                aria-pressed={salvarGaleria}
+                aria-label="Alternar cópia local"
               >
-                {salvarGaleria ? 'Habilitado' : 'Desabilitado'}
+                <div className="toggle-knob" />
               </button>
             </div>
           </section>
 
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
