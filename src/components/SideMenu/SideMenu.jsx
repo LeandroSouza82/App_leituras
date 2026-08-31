@@ -164,7 +164,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
               <LogOut size={18} />
               <span>Sair da conta</span>
             </button>
-            <p className="side-menu-version">Versão 1.0.1 • Fast Leituras</p>
+            <p className="side-menu-version">Versão 1.0.2 • Fast Leituras</p>
           </footer>
         </aside>
       </div>
