@@ -218,7 +218,7 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
         </div>
       </header>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: 'calc(env(safe-area-inset-bottom, 24px) + 80px)' }}>
         <div style={{ width: 'min(100%, 760px)', margin: '0 auto' }}>
 
       <form className="perfil-card" onSubmit={handleSaveData}>

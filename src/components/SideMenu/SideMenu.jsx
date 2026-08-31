@@ -70,14 +70,29 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
   // Mapeamento das opções do menu movido para dentro do componente
   // para ter acesso às funções de state (setCameraModalOpen, setFeedbackModalOpen)
-  const MENU_ITEMS = [
-    { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
-    { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
-    { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
-    { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
-    { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleSuporteTecnico },
-    { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleAvaliarApp },
-    { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
+  const MENU_GROUPS = [
+    {
+      title: 'Conta',
+      items: [
+        { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
+        { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
+      ]
+    },
+    {
+      title: 'Sistema',
+      items: [
+        { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
+        { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
+      ]
+    },
+    {
+      title: 'Suporte',
+      items: [
+        { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleSuporteTecnico },
+        { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleAvaliarApp },
+        { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
+      ]
+    }
   ];
 
   if (!isOpen) return null;
@@ -115,24 +130,28 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
           </header>
 
           <div className="side-menu-content">
-            <div className="side-menu-section-title">Ações e Configurações</div>
-            <ul className="side-menu-list">
-              {MENU_ITEMS.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <li key={item.id}>
-                    <button 
-                      type="button" 
-                      className="side-menu-item" 
-                      onClick={item.onClick}
-                    >
-                      <Icon size={20} color="#64748b" />
-                      <span>{item.label}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            {MENU_GROUPS.map((group, groupIndex) => (
+              <div key={group.title} className="side-menu-group" style={{ marginTop: groupIndex > 0 ? '24px' : '0' }}>
+                <div className="side-menu-section-title">{group.title}</div>
+                <ul className="side-menu-list">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.id}>
+                        <button 
+                          type="button" 
+                          className="side-menu-item" 
+                          onClick={item.onClick}
+                        >
+                          <Icon size={20} color="#64748b" />
+                          <span>{item.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </div>
 
           <footer className="side-menu-footer">
