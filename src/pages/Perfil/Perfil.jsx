@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Eye,
+  EyeOff,
   KeyRound,
   LogOut,
   Mail,
@@ -61,6 +63,31 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
   const [phone, setPhone] = useState('');
   const [loadingUser, setLoadingUser] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showPix, setShowPix] = useState(false);
+
+  const formatPhone = (val) => {
+    let clean = val.replace(/\D/g, '');
+    if (clean.startsWith('55')) clean = clean.slice(2);
+    if (clean.length > 11) clean = clean.slice(0, 11);
+    
+    if (clean.length === 0) return '';
+    if (clean.length <= 2) return `+55 (${clean}`;
+    if (clean.length <= 7) return `+55 (${clean.slice(0, 2)}) ${clean.slice(2)}`;
+    return `+55 (${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
+  };
+
+  const getMaskedPix = (val) => {
+    if (!val) return '';
+    if (showPix) return val;
+    
+    // Mask logic
+    const clean = val.trim();
+    if (clean.length > 4) {
+      return '•••.•••.•••-' + clean.slice(-2);
+    }
+    return '••••••••';
+  };
+
 
   useEffect(() => {
     let isMounted = true;
@@ -187,8 +214,8 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
             <Mail size={15} aria-hidden="true" />
             <span>{user.email}</span>
           </div>
+          <span className="perfil-status"><span /> {perfilRole}</span>
         </div>
-        <span className="perfil-status"><span /> {perfilRole}</span>
       </header>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
@@ -205,13 +232,23 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
         <div className="perfil-fields">
           <label className="perfil-field">
             <span>Chave PIX</span>
-            <input
-              type="text"
-              value={pix}
-              onChange={(event) => setPix(event.target.value)}
-              placeholder="CPF, e-mail ou chave aleatória"
-              autoComplete="off"
-            />
+            <div className="perfil-input-with-action">
+              <input
+                type="text"
+                value={showPix ? pix : getMaskedPix(pix)}
+                onChange={(event) => setPix(event.target.value)}
+                placeholder="CPF, e-mail ou chave aleatória"
+                autoComplete="off"
+              />
+              <button 
+                type="button" 
+                className="perfil-action-icon" 
+                onClick={() => setShowPix(!showPix)}
+                aria-label={showPix ? "Ocultar PIX" : "Mostrar PIX"}
+              >
+                {showPix ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </label>
           <label className="perfil-field">
             <span>Telefone de contato</span>
@@ -220,8 +257,8 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
               <input
                 type="tel"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="(00) 00000-0000"
+                onChange={(event) => setPhone(formatPhone(event.target.value))}
+                placeholder="+55 (00) 00000-0000"
                 autoComplete="tel"
               />
             </div>
@@ -247,11 +284,13 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
           <span>Alterar senha de acesso</span>
           <strong aria-hidden="true">›</strong>
         </button>
-        <button className="perfil-button perfil-button-danger" type="button" onClick={handleSignOut}>
-          <LogOut size={17} aria-hidden="true" />
-          Sair da conta
-        </button>
       </section>
+
+      {/* Botão Sair da conta isolado com contorno vermelho */}
+      <button className="perfil-button perfil-button-outline-danger" type="button" onClick={handleSignOut}>
+        <LogOut size={17} aria-hidden="true" />
+        Sair da conta
+      </button>
         </div>
       </div>
     </main>

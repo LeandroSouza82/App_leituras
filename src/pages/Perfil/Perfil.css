@@ -78,11 +78,10 @@
 }
 
 .perfil-status {
-  align-self: flex-start;
-  margin-left: auto;
-  padding: 7px 10px;
+  margin-top: 8px;
+  padding: 5px 10px;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
 }
@@ -185,6 +184,36 @@
   padding-left: 38px;
 }
 
+.perfil-input-with-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.perfil-input-with-action input {
+  padding-right: 44px;
+}
+
+.perfil-action-icon {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.perfil-action-icon:hover {
+  color: var(--primary-color);
+  background: rgba(30, 136, 229, 0.1);
+}
+
 .perfil-button {
   display: inline-flex;
   align-items: center;
@@ -230,6 +259,18 @@
   background: #EF4444;
   color: #ffffff;
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.perfil-button-outline-danger {
+  width: 100%;
+  margin-top: 16px;
+  background: transparent;
+  border: 1px solid #EF4444;
+  color: #EF4444;
+}
+
+.perfil-button-outline-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.05);
 }
 
 .perfil-sync-status {
@@ -311,8 +352,7 @@
   }
 
   .perfil-status {
-    order: 3;
-    margin-left: 72px;
+    /* Removed custom margin since it is inside heading now */
   }
 
   .perfil-fields {
