@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './LeituraList.css';
 import LeituraItem from '../LeituraItem/LeituraItem';
 import AlertaBanner from '../AlertaBanner/AlertaBanner';
+import { Search } from 'lucide-react';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -125,20 +126,24 @@ const LeituraList = ({
     <section className="list-card">
       <div className="list-sticky-top">
         <div className="list-header">
-          <div>
+          <div className="list-header-text">
             <h2>Leituras do mês</h2>
             <p>Gerencie os condomínios cadastrados.</p>
           </div>
         </div>
 
+        {/* Campo de busca DENTRO do cabeçalho azul */}
         <div className="busca-container">
-          <input
-            type="text"
-            placeholder="🔍 Buscar condomínio..."
-            value={filtroCondominio}
-            onChange={(e) => setFiltroCondominio(e.target.value)}
-            className="busca-input"
-          />
+          <div className="busca-wrapper">
+            <Search size={16} className="busca-icon" />
+            <input
+              type="text"
+              placeholder="Buscar condomínio..."
+              value={filtroCondominio}
+              onChange={(e) => setFiltroCondominio(e.target.value)}
+              className="busca-input"
+            />
+          </div>
         </div>
 
         <AlertaBanner

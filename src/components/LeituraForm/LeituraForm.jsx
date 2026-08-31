@@ -211,70 +211,91 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
-        <div style={{ width: 'min(100%, 760px)', margin: '0 auto' }}>
-        <section className="form-card">
+        <div style={{ width: 'min(100%, 760px)', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-      <form className="form-grid" onSubmit={handleSubmit}>
-        <label className="field field-full">
-          <span>Nome do condomínio</span>
-          <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
-        </label>
+          {/* ── CARD PRINCIPAL ── */}
+          <section className="form-card">
+            <form className="form-grid" onSubmit={handleSubmit}>
 
-        <label className="field field-full">
-          <span>Tipo de Leitura</span>
-          <select name="tipoLeitura" value={form.tipoLeitura} onChange={handleChange}>
-            <option value="Água e Gás">Água e Gás</option>
-            <option value="Somente Água">Somente Água</option>
-            <option value="Somente Gás">Somente Gás</option>
-            <option value="Energia Elétrica">Energia Elétrica</option>
-          </select>
-        </label>
+              {/* SEÇÃO 1: Dados Básicos */}
+              <div className="form-section">
+                <p className="form-section-title">Dados básicos</p>
 
-        <label className="field">
-          <span>Apartamentos</span>
-          <input type="number" name="apartamentos" min="1" value={form.apartamentos} onChange={handleChange} placeholder="0" />
-        </label>
+                <label className="field field-full">
+                  <span>Nome do condomínio</span>
+                  <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
+                </label>
 
-        <label className="field">
-          <span>Valor</span>
-          <input
-            type="text"
-            name="valor"
-            value={form.valor}
-            onChange={handleChange}
-            onFocus={handleValorFocus}
-            onBlur={handleValorBlur}
-            placeholder="R$ 0,00"
-          />
-        </label>
+                <label className="field field-full">
+                  <span>Tipo de leitura</span>
+                  <select name="tipoLeitura" value={form.tipoLeitura} onChange={handleChange}>
+                    <option value="Água e Gás">Água e Gás</option>
+                    <option value="Somente Água">Somente Água</option>
+                    <option value="Somente Gás">Somente Gás</option>
+                    <option value="Energia Elétrica">Energia Elétrica</option>
+                  </select>
+                </label>
 
-        <label className="field field-full">
-          <span>Dia da Leitura</span>
-          <input type="number" name="diaLeitura" min="1" max="31" value={form.diaLeitura} onChange={handleChange} placeholder="ex: 5, 10, 25" />
-        </label>
+                <div className="form-row-half">
+                  <label className="field">
+                    <span>Apartamentos</span>
+                    <input type="number" name="apartamentos" min="1" value={form.apartamentos} onChange={handleChange} placeholder="0" />
+                  </label>
 
-        <label className="field field-full">
-          <span>Endereço do Condomínio (Google Maps)</span>
-          <input name="endereco" value={form.endereco} onChange={handleChange} placeholder="Rua, Número, Bairro, Cidade" />
-        </label>
+                  <label className="field">
+                    <span>Valor</span>
+                    <input
+                      type="text"
+                      name="valor"
+                      value={form.valor}
+                      onChange={handleChange}
+                      onFocus={handleValorFocus}
+                      onBlur={handleValorBlur}
+                      placeholder="R$ 0,00"
+                    />
+                  </label>
+                </div>
 
-        <label className="field field-full">
-          <span>Instruções de Acesso</span>
-          <input name="instrucoesAcesso" value={form.instrucoesAcesso} onChange={handleChange} placeholder="Ex: Senha da portaria: 1234, Interfone 101" />
-        </label>
+                <label className="field field-full">
+                  <span>Dia da leitura</span>
+                  <input type="number" name="diaLeitura" min="1" max="31" value={form.diaLeitura} onChange={handleChange} placeholder="Ex: 5, 10, 25" />
+                </label>
+              </div>
 
-        <label className="field field-full">
-          <span>Contato do Síndico / Gestor</span>
-          <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
-        </label>
+              {/* DIVISÓRIA */}
+              <div className="form-divider" />
 
-        <button type="submit" className="submit-btn">
-          <Plus size={18} />
-          Adicionar leitura
-        </button>
+              {/* SEÇÃO 2: Acesso e Contato */}
+              <div className="form-section">
+                <p className="form-section-title">Acesso e contato</p>
 
-        <div style={{ marginTop: '20px' }}>
-          <ImportadorPlanilha 
+                <label className="field field-full">
+                  <span>Endereço (Google Maps)</span>
+                  <input name="endereco" value={form.endereco} onChange={handleChange} placeholder="Rua, número, bairro, cidade" />
+                </label>
+
+                <label className="field field-full">
+                  <span>Instruções de acesso</span>
+                  <input name="instrucoesAcesso" value={form.instrucoesAcesso} onChange={handleChange} placeholder="Ex: Senha da portaria: 1234" />
+                </label>
+
+                <label className="field field-full">
+                  <span>Contato do síndico / gestor</span>
+                  <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
+                </label>
+              </div>
+
+              {/* BOTÃO SUBMIT DENTRO DO CARD */}
+              <button type="submit" className="submit-btn">
+                <Plus size={18} />
+                Adicionar leitura
+              </button>
+
+            </form>
+          </section>
+
+          {/* ── BOTÃO DE PLANILHA FORA DO CARD ── */}
+          <ImportadorPlanilha
             onImportComplete={handleImportSuccess}
             onStatusChange={(message) => {
               if (!message.toLowerCase().includes('processando')) {
@@ -284,9 +305,7 @@ const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRec
               }
             }}
           />
-        </div>
-      </form>
-        </section>
+
         </div>
       </div>
 

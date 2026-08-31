@@ -4,12 +4,10 @@
   border-radius: 0;
   padding: 0;
   box-shadow: none;
-  
-  /* Container flexível que ocupa toda a altura disponível */
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  overflow-y: auto; /* Scroll container para o sticky funcionar */
+  overflow-y: auto;
 }
 
 .list-sticky-top {
@@ -17,7 +15,7 @@
   top: 0;
   z-index: 100;
   background: var(--primary-color);
-  padding: 0 0 12px;
+  padding: 18px 14px 14px;
   flex-shrink: 0;
 }
 
@@ -25,24 +23,66 @@
   color: #ffffff;
 }
 
-.list-header h2 {
-  margin: 0 0 4px;
+.list-header-text h2 {
+  margin: 0 0 2px;
   color: #ffffff;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 700;
 }
 
-.list-header p {
-  margin: 0 0 16px;
+.list-header-text p {
+  margin: 0 0 14px;
   color: rgba(255, 255, 255, 0.78);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+}
+
+/* Busca dentro do header azul */
+.busca-container {
+  margin-bottom: 0;
+  padding: 0;
+}
+
+.busca-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.busca-icon {
+  position: absolute;
+  left: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.busca-input {
+  width: 100%;
+  padding: 11px 16px 11px 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 0.93rem;
+  outline: none;
+  box-shadow: none;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.busca-input::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.busca-input:focus {
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
 .list-items {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-bottom: 120px; /* Espaço robusto para navegação flutuante + teclado */
+  gap: 12px;
+  padding: 14px 14px 120px;
 }
 
 .empty-state {
@@ -52,31 +92,5 @@
   color: var(--text-muted);
   text-align: center;
   background: var(--bg-card);
-}
-
-.busca-container {
-  margin-bottom: 16px;
-  padding: 0;
-}
-
-.busca-input {
-  width: 100%;
-  padding: 12px 20px;
-  border-radius: 999px;
-  border: none;
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  font-size: 0.95rem;
-  outline: none;
-  box-shadow: none;
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.busca-input::placeholder {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.busca-input:focus {
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.4);
+  margin: 14px;
 }

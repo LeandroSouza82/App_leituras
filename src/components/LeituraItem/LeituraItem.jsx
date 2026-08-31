@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Browser } from '@capacitor/browser';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { Geolocation } from '@capacitor/geolocation';
-import { Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2, LocateFixed, Camera as CameraIcon } from 'lucide-react';
-import { ChevronDown, ChevronUp, AlertCircle, Camera, Search, RefreshCw, Smartphone } from 'lucide-react';
+import {
+  Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2,
+  LocateFixed, Camera as CameraIcon, MoreHorizontal, Building2
+} from 'lucide-react';
 import './LeituraItem.css';
 import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
 import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
@@ -27,14 +29,6 @@ const formatCurrency = (value) =>
     currency: 'BRL',
   });
 
-const formatDateBR = (dateString) => {
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
-    return dateString;
-  }
-  return date.toLocaleDateString('pt-BR');
-};
-
 const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const diaAtual = new Date().getDate();
   const diaLeitura = extrairNumeroDia(leitura.diaLeitura);
@@ -44,17 +38,18 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const [mostrarModalFoto, setMostrarModalFoto] = useState(false);
   const [capturandoGpsId, setCapturandoGpsId] = useState(null);
   const [modalContato, setModalContato] = useState(null);
+  const [menuMaisAberto, setMenuMaisAberto] = useState(false);
+  const menuRef = useRef(null);
   const { toast, showToast, dismissToast } = useToast();
 
-  const { statusLabel, statusClass, statusEmoji } = leitura.completo
-    ? { statusLabel: 'Concluído', statusClass: 'status-success', statusEmoji: '🟢' }
+  const { statusLabel, statusClass } = leitura.completo
+    ? { statusLabel: 'Concluído', statusClass: 'status-success' }
     : diaLeitura !== null && diaAtual > diaLeitura
-    ? { statusLabel: 'Atrasado', statusClass: 'status-danger', statusEmoji: '🔴' }
+    ? { statusLabel: 'Atrasado', statusClass: 'status-danger' }
     : diaLeitura !== null && diaLeitura - diaAtual <= 2
-    ? { statusLabel: 'Fazer Hoje/Breve', statusClass: 'status-warning', statusEmoji: '🟡' }
-    : { statusLabel: `Aguardando (Dia ${leitura.diaLeitura})`, statusClass: 'status-pending', statusEmoji: '⚪' };
+    ? { statusLabel: 'Fazer Hoje/Breve', statusClass: 'status-warning' }
+    : { statusLabel: `Aguardando`, statusClass: 'status-pending' };
 
-  const badgeText = `Dia ${leitura.diaLeitura}`;
   const badgeDayClass = leitura.completo
     ? 'badge-dia-success'
     : diaLeitura !== null && diaLeitura < diaAtual
@@ -65,6 +60,18 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   const mensagemModal = leitura.completo
     ? `Tem certeza que deseja desmarcar a leitura do condomínio "${leitura.nome}"?`
     : `Deseja marcar a leitura do condomínio "${leitura.nome}" como concluída neste mês?`;
+
+  // Fecha menu ao clicar fora
+  useEffect(() => {
+    if (!menuMaisAberto) return;
+    const handleOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuMaisAberto(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuMaisAberto]);
 
   const handleCheckboxClick = (event) => {
     event.preventDefault();
@@ -81,40 +88,21 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   };
 
   const salvarLocalizacaoGPS = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setMenuMaisAberto(false);
     try {
       setCapturandoGpsId(leitura.id);
-
-      // 1. Checa o status atual da permissão
       let permStatus = await Geolocation.checkPermissions();
-
-      // 2. Se não tiver permissão, pede ao usuário (abre o popup nativo do Android)
       if (permStatus.location !== 'granted') {
         permStatus = await Geolocation.requestPermissions();
       }
-
-      // 3. Se o usuário negar, avisa e aborta
       if (permStatus.location !== 'granted') {
         await customAlert('Permissão de GPS negada. É necessário liberar o acesso para capturar a coordenada.', 'Permissão Necessária');
         setCapturandoGpsId(null);
         return;
       }
-
-      // 4. Com permissão garantida, captura a localização exata
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-      });
-
-      const latitude = position.coords.latitude;
-      const longitude = position.coords.longitude;
-
-      // Chama a edição otimista (já tratada offline-first no useLeituras)
-      onEdit(leitura.id, { latitude, longitude });
+      const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+      onEdit(leitura.id, { latitude: position.coords.latitude, longitude: position.coords.longitude });
       showToast('📍 Localização GPS salva com sucesso no aparelho!');
     } catch (error) {
       await customAlert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.', 'Erro de GPS');
@@ -124,30 +112,17 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
   };
 
   const handleOpenMaps = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     if (!leitura) return;
-
     let termoBusca = '';
-
-    // 1ª Opção: Coordenadas de GPS gravadas no banco
     if (leitura.latitude && leitura.longitude) {
       termoBusca = `${leitura.latitude},${leitura.longitude}`;
-    }
-    // 2ª Opção: Endereço por extenso
-    else if (leitura.endereco && String(leitura.endereco).trim() !== '') {
+    } else if (leitura.endereco && String(leitura.endereco).trim() !== '') {
       termoBusca = leitura.endereco.trim();
-    }
-    // 3ª Opção: Nome do condomínio + Região
-    else {
+    } else {
       termoBusca = `${leitura.nome.trim()}, Grande Florianópolis - SC`;
     }
-
-    // Monta a URL da Search API do Google Maps com segurança
     const urlMapas = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(termoBusca)}`;
-
     try {
       await Browser.open({ url: urlMapas });
     } catch {
@@ -155,170 +130,170 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     }
   };
 
-  // Apenas abre o modal bonitão guardando o número
   const abrirOpcoesContato = (contatoBruto) => {
     setModalContato(contatoBruto);
   };
 
+  // Linha de texto secundário composta (aptos + instruções de acesso)
+  const textoSecundario = [
+    leitura.apartamentos ? `${leitura.apartamentos} aptos` : null,
+    leitura.instrucoesAcesso || null,
+  ].filter(Boolean).join(' · ');
+
   return (
     <>
-    <article className={`item-card ${leitura.completo ? 'completed' : ''} ${isFocused ? 'focado-atrasado' : ''}`}>
-      <label className="item-main">
-        <span className={`checkbox ${leitura.completo ? 'checked' : ''}`}>
-          {leitura.completo ? <Check size={14} /> : null}
-        </span>
-        <input type="checkbox" checked={Boolean(leitura.completo)} onChange={handleCheckboxClick} />
-        <div className="item-info">
-          <div className="card-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-                <path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16" />
-                <path d="M9 7h1" />
-                <path d="M14 7h1" />
-                <path d="M9 11h1" />
-                <path d="M14 11h1" />
-                <path d="M9 15h1" />
-                <path d="M14 15h1" />
-                <path d="M10 21v-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3" />
-              </svg>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1F2937' }}>
-                {leitura.nome}
-              </h2>
-            </div>
-            <span className={`badge-dia ${badgeDayClass}`}>{badgeText}</span>
-          </div>
-          <div className="item-info-top">
-            <span className={`status-badge ${statusClass}`}>
-              {statusEmoji} {statusLabel}
+      <article className={`item-card ${leitura.completo ? 'completed' : ''} ${isFocused ? 'focado-atrasado' : ''}`}>
+
+        {/* ── LINHA 1: Ícone + Nome + Badge Dia ── */}
+        <div className="item-row-top">
+          <label className="item-toggle-label" onClick={handleCheckboxClick}>
+            <span className={`checkbox ${leitura.completo ? 'checked' : ''}`}>
+              {leitura.completo ? <Check size={13} /> : null}
             </span>
+            <input type="checkbox" checked={Boolean(leitura.completo)} onChange={handleCheckboxClick} />
+          </label>
+          <Building2 size={18} className="item-icon-building" />
+          <h2 className="item-nome">{leitura.nome}</h2>
+          <span className={`badge-dia ${badgeDayClass}`}>Dia {leitura.diaLeitura}</span>
+        </div>
+
+        {/* ── LINHA 2: Badges de status e tipo ── */}
+        <div className="item-row-badges">
+          <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
+          <span className="tipo-badge">
+            <Gauge size={12} />
+            {leitura.tipoLeitura || 'Água e Gás'}
+          </span>
+        </div>
+
+        {/* ── LINHA 3: Texto secundário (aptos · instrução) ── */}
+        {textoSecundario ? (
+          <p className="item-secundario">{textoSecundario}</p>
+        ) : null}
+
+        {/* ── Contato do síndico (opcional) ── */}
+        {leitura.contatoSindico && (
+          <div className="info-extra">
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirOpcoesContato(leitura.contatoSindico); }}
+              className="btn-contato"
+            >
+              <Phone size={13} />
+              <span>{leitura.contatoSindico}</span>
+            </button>
           </div>
+        )}
 
-          <div className="tipo-leitura-tag">
-            <Gauge size={14} />
-            <span>{leitura.tipoLeitura || 'Água e Gás'}</span>
-          </div>
+        {/* ── DIVISÓRIA ── */}
+        <div className="item-divider" />
 
-          <p className="item-data">{leitura.apartamentos} aptos</p>
+        {/* ── LINHA 4: Valor + Ações principais + Menu "..." ── */}
+        <div className="item-row-actions">
+          <span className="item-value">{formatCurrency(leitura.valor)}</span>
 
-          {leitura.instrucoesAcesso && (
-            <div className="info-extra">
-              <KeyRound size={13} />
-              <span>{leitura.instrucoesAcesso}</span>
-            </div>
-          )}
+          <div className="item-btns">
+            {/* Rota */}
+            <button
+              type="button"
+              className="item-btn item-btn--maps"
+              onClick={handleOpenMaps}
+              title="Abrir no Google Maps"
+            >
+              <Navigation size={15} />
+              <span>rota</span>
+            </button>
 
-          {leitura.contatoSindico && (
-            <div className="info-extra" style={{ margin: '8px 0' }}>
-              <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  abrirOpcoesContato(leitura.contatoSindico);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  backgroundColor: '#F0F8FF',
-                  border: '1px dashed #93C5FD',
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  color: '#1E3A8A',
-                  fontWeight: 'bold',
-                  marginTop: '4px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: 'inherit'
-                }}
+            {/* Câmera */}
+            <button
+              type="button"
+              className="item-btn item-btn--camera"
+              onClick={(e) => { e.stopPropagation(); setMostrarModalFoto(true); }}
+              title="Tirar foto da leitura"
+            >
+              <CameraIcon size={15} />
+              <span>cam</span>
+            </button>
+
+            {/* Menu mais opções */}
+            <div className="item-menu-mais" ref={menuRef}>
+              <button
+                type="button"
+                className="item-btn item-btn--mais"
+                onClick={() => setMenuMaisAberto((v) => !v)}
+                title="Mais opções"
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Phone size={14} />
-                  <span style={{ color: '#93C5FD' }}>|</span>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                  </svg>
-                </div>
-                <span>{leitura.contatoSindico}</span>
+                <MoreHorizontal size={16} />
               </button>
-            </div>
-          )}
-        </div>
-      </label>
 
-      <div className="item-actions">
-        <div className="item-value">{formatCurrency(leitura.valor)}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            type="button"
-            className="btn-maps"
-            onClick={handleOpenMaps}
-            title="Abrir no Google Maps"
-          >
-            <Navigation size={16} />
-          </button>
-          <button
-            type="button"
-            className={`btn-gps ${leitura.latitude && leitura.longitude ? 'gps-saved' : ''} ${capturandoGpsId === leitura.id ? 'gps-loading' : ''}`}
-            onClick={salvarLocalizacaoGPS}
-            disabled={capturandoGpsId === leitura.id}
-            title={leitura.latitude && leitura.longitude ? 'GPS já capturado - Clique para atualizar' : 'Capturar localização GPS exata'}
-          >
-            <LocateFixed size={16} />
-          </button>
-          <button
-            type="button"
-            className="btn-camera"
-            onClick={(e) => { e.stopPropagation(); setMostrarModalFoto(true); }}
-            title="Tirar foto da leitura"
-          >
-            <CameraIcon size={16} />
-          </button>
-          <button type="button" className="btn-editar" onClick={() => setMostrarModalEdicao(true)} title="Editar condomínio">
-            <Pencil color="#1e88e5" size={16} />
-          </button>
-          <button type="button" className="delete-btn" onClick={() => setMostrarModalDeletar(true)}>
-            <Trash2 size={16} />
-          </button>
+              {menuMaisAberto && (
+                <div className="item-dropdown">
+                  <button
+                    type="button"
+                    className="item-dropdown-item"
+                    onClick={() => { setMenuMaisAberto(false); setMostrarModalEdicao(true); }}
+                  >
+                    <Pencil size={14} />
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    className="item-dropdown-item item-dropdown-item--gps"
+                    onClick={salvarLocalizacaoGPS}
+                    disabled={capturandoGpsId === leitura.id}
+                  >
+                    <LocateFixed size={14} />
+                    {leitura.latitude && leitura.longitude ? 'Atualizar GPS' : 'Capturar GPS'}
+                  </button>
+                  <div className="item-dropdown-divider" />
+                  <button
+                    type="button"
+                    className="item-dropdown-item item-dropdown-item--delete"
+                    onClick={() => { setMenuMaisAberto(false); setMostrarModalDeletar(true); }}
+                  >
+                    <Trash2 size={14} />
+                    Excluir
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </article>
-    <ModalConfirmacao
-      isOpen={mostrarModal}
-      titulo={tituloModal}
-      mensagem={mensagemModal}
-      onConfirm={handleConfirmar}
-      onCancel={handleCancelar}
-    />
-    <ModalConfirmacaoDestrutiva
-      isOpen={mostrarModalDeletar}
-      titulo="Excluir condomínio"
-      mensagem="Tem certeza que deseja excluir este condomínio? Essa ação não pode ser desfeita."
-      textoCancelar="Cancelar"
-      textoConfirmar="Excluir"
-      onConfirm={() => {
-        onDelete(leitura.id);
-        setMostrarModalDeletar(false);
-      }}
-      onCancel={() => setMostrarModalDeletar(false)}
-    />
-    <EditarCondominioModal
-      isOpen={mostrarModalEdicao}
-      onClose={() => setMostrarModalEdicao(false)}
-      condominio={leitura}
-      onSave={(id, dadosAtualizados) => onEdit(id, dadosAtualizados)}
-    />
-    <LeituraFotoModal
-      isOpen={mostrarModalFoto}
-      onClose={() => setMostrarModalFoto(false)}
-      leitura={leitura}
-    />
-    
-    <ContactActionModal 
-      isOpen={!!modalContato} 
-      contatoBruto={modalContato} 
-      onClose={() => setModalContato(null)} 
-    />
-    <Toast {...toast} onClose={dismissToast} />
+      </article>
+
+      <ModalConfirmacao
+        isOpen={mostrarModal}
+        titulo={tituloModal}
+        mensagem={mensagemModal}
+        onConfirm={handleConfirmar}
+        onCancel={handleCancelar}
+      />
+      <ModalConfirmacaoDestrutiva
+        isOpen={mostrarModalDeletar}
+        titulo="Excluir condomínio"
+        mensagem="Tem certeza que deseja excluir este condomínio? Essa ação não pode ser desfeita."
+        textoCancelar="Cancelar"
+        textoConfirmar="Excluir"
+        onConfirm={() => { onDelete(leitura.id); setMostrarModalDeletar(false); }}
+        onCancel={() => setMostrarModalDeletar(false)}
+      />
+      <EditarCondominioModal
+        isOpen={mostrarModalEdicao}
+        onClose={() => setMostrarModalEdicao(false)}
+        condominio={leitura}
+        onSave={(id, dadosAtualizados) => onEdit(id, dadosAtualizados)}
+      />
+      <LeituraFotoModal
+        isOpen={mostrarModalFoto}
+        onClose={() => setMostrarModalFoto(false)}
+        leitura={leitura}
+      />
+      <ContactActionModal
+        isOpen={!!modalContato}
+        contatoBruto={modalContato}
+        onClose={() => setModalContato(null)}
+      />
+      <Toast {...toast} onClose={dismissToast} />
     </>
   );
 };

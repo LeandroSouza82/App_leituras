@@ -17,9 +17,40 @@
 }
 
 .form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Seções visuais dentro do card */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.form-section-title {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--primary-color);
+}
+
+/* Linha com dois campos lado a lado (apartamentos + valor) */
+.form-row-half {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Divisória sutil entre seções */
+.form-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0;
 }
 
 .field {
@@ -29,7 +60,8 @@
 }
 
 .field-full {
-  grid-column: 1 / -1;
+  /* no longer needed as grid spans — kept for any future grid contexts */
+  width: 100%;
 }
 
 .field span {
@@ -52,20 +84,36 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.field select {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #f8f9fa;
+  color: #111827;
+  appearance: auto;
+}
+
+.field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .submit-btn {
-  grid-column: 1 / -1;
+  margin-top: 8px;
   border: none;
-  border-radius: 16px;
-  padding: 13px 16px;
+  border-radius: 12px;
+  padding: 14px 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   cursor: pointer;
   color: #fff;
+  font-size: 1rem;
   font-weight: 700;
   background: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
   transition: all 0.2s ease;
 }
 
@@ -101,7 +149,7 @@
 }
 
 @media (max-width: 639px) {
-  .form-grid {
+  .form-row-half {
     grid-template-columns: 1fr;
   }
 }
