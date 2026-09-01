@@ -33,8 +33,11 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     setIsSyncing(true);
     try {
       await sincronizarFilaEmBackground();
-      await customAlert('Fila processada e dados da nuvem atualizados.', 'Sincronização Concluída');
+      
+      // FECHA O MODAL PRIMEIRO ANTES DE EXIBIR O ALERTA DE SUCESSO
       setShowSyncModal(false);
+      
+      await customAlert('Fila processada e dados da nuvem atualizados.', 'Sincronização Concluída');
       window.dispatchEvent(new CustomEvent('offline_cache_hydrated'));
     } catch (error) {
       await customAlert('Erro ao atualizar os dados.', 'Erro de Sincronização');
