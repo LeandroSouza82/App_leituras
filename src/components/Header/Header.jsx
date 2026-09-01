@@ -1,6 +1,6 @@
 import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import { useState } from 'react';
-import { Bell, Menu, Share2 } from 'lucide-react';
+import { Bell, Menu, Share2, Eye, EyeOff } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioLeiturasExcel } from '../../services/relatorioExcelService';
 import ListaCondominiosModal from '../ListaCondominiosModal/ListaCondominiosModal';
@@ -38,6 +38,7 @@ const Header = ({
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+  const [mostrarValor, setMostrarValor] = useState(true);
   const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
@@ -80,12 +81,44 @@ const Header = ({
       </div>
 
       {/* Linha 2: Valor a receber em destaque */}
-      <div className="header-valor-destaque" onClick={handleExportClick} title="Exportar relatório">
-        <span className="header-valor-label">
-          A receber
-          <Share2 size={14} style={{ marginLeft: 6, opacity: 0.8 }} />
-        </span>
-        <strong className="header-valor-numero">{formatCurrency(totalValor)}</strong>
+      <div className="header-valor-destaque">
+        <div
+          className="flex justify-between items-center w-full mb-2"
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '8px' }}
+        >
+          <div
+            className="flex items-center gap-1.5"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span className="header-valor-label" style={{ margin: 0 }}>
+              A receber
+            </span>
+            <button
+              type="button"
+              onClick={handleExportClick}
+              title="Exportar relatório"
+              className="bg-transparent border-none outline-none shadow-none text-white p-1 hover:opacity-80 flex items-center justify-center cursor-pointer"
+              style={{ background: 'transparent', border: 'none', outline: 'none', boxShadow: 'none', padding: '2px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Share2 size={15} className="text-white" style={{ opacity: 0.9, color: '#ffffff' }} />
+            </button>
+          </div>
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMostrarValor(!mostrarValor);
+            }}
+            aria-label={mostrarValor ? 'Ocultar valor' : 'Mostrar valor'}
+            className="bg-transparent border-none outline-none shadow-none text-white p-1 hover:opacity-80 flex items-center justify-center cursor-pointer ml-auto"
+            style={{ background: 'transparent', border: 'none', outline: 'none', boxShadow: 'none', padding: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}
+          >
+            {mostrarValor ? <Eye size={18} className="text-white" style={{ color: '#ffffff' }} /> : <EyeOff size={18} className="text-white" style={{ color: '#ffffff' }} />}
+          </button>
+        </div>
+        <strong className="header-valor-numero">
+          {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
+        </strong>
       </div>
 
       {/* Linha 3: Barra de progresso */}

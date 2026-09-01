@@ -52,6 +52,20 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
   // Garante limpeza e estado pronto para digitação sempre que o modal abrir
   useEffect(() => {
     if (isOpen) {
+      if (unitInfo && unitInfo.includes('A-101')) {
+        console.log(`
+[DEBUG FORMATAÇÃO]
+initialValue recebido: "${initialValue}"
+typeof initialValue: ${typeof initialValue}
+
+leituraValor antes da inicialização: "${leituraValor}"
+leituraValor depois da inicialização: "${initialValue || ''}"
+
+valor enviado ao input: "${initialValue || ''}"
+typeof valor enviado ao input: ${typeof (initialValue || '')}
+        `);
+      }
+
       setLeituraValor(initialValue || ''); // CIRÚRGICO: carrega o valor pré-salvo, se existir
       setErroValidacao('');
     }

@@ -84,6 +84,7 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
 
     const itemFila = {
       id: payload.id || `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      db_id: payload.db_id || null,
       unidade_id: String(payload.unidade_id || '').trim(),
       condominio_id: payload.condominio_id || null,
       condominio_nome: payload.condominio_nome || null,
@@ -92,6 +93,8 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
       leiturista_id: payload.leiturista_id || null,
       data_leitura: payload.data_leitura || new Date().toISOString(),
       fileName: fileName || payload.fileName || null,
+      photoPath: payload.photoPath || null,
+      photoDirectory: payload.photoDirectory || null,
       timestamp: Date.now()
     };
 
@@ -138,12 +141,23 @@ export async function sincronizarFilaEmBackground() {
     return;
   }
 
+  let etapaSync = 'INICIO';
+
   try {
+    localStorage.setItem('sync_debug', JSON.stringify({
+      iniciou: true,
+      etapa: 'INICIO',
+      quantidadeFila: readFilaSync().length,
+      data: new Date().toISOString()
+    }));
+
+    etapaSync = 'VERIFICAR_REDE';
     const status = await Network.getStatus();
     if (!status.connected) {
       return;
     }
 
+    etapaSync = 'LER_FILA';
     const fila = readFilaSync();
     if (fila.length === 0) {
       return;
@@ -156,78 +170,50 @@ export async function sincronizarFilaEmBackground() {
     const userIdPadrao = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
 
     for (const item of [...fila]) {
+      etapaSync = 'PROCESSAR_ITEM';
+      
       try {
-        // Verifica duplicação no Supabase antes de subir (proteção inegociável)
-        const { data: existingData } = await supabase
-          .from('leituras_detalhes')
-          .select('id')
-          .eq('unidade_id', item.unidade_id)
-          .eq('servico', item.servico)
-          .eq('data_leitura', item.data_leitura)
-          .limit(1);
-          
-        if (existingData && existingData.length > 0) {
-          // Já existe, apenas remove da fila
-          const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
-          writeFilaSync(filaAtualizada);
-          continue;
-        }
-
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
         if (item.fileName) {
           let fileResult;
           try {
+            etapaSync = 'LOCALIZAR_FOTO';
+            let directoryReal = Directory.Data;
+            let pathReal = item.fileName;
+
+            if (item.photoPath) {
+              directoryReal = item.photoDirectory === 'CACHE' ? Directory.Cache : Directory.Data;
+              pathReal = item.photoPath;
+            } else if (item.fileName && item.condominio_nome) {
+              // ESTRATÉGIA B (LEGADO): Reconstrói o caminho para fotos capturadas antes da correção
+              const safeCondo = item.condominio_nome.replace(/[^a-z0-9]/gi, '_');
+              pathReal = `Backups/${safeCondo}/${item.fileName}`;
+            }
+            
             fileResult = await Filesystem.readFile({
-              path: item.fileName,
-              directory: Directory.Data
+              path: pathReal,
+              directory: directoryReal
             });
           } catch (fileError) {
-            console.warn(`[Sync] Removendo arquivo fantasma da fila: ${item.id || item.fileName}`);
-            
-            // 1. Puxar a fila atual do localStorage 
-            const chaveFila = 'fila_sync_auto';
-            let filaAtual = JSON.parse(localStorage.getItem(chaveFila) || '[]');
-            
-            // 2. Filtrar removendo o item corrompido
-            let novaFila = filaAtual.filter(f => f.id !== item.id && f.fileName !== item.fileName);
-            
-            // 3. Salvar a nova fila limpa no localStorage
-            localStorage.setItem(chaveFila, JSON.stringify(novaFila));
-
-            // 2. Remove do array de fotos/dados locais para sumir da interface imediatamente
-            if (item.condominio_id && item.unidade_id) {
-              try {
-                const chaveLocal = `leituras_anteriores_${item.condominio_id}`;
-                const rawLeituras = localStorage.getItem(chaveLocal);
-                if (rawLeituras) {
-                  let leiturasLocais = JSON.parse(rawLeituras);
-                  leiturasLocais = leiturasLocais.map(L => {
-                    if (String(L.unidade).trim() === String(item.unidade_id).trim()) {
-                      return { ...L, fileName: null, foto_url: null, leitura_atual: null };
-                    }
-                    return L;
-                  });
-                  localStorage.setItem(chaveLocal, JSON.stringify(leiturasLocais));
-                }
-              } catch (e) {
-                console.warn('[Sync] Erro ao limpar fantasma do array local', e);
-              }
-            }
-
-            // Garante re-render na tela para o usuário ver sumir na hora
-            window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
-            
-            // Pula para o próximo item da fila silenciosamente
-            continue; 
+            throw new Error(`Falha ao ler arquivo físico (${item.fileName}): ${fileError.message}`);
           }
 
           if (fileResult?.data) {
+            etapaSync = 'LER_FOTO';
             const blob = base64ToBlob(fileResult.data, 'image/jpeg');
             if (!blob) throw new Error("A imagem armazenada localmente está corrompida.");
             
-            const remotePath = `leituras/${Date.now()}_${item.fileName}`;
+            etapaSync = 'UPLOAD_FOTO';
+            const sanitizarNomeStorage = (nome) => {
+              return String(nome || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9._-]/g, '_');
+            };
+            const nomeStorage = sanitizarNomeStorage(item.fileName);
+            const remotePath = `leituras/${Date.now()}_${nomeStorage}`;
 
             let uploadSuccess = false;
             let lastUploadError = null;
@@ -249,6 +235,7 @@ export async function sincronizarFilaEmBackground() {
               throw new Error("Falha no upload da imagem no sync em background: " + (lastUploadError?.message || ""));
             }
 
+            etapaSync = 'OBTER_URL';
             const { data: publicUrlData } = supabase.storage
               .from('fotos_leituras')
               .getPublicUrl(remotePath);
@@ -260,25 +247,26 @@ export async function sincronizarFilaEmBackground() {
           }
         }
 
-          // 2. Inserção / Upsert no Supabase Database
-          const payloadEnvio = {
-            condominio_nome: item.condominio_nome || null,
-            unidade_id: item.unidade_id,
-            servico: item.servico,
-            leitura_atual: item.leitura_atual,
-            foto_url: publicPhotoUrl || '',
-            leiturista_id: item.leiturista_id || userIdPadrao,
-            data_leitura: item.data_leitura || new Date().toISOString()
-          };
+        etapaSync = 'UPSERT_DB';
+        // 2. Inserção / Upsert no Supabase Database
+        const payloadEnvio = {
+          id: item.db_id,
+          condominio_nome: item.condominio_nome || null,
+          unidade_id: item.unidade_id,
+          servico: item.servico,
+          leitura_atual: item.leitura_atual,
+          foto_url: publicPhotoUrl || '',
+          leiturista_id: item.leiturista_id || userIdPadrao,
+          data_leitura: item.data_leitura || new Date().toISOString()
+        };
 
-          const { error: dbError } = await supabase
-            .from('leituras_detalhes')
-            .insert([payloadEnvio]);
+        const { error: dbError } = await supabase
+          .from('leituras_detalhes')
+          .upsert([payloadEnvio], { onConflict: 'id' });
 
-          if (dbError) {
-            console.error("Erro absoluto no insert leituras_detalhes:", dbError);
-            throw new Error("Erro DB insert: " + dbError.message);
-          }
+        if (dbError) {
+          throw new Error("Erro DB insert: " + dbError.message);
+        }
 
         // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês
         if (item.condominio_id && item.unidade_id && item.leitura_atual !== undefined && item.leitura_atual !== null) {
@@ -293,13 +281,38 @@ export async function sincronizarFilaEmBackground() {
           }
         }
 
+        etapaSync = 'REMOVER_FILA';
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.
-        // O arquivo físico permanece no disco no Directory.Data para preview/auditoria.
         const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
         writeFilaSync(filaAtualizada);
+        
+        etapaSync = 'CONCLUIDO';
 
       } catch (itemErr) {
-        console.error(`[Sync] Falha na sincronização do item ${item.id}. Será tentado novamente no próximo ciclo. Detalhes:`, itemErr);
+        // Formatar erro como solicitado
+        const erroMsg = itemErr?.message || String(itemErr);
+        
+        localStorage.setItem('sync_ultimo_erro', JSON.stringify({
+          etapa: etapaSync,
+          erro: erroMsg,
+          unidade_id: item?.unidade_id,
+          servico: item?.servico,
+          db_id: item?.db_id,
+          fileName: item?.fileName
+        }));
+
+        try {
+          await customAlert(
+            `[SYNC ERRO]\n` +
+            `Etapa: ${etapaSync}\n` +
+            `Unidade: ${item?.unidade_id}\n` +
+            `Serviço: ${item?.servico}\n` +
+            `db_id: ${item?.db_id}\n` +
+            `fileName: ${item?.fileName}\n` +
+            `Erro: ${erroMsg}`,
+            'ERRO SALVAR LEITURAS'
+          );
+        } catch (_) {}
       }
     }
 
