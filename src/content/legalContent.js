@@ -1,16 +1,16 @@
 export const tituloLegal = "Política de Privacidade e Termos de Uso";
 export const ultimaAtualizacao = "Setembro de 2026";
 
-// TODO OBRIGATÓRIO: Antes da publicação, substituir pelos dados reais e funcionais do responsável.
-export const contatoPrivacidade = "[CONFIGURAR_EMAIL_DE_CONTATO]"; 
-export const nomeDesenvolvedor = "[NOME_DO_DESENVOLVEDOR_OU_EMPRESA]";
+export const contatoPrivacidade = "privacidade@appviper.com.br"; 
+export const nomeDesenvolvedor = "Leandro Ditamar de Souza";
+export const marcaDesenvolvedor = "AppViper";
 
 export const privacyAndTermsContent = [
   {
     titulo: "1. Identificação",
     paragrafos: [
-      `Bem-vindo ao aplicativo Fast Leituras, desenvolvido por ${nomeDesenvolvedor}. Ao utilizar o aplicativo, você declara ciência e concordância com estes Termos de Uso. Os dados pessoais eventualmente tratados serão utilizados conforme descrito nesta Política de Privacidade e de acordo com as bases legais aplicáveis.`,
-      `Para questões de privacidade e exercício de direitos, entre em contato através do menu de Suporte Técnico ou pelo e-mail: ${contatoPrivacidade}.`
+      `Fast Leituras é um aplicativo desenvolvido por ${nomeDesenvolvedor}, sob a marca ${marcaDesenvolvedor}. Ao utilizar o aplicativo, você declara ciência e concordância com estes Termos de Uso. Os dados pessoais eventualmente tratados serão utilizados conforme descrito nesta Política de Privacidade e de acordo com as bases legais aplicáveis.`,
+      `Para questões relacionadas à privacidade e ao exercício de direitos, entre em contato pelo e-mail ${contatoPrivacidade}.`
     ]
   },
   {
