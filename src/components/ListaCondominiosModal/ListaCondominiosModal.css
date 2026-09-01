@@ -31,8 +31,8 @@
   to { transform: translateY(0); }
 }
 
-.modal-lista-header {
-  background: linear-gradient(135deg, #1e293b, #0f172a);
+.modal-lista-header.header-tema-azul {
+  background: var(--primary-color);
   color: #ffffff;
   padding: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -47,9 +47,9 @@
   color: #ffffff;
 }
 
-.subtitulo-contador {
+.modal-lista-header.header-tema-azul .subtitulo-contador {
   font-size: 0.86rem;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.9);
   display: block;
   margin-top: 2px;
 }
@@ -131,4 +131,8 @@
   color: #64748b;
   text-align: center;
   padding: 20px 0;
+}
+
+.has-bottom-nav-padding {
+  padding-bottom: calc(85px + env(safe-area-inset-bottom)) !important;
 }

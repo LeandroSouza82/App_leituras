@@ -2,7 +2,7 @@ import { useState } from 'react';
 import './ListaCondominiosModal.css';
 import CondominioDetalheModal from '../CondominioDetalheModal/CondominioDetalheModal';
 
-const ListaCondominiosModal = ({ isOpen, onClose, leituras = [] }) => {
+const ListaCondominiosModal = ({ isOpen, onClose, leituras = [], isFromDashboard }) => {
   const [busca, setBusca] = useState('');
   const [condominioSelecionado, setCondominioSelecionado] = useState(null);
 
@@ -18,7 +18,7 @@ const ListaCondominiosModal = ({ isOpen, onClose, leituras = [] }) => {
     <>
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal-lista-container" onClick={(event) => event.stopPropagation()}>
-          <div className="modal-lista-header">
+          <div className="modal-lista-header header-tema-azul">
             <div>
               <h2>🏢 Condomínios Cadastrados</h2>
               <span className="subtitulo-contador">{leituras.length} condomínio(s) no total</span>
@@ -38,7 +38,7 @@ const ListaCondominiosModal = ({ isOpen, onClose, leituras = [] }) => {
             />
           )}
 
-          <div className="modal-lista-body">
+          <div className={`modal-lista-body ${isFromDashboard ? 'has-bottom-nav-padding' : ''}`}>
             {listaFiltrada.length === 0 ? (
               <p className="lista-vazia">Nenhum condomínio encontrado.</p>
             ) : (
@@ -64,6 +64,7 @@ const ListaCondominiosModal = ({ isOpen, onClose, leituras = [] }) => {
         isOpen={Boolean(condominioSelecionado)}
         onClose={() => setCondominioSelecionado(null)}
         condominio={condominioSelecionado}
+        isFromDashboard={isFromDashboard}
       />
     </>
   );

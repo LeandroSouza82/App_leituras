@@ -245,3 +245,7 @@
     padding: 16px 18px;
   }
 }
+
+.has-bottom-nav-padding {
+  padding-bottom: calc(85px + env(safe-area-inset-bottom)) !important;
+}

@@ -21,7 +21,7 @@ const formatDiaLeitura = (dia) => {
   return numero !== null ? `Dia ${numero}` : String(dia);
 };
 
-const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
+const CondominioDetalheModal = ({ isOpen, onClose, condominio, isFromDashboard }) => {
   const [capturandoGps, setCapturandoGps] = useState(false);
   const [condominioAtualizado, setCondominioAtualizado] = useState(null);
   const [showContactModal, setShowContactModal] = useState(false);
@@ -162,7 +162,7 @@ const CondominioDetalheModal = ({ isOpen, onClose, condominio }) => {
           </button>
         </div>
 
-        <div className="condominio-detalhe-body">
+        <div className={`condominio-detalhe-body ${isFromDashboard ? 'has-bottom-nav-padding' : ''}`}>
           <section className="detalhe-secao">
             <h3><Gauge size={16} /> Tipo de Medição</h3>
             <span className="tipo-medicao-badge">{tipoLeitura || 'Água e Gás'}</span>

@@ -165,6 +165,7 @@ const Header = ({
         isOpen={modalCondominiosAberto}
         onClose={() => setModalCondominiosAberto(false)}
         leituras={leituras || []}
+        isFromDashboard={true}
       />
 
       <SideMenu

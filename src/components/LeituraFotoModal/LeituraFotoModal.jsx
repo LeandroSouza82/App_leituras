@@ -1308,6 +1308,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleExportar = () => {
+    if (exportando) return;
     // Análise Automática de Utilitários e Roteamento (Offline-First UX)
     const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -1501,17 +1502,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const mes = leitura?.mes_referencia || (new Date().getMonth() + 1);
 
       // -------------------------------------------------
-      // RASTREAMENTO CIRÚRGICO PAYLOAD
-      // -------------------------------------------------
-      const rastreamentoPayload = [];
-      let totalProcessadas = 0;
-      const filaAntesSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-
-      // -------------------------------------------------
       // PROCESSA CADA SERVIÇO
       // -------------------------------------------------
       const processarServico = async (apString, servicoAtual) => {
-        const isAlvo = (apString === 'A-101' || apString === 'A-201') && normalizarServicoLocal(servicoAtual) === 'agua';
         let motivoParada = '';
         
         const valorPersistido = obterLeituraAtualPersistida(leitura.id, apString, servicoAtual);
@@ -1526,11 +1519,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
         if (valStr === null || valStr === undefined || valStr === '') {
           motivoParada = 'VALOR VAZIO OU NULO NO LOCALSTORAGE/STATE';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1538,11 +1526,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
         if (isNaN(valNumerico)) {
           motivoParada = 'VALOR NÃO É NÚMERO VÁLIDO (NaN)';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: NaN\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1554,11 +1537,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
         if (!photoPathReal) {
           motivoParada = 'FOTO_PATH NÃO ENCONTRADO';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1617,15 +1595,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // ENFILEIRAR
         // -----------------------
         etapaAtual = 'ENFILEIRAR';
-        
-        if (isAlvo) {
-          rastreamentoPayload.push(
-            `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nfileName: ${localFileName}\nphotoPath: ${photoPathReal}\ndirectory: DATA\ndb_id: ${dbIdExistente}\nchegou_salvarLeituraOffline: SIM\nmotivo_se_nao: N/A`
-          );
-        }
 
         await salvarLeituraOffline(payload, null, localFileName);
-        totalProcessadas++;
       };
 
 
@@ -1648,20 +1619,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (servico === 'energia' || servico === 'todos') await processarServico(apString, 'energia');
       }
 
-      const filaDepoisSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-      
-      const msgFinalRastreamento = [
-        '[RASTREAMENTO PAYLOAD]',
-        '',
-        ...rastreamentoPayload,
-        '',
-        `Processadas: ${totalProcessadas}`,
-        `Fila antes: ${filaAntesSync}`,
-        `Fila depois: ${filaDepoisSync}`
-      ].join('\n\n');
-
-      await customAlert(msgFinalRastreamento, 'RESULTADO PAYLOAD');
-
       // -------------------------------------------------
       // EXPORTAR PARA WHATSAPP
       // -------------------------------------------------
@@ -1679,17 +1636,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         etapaAtual = 'FINALIZACAO';
         exibirToastSucesso();
         
-        // DIAGNÓSTICO: Verifica se o sync iniciou
-        const syncDebugRAW = localStorage.getItem('sync_debug');
-        if (!syncDebugRAW) {
-          await customAlert(`Fila: ${filaDepoisSync}\nItens foram enfileirados, mas sincronizarFilaEmBackground não foi disparado (localStorage vazio).`, 'SYNC NÃO INICIOU');
+        const filaDepoisSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
+        if (filaDepoisSync > 0 || !navigator.onLine) {
+          await customAlert('As leituras estão salvas no aparelho e serão sincronizadas automaticamente quando houver conexão.', 'Leituras salvas');
         } else {
-          try {
-            const syncDbg = JSON.parse(syncDebugRAW);
-            if (!syncDbg.iniciou) {
-              await customAlert(`Fila: ${filaDepoisSync}\nItens foram enfileirados, mas sincronizarFilaEmBackground não foi disparado (iniciou=false).`, 'SYNC NÃO INICIOU');
-            }
-          } catch(e) {}
+          await customAlert('Leituras e fotos sincronizadas com sucesso.', 'Leituras salvas');
         }
       }
     } catch (err) {

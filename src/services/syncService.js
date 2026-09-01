@@ -301,18 +301,7 @@ export async function sincronizarFilaEmBackground() {
           fileName: item?.fileName
         }));
 
-        try {
-          await customAlert(
-            `[SYNC ERRO]\n` +
-            `Etapa: ${etapaSync}\n` +
-            `Unidade: ${item?.unidade_id}\n` +
-            `Serviço: ${item?.servico}\n` +
-            `db_id: ${item?.db_id}\n` +
-            `fileName: ${item?.fileName}\n` +
-            `Erro: ${erroMsg}`,
-            'ERRO SALVAR LEITURAS'
-          );
-        } catch (_) {}
+        console.error(`[SYNC ERRO] Etapa: ${etapaSync} | Unidade: ${item?.unidade_id} | Erro: ${erroMsg}`);
       }
     }
 
