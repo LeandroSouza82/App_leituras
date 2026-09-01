@@ -38,7 +38,9 @@ const Header = ({
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
-  const [mostrarValor, setMostrarValor] = useState(true);
+  const [valoresOcultos, setValoresOcultos] = useState(() => {
+    return localStorage.getItem('dashboard_valores_ocultos') === 'true';
+  });
   const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
@@ -107,17 +109,19 @@ const Header = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setMostrarValor(!mostrarValor);
+              const novoEstado = !valoresOcultos;
+              setValoresOcultos(novoEstado);
+              localStorage.setItem('dashboard_valores_ocultos', String(novoEstado));
             }}
-            aria-label={mostrarValor ? 'Ocultar valor' : 'Mostrar valor'}
+            aria-label={valoresOcultos ? 'Mostrar valor' : 'Ocultar valor'}
             className="bg-transparent border-none outline-none shadow-none text-white p-1 hover:opacity-80 flex items-center justify-center cursor-pointer ml-auto"
             style={{ background: 'transparent', border: 'none', outline: 'none', boxShadow: 'none', padding: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }}
           >
-            {mostrarValor ? <Eye size={18} className="text-white" style={{ color: '#ffffff' }} /> : <EyeOff size={18} className="text-white" style={{ color: '#ffffff' }} />}
+            {!valoresOcultos ? <Eye size={18} className="text-white" style={{ color: '#ffffff' }} /> : <EyeOff size={18} className="text-white" style={{ color: '#ffffff' }} />}
           </button>
         </div>
         <strong className="header-valor-numero">
-          {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
+          {!valoresOcultos ? formatCurrency(totalValor) : '••••••'}
         </strong>
       </div>
 
@@ -153,7 +157,7 @@ const Header = ({
           aria-label="Ver faturamento detalhado"
         >
           <span className="header-metrica-label">Faturado</span>
-          <strong className="header-metrica-valor">{formatCurrency(totalValor)}</strong>
+          <strong className="header-metrica-valor">{!valoresOcultos ? formatCurrency(totalValor) : '••••••'}</strong>
         </div>
       </div>
 
