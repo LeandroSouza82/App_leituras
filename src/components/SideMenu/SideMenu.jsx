@@ -20,6 +20,7 @@ import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
+import { tituloLegal, ultimaAtualizacao, privacyAndTermsContent } from '../../content/legalContent';
 
 const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
@@ -217,21 +218,21 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
           <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }} onClick={(e) => e.stopPropagation()}>
             
             <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Política e Termos</h3>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>{tituloLegal}</h3>
               <button onClick={() => setShowPrivacyModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', color: '#64748b', cursor: 'pointer', padding: 0 }}>&times;</button>
             </div>
             
             <div style={{ padding: '20px', overflowY: 'auto', fontSize: '14px', color: '#475569', lineHeight: '1.6', textAlign: 'left' }}>
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>1. Termos de Uso</h4>
-              <p style={{ marginBottom: '16px' }}>Bem-vindo ao Fast Leituras. Ao utilizar o nosso aplicativo, concorda com a recolha e processamento dos dados estritamente necessários para a gestão de leituras de condomínios.</p>
+              {privacyAndTermsContent.map((section, index) => (
+                <div key={index}>
+                  <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>{section.titulo}</h4>
+                  {section.paragrafos.map((paragrafo, pIndex) => (
+                    <p key={pIndex} style={{ marginBottom: '16px' }}>{paragrafo}</p>
+                  ))}
+                </div>
+              ))}
               
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>2. Privacidade e Dados</h4>
-              <p style={{ marginBottom: '16px' }}>Os dados capturados, incluindo fotografias e localização GPS, são guardados localmente no seu dispositivo e sincronizados com segurança. Não partilhamos as suas informações com terceiros.</p>
-              
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>3. Funcionamento Offline</h4>
-              <p style={{ marginBottom: '16px' }}>O aplicativo guarda dados em cache (memória local) para garantir o funcionamento sem internet. Ao desinstalar o app ou limpar os dados, as leituras não sincronizadas poderão ser perdidas.</p>
-              
-              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '24px', textAlign: 'center' }}>Última atualização: Agosto de 2026</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '24px', textAlign: 'center' }}>Última atualização: {ultimaAtualizacao}</p>
             </div>
             
             <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0' }}>
