@@ -153,7 +153,7 @@ const Header = ({
           aria-label="Ver faturamento detalhado"
         >
           <span className="header-metrica-label">Faturado</span>
-          <strong className="header-metrica-valor">{formatCurrency(totalValor)}</strong>
+          <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
         </div>
       </div>
 
