@@ -13,3 +13,6 @@ android/**/build/
 *.jks
 # Propriedades locais de senha (evitar commit de senhas)
 **/key.properties
+.vercel
+.env*
+supabase/.temp/
