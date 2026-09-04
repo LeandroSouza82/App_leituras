@@ -12,6 +12,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
+import { customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import './Perfil.css';
 
 const FALLBACK_USER = {
@@ -181,6 +182,8 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
   };
 
   const handleSignOut = async () => {
+    if (!await customConfirm('Deseja realmente sair da sua conta?')) return;
+
     if (onLogout) {
       const saiu = await onLogout();
       if (saiu === false) {
