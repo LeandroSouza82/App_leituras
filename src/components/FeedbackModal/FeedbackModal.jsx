@@ -1,5 +1,6 @@
 import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageSquare, X, Image as ImageIcon, Send, Loader2 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
 import '../AReceberModal/AReceberModal.css'; // Herdando o design system do modal padrão (cabeçalho azul escuro, bordas)
@@ -118,7 +119,7 @@ const FeedbackModal = ({ isOpen, onClose }) => {
     setIsSubmitting(false);
   };
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-lista-container" style={{ maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
         
@@ -189,25 +190,27 @@ const FeedbackModal = ({ isOpen, onClose }) => {
               )}
             </div>
 
-            {/* BOTÃO MESTRE DE SUBMISSÃO */}
-            <button 
-              type="button" 
-              className="btn-3d btn-3d-submit"
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <><Loader2 size={20} className="animate-spin" style={{ marginRight: '8px' }}/> Enviando...</>
-              ) : (
-                <><Send size={20} style={{ marginRight: '8px' }}/> Enviar Feedback</>
-              )}
-            </button>
-            
           </div>
         </div>
 
+        <div className="a-receber-footer">
+          <button 
+            type="button" 
+            className="btn-3d btn-3d-submit"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <><Loader2 size={20} className="animate-spin" style={{ marginRight: '8px' }}/> Enviando...</>
+            ) : (
+              <><Send size={20} style={{ marginRight: '8px' }}/> Enviar Feedback</>
+            )}
+          </button>
+        </div>
+
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
