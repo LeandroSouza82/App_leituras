@@ -757,11 +757,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   const handleUnitClick = (apto, concluido) => {
     setActiveApto(apto);
-    // Decisão baseada no 'concluido' calculado no render, que já consolida
-    // fotosCapturadas + concluidosMemoria — fonte da verdade mais confiável.
-    if (concluido) {
+    // Verifica se realmente existe a foto no estado local
+    const temFoto = fotosCapturadas[apto] && fotosCapturadas[apto][tipoMedicaoAtivo];
+    
+    if (concluido && temFoto) {
       setIsPreviewOpen(true);
     } else {
+      // Se não tem foto (mesmo se 'concluido' constar no render/storage), 
+      // força a reabertura da câmera
       handleDispararCamera(apto);
     }
   };
@@ -773,76 +776,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     try {
       const unidadeId = String(overrideApto || activeApto).trim();
-      // 1. CORREÇÃO CRÍTICA: Forçar maiúsculo para bater EXATAMENTE com o arquivo salvo no Android
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
-
-      const safeCondName = sanitizeName(leitura.nome);
-      const pastaCondominio = `FastLeituras/${safeCondName}`;
-      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
-      const fullNewPath = `${pastaCondominio}/${newFileName}`;
-
-      try {
-        await Filesystem.deleteFile({
-          path: fullNewPath,
-          directory: Directory.Cache
-        });
-      } catch (e) {
-        // Ignora se não existir
-      }
-
-      // 2. BUSCA ABRANGENTE NO FORMATO ANTIGO (Fallback)
-      const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
-      for (const file of filesAntigos) {
-        if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
-          await StorageService.deleteFile(file);
-        }
-      }
-
-      // 3. Remove entradas órfãs do array localStorage['fila_sync_auto'] e ['leituras_pendentes']
-      try {
-        ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const filaAtual = JSON.parse(raw);
-            if (Array.isArray(filaAtual) && filaAtual.length > 0) {
-              const filaFiltrada = filaAtual.filter((item) => {
-                const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
-                const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
-                return !(mesmaUnidade && mesmoServico);
-              });
-              localStorage.setItem(key, JSON.stringify(filaFiltrada));
-            }
-          }
-        });
-      } catch (storageErr) {
-      }
-
-      // 4. Tenta remover do Supabase (falha não bloqueia)
-      if (supabase) {
-        try {
-          await supabase.from('leituras_detalhes').delete().match({
-            unidade_id: unidadeId,
-            servico: tipoServico,
-          });
-        } catch (supaErr) {
-        }
-      }
-
-      // 5. Limpa variáveis de valor digitado e marcação de conclusão
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
+
+      // 1. LIMPEZA IMEDIATA (LOCAL-FIRST) PARA NÃO BLOQUEAR A UI
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
 
-      // 6. Atualiza a Tela (UI)
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
@@ -852,9 +799,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (novo[unidadeId]) {
           delete novo[unidadeId][servicoKey];
           delete novo[unidadeId][tipoServico];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
@@ -863,15 +808,62 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
 
       setIsPreviewOpen(false);
       setActiveApto(null);
+
+      // 2. EXCLUSÃO FÍSICA DO ARQUIVO (Ainda no fluxo local, sem depender de internet)
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
+      const fullNewPath = `${pastaCondominio}/${newFileName}`;
+
+      try {
+        await Filesystem.deleteFile({ path: fullNewPath, directory: Directory.Cache });
+      } catch (e) {
+        // Ignora se não existir, não deve reverter a UI
+      }
+
+      // 3. SINCRONIZAÇÃO EM BACKGROUND (Arquivos Antigos, Fila e Supabase)
+      (async () => {
+        try {
+          const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
+          for (const file of filesAntigos) {
+            if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
+              await StorageService.deleteFile(file);
+            }
+          }
+
+          ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const filaAtual = JSON.parse(raw);
+              if (Array.isArray(filaAtual) && filaAtual.length > 0) {
+                const filaFiltrada = filaAtual.filter((item) => {
+                  const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
+                  const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
+                  return !(mesmaUnidade && mesmoServico);
+                });
+                localStorage.setItem(key, JSON.stringify(filaFiltrada));
+              }
+            }
+          });
+
+          if (supabase) {
+            await supabase.from('leituras_detalhes').delete().match({
+              unidade_id: unidadeId,
+              servico: tipoServico,
+            });
+          }
+        } catch (bgErr) {
+          console.error('Erro em background ao limpar dados remotos/sync da foto:', bgErr);
+        }
+      })();
+
     } catch (err) {
       console.error('Erro ao excluir foto:', err);
       await customAlert('Ocorreu um erro ao excluir a foto. Tente novamente.');
@@ -1501,19 +1493,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const mes = leitura?.mes_referencia || (new Date().getMonth() + 1);
 
       // -------------------------------------------------
-      // RASTREAMENTO CIRÚRGICO PAYLOAD
-      // -------------------------------------------------
-      const rastreamentoPayload = [];
-      let totalProcessadas = 0;
-      const filaAntesSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-
-      // -------------------------------------------------
       // PROCESSA CADA SERVIÇO
       // -------------------------------------------------
       const processarServico = async (apString, servicoAtual) => {
-        const isAlvo = (apString === 'A-101' || apString === 'A-201') && normalizarServicoLocal(servicoAtual) === 'agua';
-        let motivoParada = '';
-        
         const valorPersistido = obterLeituraAtualPersistida(leitura.id, apString, servicoAtual);
 
         const servicoKey = normalizarServicoLocal(servicoAtual);
@@ -1525,24 +1507,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const valStr = valorPersistido ?? valorState;
 
         if (valStr === null || valStr === undefined || valStr === '') {
-          motivoParada = 'VALOR VAZIO OU NULO NO LOCALSTORAGE/STATE';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
         const valNumerico = parseFloat(String(valStr).replace(',', '.'));
 
         if (isNaN(valNumerico)) {
-          motivoParada = 'VALOR NÃO É NÚMERO VÁLIDO (NaN)';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: NaN\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1553,12 +1523,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const photoPathReal = chaveLocal ? localStorage.getItem(`foto_path_${chaveLocal}`) : null;
 
         if (!photoPathReal) {
-          motivoParada = 'FOTO_PATH NÃO ENCONTRADO';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1617,15 +1581,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // ENFILEIRAR
         // -----------------------
         etapaAtual = 'ENFILEIRAR';
-        
-        if (isAlvo) {
-          rastreamentoPayload.push(
-            `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nfileName: ${localFileName}\nphotoPath: ${photoPathReal}\ndirectory: DATA\ndb_id: ${dbIdExistente}\nchegou_salvarLeituraOffline: SIM\nmotivo_se_nao: N/A`
-          );
-        }
 
         await salvarLeituraOffline(payload, null, localFileName);
-        totalProcessadas++;
       };
 
 
@@ -1637,9 +1594,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         throw new Error('Nenhuma unidade disponível para montar o payload');
       }
 
-      // Removemos os alertas anteriores de auditoria para focar no rastreamento de payload
-
-
       // Loop real por unidades
       for (const unidadeObj of listaDeUnidades) {
         const apString = String(unidadeObj.unidade).trim();
@@ -1649,18 +1603,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       const filaDepoisSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-      
-      const msgFinalRastreamento = [
-        '[RASTREAMENTO PAYLOAD]',
-        '',
-        ...rastreamentoPayload,
-        '',
-        `Processadas: ${totalProcessadas}`,
-        `Fila antes: ${filaAntesSync}`,
-        `Fila depois: ${filaDepoisSync}`
-      ].join('\n\n');
-
-      await customAlert(msgFinalRastreamento, 'RESULTADO PAYLOAD');
 
       // -------------------------------------------------
       // EXPORTAR PARA WHATSAPP
