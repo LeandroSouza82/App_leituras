@@ -212,7 +212,18 @@ export async function sincronizarFilaEmBackground() {
                 .replace(/[^a-zA-Z0-9._-]/g, '_');
             };
             const nomeStorage = sanitizarNomeStorage(item.fileName);
-            const remotePath = `leituras/${Date.now()}_${nomeStorage}`;
+            
+            let remotePath = item.remotePath;
+            if (!remotePath) {
+              remotePath = `leituras/${Date.now()}_${nomeStorage}`;
+              item.remotePath = remotePath;
+              const filaAtual = readFilaSync();
+              const idx = filaAtual.findIndex(f => f.id === item.id);
+              if (idx !== -1) {
+                filaAtual[idx].remotePath = remotePath;
+                writeFilaSync(filaAtual);
+              }
+            }
 
             let uploadSuccess = false;
             let lastUploadError = null;
