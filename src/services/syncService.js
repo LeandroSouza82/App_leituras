@@ -2,7 +2,6 @@ import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
 import { sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
-import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 
 /**
  * syncService - Arquitetura Offline-First com Sincronização Automática em Background e Auditoria Visual.
@@ -300,19 +299,6 @@ export async function sincronizarFilaEmBackground() {
           db_id: item?.db_id,
           fileName: item?.fileName
         }));
-
-        try {
-          await customAlert(
-            `[SYNC ERRO]\n` +
-            `Etapa: ${etapaSync}\n` +
-            `Unidade: ${item?.unidade_id}\n` +
-            `Serviço: ${item?.servico}\n` +
-            `db_id: ${item?.db_id}\n` +
-            `fileName: ${item?.fileName}\n` +
-            `Erro: ${erroMsg}`,
-            'ERRO SALVAR LEITURAS'
-          );
-        } catch (_) {}
       }
     }
 
