@@ -17,6 +17,24 @@ const sanitizeName = (name) => {
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
 };
 
+const extractStoragePath = (urlOrPath) => {
+  if (!urlOrPath || typeof urlOrPath !== 'string') return null;
+  const withoutQuery = urlOrPath.split('?')[0];
+  const match = withoutQuery.match(/\/public\/fotos_leituras\/(.+)$/);
+  let path = match ? match[1] : withoutQuery;
+  
+  if (!match) {
+    const match2 = path.match(/fotos_leituras\/(.+)$/);
+    if (match2) path = match2[1];
+  }
+  
+  try {
+    return decodeURIComponent(path);
+  } catch (e) {
+    return path;
+  }
+};
+
 const BackupFotosMenu = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('offline'); // 'offline' | 'online'
 
@@ -86,10 +104,10 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
           localStorage.setItem(chaveFila, JSON.stringify(novaFila));
         } catch(e) {}
 
-        if (item.foto_url && typeof item.foto_url === 'string' && item.foto_url.includes('fotos_leituras')) {
-          const match = item.foto_url.match(/fotos_leituras\/(.+)$/);
-          if (match && match[1]) {
-             await supabase.storage.from('fotos_leituras').remove([match[1]]);
+        if (item.foto_url && typeof item.foto_url === 'string') {
+          const path = extractStoragePath(item.foto_url);
+          if (path) {
+             await supabase.storage.from('fotos_leituras').remove([path]);
           }
         }
         
@@ -129,19 +147,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
 
         // 1. Apagar as fotos do Storage
         const pathsParaDeletar = backupAtual.arquivos
-          .map(arq => {
-            if (arq.foto_url && typeof arq.foto_url === 'string') {
-              const match = arq.foto_url.match(/\/public\/fotos_leituras\/(.+)$/);
-              if (match && match[1]) {
-                try {
-                  return decodeURIComponent(match[1]);
-                } catch (e) {
-                  return match[1];
-                }
-              }
-            }
-            return null;
-          })
+          .map(arq => extractStoragePath(arq.foto_url))
           .filter(Boolean);
 
         if (pathsParaDeletar.length > 0) {
@@ -441,6 +447,37 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       
       // Filter photos that have a foto_url (somente banco online real)
       const dbPhotos = (data || []).filter(item => item.foto_url);
+
+      const pathsParaAssinar = dbPhotos
+        .map(item => extractStoragePath(item.foto_url))
+        .filter(Boolean);
+
+      if (pathsParaAssinar.length > 0) {
+        const uniquePaths = [...new Set(pathsParaAssinar)];
+        try {
+          const { data: signedUrlsData, error: signedError } = await supabase.storage
+            .from('fotos_leituras')
+            .createSignedUrls(uniquePaths, 3600);
+            
+          if (!signedError && signedUrlsData) {
+            const urlMap = {};
+            signedUrlsData.forEach(item => {
+              if (item.signedUrl) {
+                urlMap[item.path] = item.signedUrl;
+              }
+            });
+            
+            dbPhotos.forEach(item => {
+              const path = extractStoragePath(item.foto_url);
+              if (path && urlMap[path]) {
+                item.foto_signed_url = urlMap[path];
+              }
+            });
+          }
+        } catch (e) {
+          console.error("Erro ao gerar signed URLs", e);
+        }
+      }
       
       // Merge with pending items from syncService
       const filaSync = readFilaSync();
@@ -515,8 +552,13 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
           });
           pathOrUri = savedFile.uri || savedFile.path;
         } else {
+          const urlToDownload = item.foto_signed_url;
+          if (!urlToDownload) {
+             console.error(`Falha ao compartilhar: arquivo sem signed URL (${item.id})`);
+             continue;
+          }
           const downloadResult = await Filesystem.downloadFile({
-            url: foto_url,
+            url: urlToDownload,
             path: tempFileName,
             directory: Directory.Cache
           });
@@ -542,8 +584,12 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     }
   };
 
-  const renderImage = (foto_url) => {
-    if (!foto_url) return null;
+  const renderImage = (item) => {
+    const foto_url = item.foto_signed_url;
+    if (!foto_url) {
+      console.warn(`Imagem indisponível (sem signed URL): ${item.id}`);
+      return <div className="online-photo-error">Indisponível</div>;
+    }
     try {
       const isBase64 = !foto_url.startsWith('http') && foto_url.length > 100;
       const src = isBase64 && !foto_url.startsWith('data:image') 
@@ -758,8 +804,10 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                                   className="online-photo-img-container" 
                                   style={{ position: 'relative', width: '100%', height: '100%', cursor: item.isPending ? 'default' : 'pointer', backgroundColor: item.isPending ? '#f8fafc' : 'transparent', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
                                   onClick={() => {
-                                    if (!item.isPending && item.foto_url) {
-                                      setFotoAmpliada(item.foto_url);
+                                    if (!item.isPending && item.foto_signed_url) {
+                                      setFotoAmpliada(item.foto_signed_url);
+                                    } else if (!item.isPending) {
+                                      console.warn(`Não é possível ampliar: sem signed URL (${item.id})`);
                                     }
                                   }}
                                   onTouchStart={() => startLongPress('online', item)}
@@ -774,8 +822,39 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                                       <CloudUpload size={20} className="spin-slow" />
                                     </div>
                                   ) : (
-                                    renderImage(item.foto_url)
+                                    renderImage(item)
                                   )}
+                                  
+                                  {!item.isPending && (
+                                    <button
+                                      type="button"
+                                      title="Compartilhar foto"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleShareWhatsAppOnline(item);
+                                      }}
+                                      disabled={isSharing || !item.foto_signed_url}
+                                      style={{
+                                        position: 'absolute',
+                                        top: '4px',
+                                        left: '4px',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                        border: 'none',
+                                        borderRadius: '50%',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                        cursor: 'pointer',
+                                        zIndex: 10,
+                                        color: '#0284c7'
+                                      }}
+                                    >
+                                      <Share2 size={14} />
+                                    </button>
+                                  )}
+
                                   <div style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: 'white', borderRadius: '50%', padding: '2px', display: 'flex', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
                                     {item.isPending ? <Clock size={12} color="#f59e0b" title="Pendente na fila" /> : <Cloud size={12} color="#10b981" title="Nuvem" />}
                                   </div>
