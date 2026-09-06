@@ -31,6 +31,8 @@ import { Capacitor } from '@capacitor/core';
 import { logoutGoogleNativo } from './services/googleAuthService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
+import ConfirmacaoEmail from './pages/ConfirmacaoEmail/ConfirmacaoEmail';
+
 const MainApp = ({ onLogout }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -536,6 +538,10 @@ const App = () => {
       }
     };
   }, []);
+
+  if (window.location.pathname === '/confirmacao-email') {
+    return <ConfirmacaoEmail />;
+  }
 
   if (showSplash) {
     return <SplashScreen onFinish={handleSplashFinish} />;

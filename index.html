@@ -6,6 +6,20 @@
     <title>Fast Leituras</title>
   </head>
   <body>
+    <script>
+      (function() {
+        if (window.location.pathname === '/confirmacao-email') {
+          var query = new URLSearchParams(window.location.search);
+          var hashStr = window.location.hash;
+          var hash = new URLSearchParams(hashStr.startsWith('#') ? hashStr.slice(1) : hashStr);
+          var errorDescription = query.get('error_description') || hash.get('error_description');
+          if (errorDescription) {
+            sessionStorage.setItem('fast_leituras_confirmacao_erro', 'true');
+          }
+          window.history.replaceState({}, document.title, '/confirmacao-email');
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

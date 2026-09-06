@@ -204,15 +204,24 @@ const Login = ({ onLoginSuccess }) => {
     const nomeNormalizado = nomeCompleto.trim();
     const celularNormalizado = celular.trim();
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (modoCadastro) {
-      if (!nomeNormalizado || !celularNormalizado || !emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+      if (!nomeNormalizado || !celularNormalizado || !emailNormalizado || !emailRegex.test(emailNormalizado) || senha.length < 6) {
         setFeedback({
           tipo: 'erro',
           mensagem: 'Informe nome completo, celular, e-mail válido e uma senha com pelo menos 6 caracteres.',
         });
         return;
       }
-    } else if (!emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+      if (nomeNormalizado.includes('@') || emailRegex.test(nomeNormalizado)) {
+        setFeedback({
+          tipo: 'erro',
+          mensagem: 'Informe seu nome completo, não um endereço de e-mail.',
+        });
+        return;
+      }
+    } else if (!emailNormalizado || !emailRegex.test(emailNormalizado) || senha.length < 6) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe um e-mail válido e uma senha com pelo menos 6 caracteres.' });
       return;
     }
@@ -231,10 +240,10 @@ const Login = ({ onLoginSuccess }) => {
           email: emailNormalizado,
           password: senha,
           options: {
+            emailRedirectTo: 'https://fastleitura.appviper.com.br/confirmacao-email',
             data: {
               full_name: nomeNormalizado,
               phone: celularNormalizado,
-              role: 'Leiturista',
             },
           },
         });
