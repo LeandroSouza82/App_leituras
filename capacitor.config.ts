@@ -5,9 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Fast Leituras',
   webDir: 'dist',
   server: {
-    cleartext: true,
-    androidScheme: 'http',
-    allowNavigation: ['*']
+    androidScheme: 'https'
   },
   plugins: {
     GoogleAuth: {
