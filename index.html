@@ -21,6 +21,12 @@
       })();
     </script>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module">
+      if (window.location.pathname === '/confirmacao-email') {
+        import('/src/confirmacaoEmailMain.jsx');
+      } else {
+        import('/src/main.jsx');
+      }
+    </script>
   </body>
 </html>
