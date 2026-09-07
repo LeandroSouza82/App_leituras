@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import { CheckCircle, XCircle } from 'lucide-react';
 import './ConfirmacaoEmail.css';
 
+const isMobileAndroid = () => /Android/i.test(navigator.userAgent);
+
 const ConfirmacaoEmail = () => {
   const [hasError, setHasError] = useState(false);
+  const [mostrarOrientacao, setMostrarOrientacao] = useState(false);
 
   useEffect(() => {
     const errorFlag = sessionStorage.getItem('fast_leituras_confirmacao_erro');
@@ -14,7 +17,15 @@ const ConfirmacaoEmail = () => {
   }, []);
 
   const handleVoltar = () => {
-    window.location.href = '/';
+    if (isMobileAndroid()) {
+      // Tenta abrir o app pelo deep link já registrado no AndroidManifest.xml
+      window.location.href = 'com.fastleituras.app://';
+      // Se o app não for encontrado/aberto, o navegador permanece nesta página
+      // (não há fallback de redirecionamento para evitar tela branca)
+    } else {
+      // Desktop: apenas orienta o usuário; não navega para lugar algum
+      setMostrarOrientacao(true);
+    }
   };
 
   return (
@@ -45,9 +56,15 @@ const ConfirmacaoEmail = () => {
               </p>
             </>
           )}
-          <button className="conf-email-button" onClick={handleVoltar}>
-            Ir para o FAST LEITURAS
-          </button>
+          {mostrarOrientacao ? (
+            <p className="conf-email-subtext">
+              E-mail confirmado com sucesso. Abra o FAST LEITURAS no seu celular para continuar.
+            </p>
+          ) : (
+            <button className="conf-email-button" onClick={handleVoltar}>
+              Ir para o FAST LEITURAS
+            </button>
+          )}
         </div>
         <footer className="conf-email-footer">
           FAST LEITURAS<br/>

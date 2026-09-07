@@ -6,6 +6,15 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { loginGoogleNativo } from '../services/googleAuthService';
 import './Login.css';
 
+const traduzirErroAuth = (err) => {
+  const msg = (err?.message || '').toLowerCase();
+  if (msg.includes('error sending confirmation email')) return 'Não foi possível enviar o e-mail de confirmação. Tente novamente.';
+  if (msg.includes('email rate limit exceeded'))        return 'Limite temporário de envio de e-mails atingido. Aguarde alguns minutos e tente novamente.';
+  if (msg.includes('invalid login credentials'))       return 'E-mail ou senha incorretos.';
+  if (msg.includes('email not confirmed'))             return 'Confirme seu e-mail antes de entrar.';
+  return 'Não foi possível concluir a operação. Tente novamente.';
+};
+
 const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   const [etapa, setEtapa] = useState(1);
   const [emailRecuperacao, setEmailRecuperacao] = useState('');
@@ -32,7 +41,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
       setEtapa(2);
       setFeedback({ tipo: 'sucesso', mensagem: 'Código de recuperação enviado para seu e-mail.' });
     } catch (err) {
-      setFeedback({ tipo: 'erro', mensagem: err.message || 'Falha ao enviar código.' });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }
@@ -66,7 +75,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
       setFeedback({ tipo: 'sucesso', mensagem: 'Senha alterada com sucesso! Você já pode entrar.' });
       setTimeout(() => onClose(), 2000);
     } catch (err) {
-      setFeedback({ tipo: 'erro', mensagem: err.message || 'Falha ao redefinir senha.' });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }
@@ -285,10 +294,7 @@ const Login = ({ onLoginSuccess }) => {
 
       throw new Error('Sessão não foi retornada pelo Supabase.');
     } catch (err) {
-      setFeedback({
-        tipo: 'erro',
-        mensagem: err.message || 'Falha ao autenticar. Verifique seus dados.',
-      });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }
