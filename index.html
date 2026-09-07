@@ -8,7 +8,9 @@
   <body>
     <script>
       (function() {
-        if (window.location.pathname === '/confirmacao-email') {
+        var path = window.location.pathname;
+
+        if (path === '/confirmacao-email') {
           var query = new URLSearchParams(window.location.search);
           var hashStr = window.location.hash;
           var hash = new URLSearchParams(hashStr.startsWith('#') ? hashStr.slice(1) : hashStr);
@@ -22,8 +24,11 @@
     </script>
     <div id="root"></div>
     <script type="module">
-      if (window.location.pathname === '/confirmacao-email') {
+      var path = window.location.pathname;
+      if (path === '/confirmacao-email') {
         import('/src/confirmacaoEmailMain.jsx');
+      } else if (path === '/redefinir-senha') {
+        import('/src/redefinirSenhaMain.jsx');
       } else {
         import('/src/main.jsx');
       }

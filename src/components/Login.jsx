@@ -36,7 +36,9 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
     setFeedback(null);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperacao);
+      const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperacao, {
+        redirectTo: 'https://fastleitura.appviper.com.br/redefinir-senha',
+      });
       if (error) throw error;
       setEtapa(2);
       setFeedback({ tipo: 'sucesso', mensagem: 'Código de recuperação enviado para seu e-mail.' });

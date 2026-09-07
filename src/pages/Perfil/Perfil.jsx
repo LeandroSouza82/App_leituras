@@ -205,9 +205,15 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+    if (!await customConfirm('Deseja realmente alterar sua senha de acesso?')) return;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: 'https://fastleitura.appviper.com.br/redefinir-senha',
+    });
     onShowToast(
-      error ? 'Não foi possível enviar o e-mail de alteração.' : 'Confira seu e-mail para alterar a senha.',
+      error
+        ? 'Não foi possível enviar o e-mail de alteração de senha. Tente novamente.'
+        : 'Enviamos um e-mail para você criar uma nova senha.',
       error ? 'error' : 'success',
     );
   };
