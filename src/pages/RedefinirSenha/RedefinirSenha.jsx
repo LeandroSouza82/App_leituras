@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, ShieldCheck, XCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../../services/supabase';
+import appLogo from '../../../assets/icon-foreground.png';
 import '../ConfirmacaoEmail/ConfirmacaoEmail.css';
 import './RedefinirSenha.css';
 
@@ -112,7 +113,7 @@ const RedefinirSenha = () => {
 
           {etapa === 'formulario' && (
             <>
-              <ShieldCheck className="conf-email-icon conf-email-icon-success" size={64} />
+              <img src={appLogo} alt="FAST LEITURAS Logo" className="rs-logo" />
               <h1 className="conf-email-title">Criar nova senha</h1>
               <p className="conf-email-text">Digite e confirme sua nova senha de acesso.</p>
 

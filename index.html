@@ -27,9 +27,17 @@
       var path = window.location.pathname;
       if (path === '/confirmacao-email') {
         import('/src/confirmacaoEmailMain.jsx');
-      } else if (path === '/redefinir-senha') {
+      }
+    </script>
+    <script type="module">
+      var path = window.location.pathname;
+      if (path === '/redefinir-senha') {
         import('/src/redefinirSenhaMain.jsx');
-      } else {
+      }
+    </script>
+    <script type="module">
+      var path = window.location.pathname;
+      if (path !== '/confirmacao-email' && path !== '/redefinir-senha') {
         import('/src/main.jsx');
       }
     </script>
