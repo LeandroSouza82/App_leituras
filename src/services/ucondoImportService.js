@@ -90,11 +90,113 @@ export const UCondoImportService = {
   },
 
   /**
-   * Extrai estritamente a coluna de Unidades de um arquivo XLSX/CSV
-   * @param {ArrayBuffer|Uint8Array|string} fileData - Conteúdo do arquivo
-   * @returns {Array<string>} Lista de unidades extraídas no formato original literal
+   * Converte o tipo de leitura normalizado para o código de serviço usado no localStorage e na fila.
+   * @param {string} tipoNormalizado - Ex: "Somente Água", "Somente Gás", "Energia Elétrica", "gua" (bruto)
+   * @returns {'AGUA'|'GAS'|'ENERGIA'}
    */
-  extrairUnidades(fileData) {
+  normalizarTipoLeituraParaServico(tipoNormalizado) {
+    const t = String(tipoNormalizado || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    if (t.includes('gas') || t === 'somente gas') return 'GAS';
+    if (t.includes('energia') || t === 'energia eletrica') return 'ENERGIA';
+    return 'AGUA'; // padrão seguro para água ou água+gás
+  },
+
+  /**
+   * Determina se uma string normalizada de cabeçalho corresponde à coluna de Unidade.
+   * @param {string} str - String já normalizada (NFD + lowercase + trim)
+   * @returns {boolean}
+   */
+  _ehColunaUnidade(str) {
+    if (!str) return false;
+    // Aliases inequivocamente de unidade: includes para variações com sufixos/prefixos
+    if (str.includes('unidade')) return true;      // unidade, unidades, unidade (m²), unidade *
+    if (str.includes('apartamento')) return true;  // apartamento, numero apartamento
+    if (str.includes('apto')) return true;         // apto, apto., nº apto, numero apto
+    // Aliases curtos — exact match ou prefixo claro para evitar falso positivo
+    if (str === 'ap' || str === 'ap.' || str === 'ap ') return true;
+    if (str === 'unid') return true;
+    if (str === 'numero' || str === 'numero apto' || str === 'numero do apto') return true;
+    if (str === 'identificador') return true;
+    if (str === 'n apto' || str === 'no apto' || str === 'no apartamento') return true;
+    // NÃO incluir: 'bloco', 'codigo', 'cod', 'n', 'num' — muito genéricos
+    return false;
+  },
+
+  /**
+   * Determina se uma string normalizada de cabeçalho corresponde à coluna de Leitura Anterior.
+   * @param {string} str - String já normalizada (NFD + lowercase + trim)
+   * @returns {boolean}
+   */
+  _ehColunaLeituraAnterior(str) {
+    if (!str) return false;
+    if (str.includes('anterior')) return true;          // leitura anterior, leitura ant, anterior
+    if (str.includes('fechamento')) return true;        // fechamento (relatório uCondo)
+    if (str === 'medicao anterior') return true;
+    if (str === 'medicao ant') return true;
+    if (str === 'leitura') return true;                 // quando há somente "Leitura" sem "Atual"
+    // IMPORTANTE: só aceitar 'leitura' sozinho se NÃO existir coluna 'leitura atual' na mesma linha
+    // — essa lógica é aplicada em extrairUnidadesELeituras() com desempate
+    return false;
+  },
+
+  /**
+   * Tenta extrair {ano, mes} de um cabeçalho datado no formato:
+   *   "Leitura de Jul/2026", "Leitura de Agosto/2026", "Leitura de 08/2026"
+   *   "Leitura 08/2026" (sem "de"), variações com espaço como separador.
+   * Retorna null se não for um cabeçalho de leitura datada válido.
+   * @param {string} str - String já normalizada (NFD + lowercase + trim)
+   * @returns {{ano: number, mes: number}|null}
+   */
+  _extrairDataColunaLeitura(str) {
+    if (!str) return null;
+    // Aceita 'leitura de ...' e também 'leitura ...' (sem 'de')
+    // Rejeita inequivocamente: anterior, atual, fechamento, consumo, valor
+    if (!str.startsWith('leitura')) return null;
+    if (str.includes('anterior') || str.includes('fechamento') ||
+        str.includes('atual') || str.includes('consumo') || str.includes('valor')) return null;
+
+    // Extrai a parte após 'leitura de ' ou 'leitura '
+    let parte = str.replace(/^leitura\s+de\s+/, '').replace(/^leitura\s+/, '').trim();
+
+    // Tabela: 3 primeiros chars do nome → número (cobre abreviados e completos)
+    const MESES = {
+      jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,
+      jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
+    };
+
+    // Formato: nome_mes separado de ano por '/', '-' ou espaço
+    // Aceita: jul/2026  agosto/2026  agosto 2026  jul-2026
+    const matchNome = parte.match(/^([a-z]{3,})[\s\/\-](\d{2,4})$/);
+    if (matchNome) {
+      const mesAbrev = matchNome[1].substring(0, 3);
+      const mesNum = MESES[mesAbrev];
+      if (!mesNum) return null; // ex: 'foo' → null
+      let ano = parseInt(matchNome[2], 10);
+      if (ano < 100) ano += 2000;
+      return { ano, mes: mesNum };
+    }
+
+    // Formato numérico: 08/2026  08-2026  08 2026
+    const matchNum = parte.match(/^(\d{1,2})[\s\/\-](\d{2,4})$/);
+    if (matchNum) {
+      const mes = parseInt(matchNum[1], 10);
+      let ano = parseInt(matchNum[2], 10);
+      if (ano < 100) ano += 2000;
+      if (mes < 1 || mes > 12) return null;
+      return { ano, mes };
+    }
+
+    return null;
+  },
+
+  /**
+   * Extrai pares {unidade, leituraAnterior?} de um arquivo XLSX/CSV.
+   * Preserva a associação linha-a-linha para garantir que a leitura pertence à unidade correta.
+   *
+   * @param {ArrayBuffer|Uint8Array|string} fileData - Conteúdo do arquivo
+   * @returns {Array<{unidade: string, leituraAnterior: number|null}>}
+   */
+  extrairUnidadesELeituras(fileData) {
     if (!fileData) {
       throw new Error('Nenhum dado de arquivo fornecido para importação.');
     }
@@ -127,7 +229,6 @@ export const UCondoImportService = {
     }
 
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    // Extrai a matriz bruta completa (array de arrays) para ignorar linhas de títulos/offset do uCondo
     const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
 
     if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
@@ -136,54 +237,97 @@ export const UCondoImportService = {
 
     let headerIndex = -1;
     let columnUnidadeIndex = -1;
+    let columnLeituraIndex = -1; // -1 = não encontrada
 
-    // 1. Busca dinâmica nas primeiras 25 linhas por qualquer célula contendo "unidade", "apto", "apartamento", etc.
+    // 1. Busca dinâmica nas primeiras 25 linhas
     for (let i = 0; i < Math.min(25, rawData.length); i++) {
       const row = rawData[i];
       if (!row || !Array.isArray(row)) continue;
 
-      const colIndex = row.findIndex(cell => {
-        if (cell === null || cell === undefined) return false;
-        const str = String(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        return (
-          str.includes('unidade') ||
-          str === 'apto' ||
-          str === 'apartamento' ||
-          str === 'unid' ||
-          str === 'ap' ||
-          str === 'numero' ||
-          str === 'identificador' ||
-          str === 'unidade *' ||
-          str === 'unidade*'
-        );
-      });
+      let unidadeIdx = -1;
+      let anteriorIdx = -1;
+      let leituraGenicaIdx = -1;  // apenas 'leitura' sem qualificador
+      let leituraAtualIdx = -1;   // 'leitura atual' — desempate para não usar como anterior
+      // Colunas datadas: {idx, ano, mes}
+      const colunasDatadas = [];
 
-      if (colIndex !== -1) {
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (cell === null || cell === undefined) continue;
+        const str = String(cell).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (str === '') continue;
+
+        if (unidadeIdx === -1 && this._ehColunaUnidade(str)) {
+          unidadeIdx = c;
+          continue;
+        }
+        // Detecta 'leitura atual' antes de 'leitura' genérico
+        if ((str === 'leitura atual' || str === 'atual' || str.startsWith('leitura atual'))) {
+          leituraAtualIdx = c;
+          continue;
+        }
+        // Tenta cabeçalho datado: "Leitura de Jul/2026"
+        const dataCol = this._extrairDataColunaLeitura(str);
+        if (dataCol) {
+          colunasDatadas.push({ idx: c, ...dataCol });
+          continue;
+        }
+        if (anteriorIdx === -1 && this._ehColunaLeituraAnterior(str) && str !== 'leitura') {
+          anteriorIdx = c;
+          continue;
+        }
+        if (str === 'leitura') {
+          leituraGenicaIdx = c;
+        }
+      }
+
+      if (unidadeIdx !== -1) {
         headerIndex = i;
-        columnUnidadeIndex = colIndex;
+        columnUnidadeIndex = unidadeIdx;
+        // Resolve coluna de leitura:
+        // Prioridade 1: colunas datadas → selecionar a de DATA MAIS RECENTE (independente da posição)
+        if (colunasDatadas.length > 0) {
+          colunasDatadas.sort((a, b) => a.ano !== b.ano ? b.ano - a.ano : b.mes - a.mes);
+          columnLeituraIndex = colunasDatadas[0].idx;
+        } else if (anteriorIdx !== -1) {
+          // Prioridade 2: alias inequívoco de leitura anterior
+          columnLeituraIndex = anteriorIdx;
+        } else if (leituraGenicaIdx !== -1 && leituraAtualIdx === -1) {
+          // Prioridade 3: 'leitura' genérico só quando não há 'leitura atual'
+          columnLeituraIndex = leituraGenicaIdx;
+        }
         break;
       }
     }
 
-    let unidadesExtraidas = [];
+    let pares = [];
 
     if (headerIndex !== -1 && columnUnidadeIndex !== -1) {
-      // Extrai apenas as linhas abaixo do cabeçalho detectado
       for (let i = headerIndex + 1; i < rawData.length; i++) {
         const row = rawData[i];
         if (!row || !Array.isArray(row)) continue;
         const cellVal = row[columnUnidadeIndex];
-        if (cellVal !== undefined && cellVal !== null) {
-          const nomeUnidade = String(cellVal).trim();
-          if (nomeUnidade !== '' && !nomeUnidade.toLowerCase().includes('total') && !nomeUnidade.toLowerCase().includes('legenda')) {
-            unidadesExtraidas.push(nomeUnidade);
+        if (cellVal === undefined || cellVal === null) continue;
+        const nomeUnidade = String(cellVal).trim();
+        if (!nomeUnidade || nomeUnidade.toLowerCase().includes('total') || nomeUnidade.toLowerCase().includes('legenda')) continue;
+
+        let leituraAnterior = null;
+        if (columnLeituraIndex !== -1) {
+          const cellLeit = row[columnLeituraIndex];
+          if (cellLeit !== undefined && cellLeit !== null && String(cellLeit).trim() !== '') {
+            // Trata vírgula decimal e zeros à esquerda
+            const valorStr = String(cellLeit).trim().replace(/[^0-9,.-]/g, '').replace(',', '.');
+            const num = parseFloat(valorStr);
+            if (!isNaN(num)) leituraAnterior = num;
           }
         }
+
+        pares.push({ unidade: nomeUnidade, leituraAnterior });
       }
     }
 
-    // 2. Fallback de varredura por padrões se não encontrou cabeçalho explícito
-    if (unidadesExtraidas.length === 0) {
+    // 2. Fallback de varredura por padrões (só unidades, sem leitura) se cabeçalho não encontrado
+    if (pares.length === 0) {
       rawData.forEach((row, rIdx) => {
         if (rIdx < 2 && rawData.length > 5) return;
         if (Array.isArray(row)) {
@@ -192,58 +336,128 @@ export const UCondoImportService = {
             const val = String(cell).trim();
             if (!val) return;
             if (/^[A-Za-z0-9]+[-/][A-Za-z0-9]+$/.test(val) || /^([A-Za-z]+\s*)?\d{2,4}$/i.test(val)) {
-              unidadesExtraidas.push(val);
+              pares.push({ unidade: val, leituraAnterior: null });
             }
           });
         }
       });
     }
 
-    // Remove duplicatas preservando a ordem original estrita de inserção
-    const unidadesUnicas = Array.from(new Set(unidadesExtraidas.map(u => String(u).trim()).filter(Boolean)));
+    // Remove duplicatas de unidade preservando ordem
+    const vistas = new Set();
+    const paresUnicos = pares.filter(p => {
+      const key = String(p.unidade).trim();
+      if (vistas.has(key)) return false;
+      vistas.add(key);
+      return true;
+    });
 
-    if (unidadesUnicas.length === 0) {
-      throw new Error('Não foi possível encontrar a coluna de Unidades na planilha.');
+    if (paresUnicos.length === 0) {
+      throw new Error('Não foi possível identificar a coluna de unidades da planilha. Verifique se existe uma coluna com cabeçalho Unidade, Apto ou Apartamento.');
     }
 
-    return unidadesUnicas;
+    return paresUnicos;
   },
 
   /**
-   * Salva a lista de unidades no LocalStorage e Filesystem local (Offline-First).
-   * A sincronização com o Supabase é feita em background pelo syncOfflineService
-   * quando a conexão for restabelecida — sem bloquear o fluxo de importação.
+   * Extrai estritamente a lista de nomes de Unidades (compatibilidade retroativa).
+   * @param {ArrayBuffer|Uint8Array|string} fileData
+   * @returns {Array<string>}
    */
-  async persistirUnidadesLocal(condominioId, unidades) {
+  extrairUnidades(fileData) {
+    return this.extrairUnidadesELeituras(fileData).map(p => p.unidade);
+  },
+
+  /**
+   * Salva a lista de unidades e leituras anteriores no LocalStorage e Filesystem (Offline-First).
+   * As leituras anteriores são gravadas na gaveta canônica já consumida pelo LeituraFotoModal:
+   *   `leituras_anteriores_${condominioId}`  — array [{unidade, leitura_anterior, leitura_anterior_gas}]
+   * e na gaveta por serviço:
+   *   `leituras_anteriores_${condominioId}_AGUA` — para compatibilidade com App.jsx
+   *
+   * Regra de segurança: NÃO sobrescreve leitura_anterior com 0 quando o valor da planilha está ausente.
+   *
+   * @param {string|number} condominioId
+   * @param {Array<string|{unidade:string,leituraAnterior:number|null}>} unidades
+   *   Aceita lista de strings (compatibilidade) ou lista de pares {unidade, leituraAnterior}.
+   * @param {string} [servico='AGUA'] - 'AGUA' | 'GAS' | 'ENERGIA'
+   */
+  async persistirUnidadesLocal(condominioId, unidades, servico = 'AGUA') {
     if (!condominioId || !Array.isArray(unidades)) return;
 
-    // 1. LocalStorage — unidades disponíveis imediatamente
+    // Normaliza entrada: aceita string pura (compatibilidade) ou objeto {unidade, leituraAnterior}
+    const pares = unidades.map(item => {
+      if (typeof item === 'string') return { unidade: String(item).trim(), leituraAnterior: null };
+      return { unidade: String(item.unidade ?? item).trim(), leituraAnterior: item.leituraAnterior ?? null };
+    });
+
+    const nomesUnidades = pares.map(p => p.unidade);
+    const temLeituras = pares.some(p => p.leituraAnterior !== null);
+
+    // 1. LocalStorage — lista de unidades
     const storageKey = `unidades_${condominioId}`;
-    localStorage.setItem(storageKey, JSON.stringify(unidades));
+    localStorage.setItem(storageKey, JSON.stringify(nomesUnidades));
 
     // 2. Filesystem — persistência permanente
     const fileName = `unidades_${condominioId}.json`;
-    await salvarArquivoSeguro(fileName, JSON.stringify(unidades));
+    await salvarArquivoSeguro(fileName, JSON.stringify(nomesUnidades));
 
-    // 3. INICIALIZAR LEITURAS ANTERIORES ZERADAS
-    const leiturasZeradas = unidades.map(nome => ({
-      unidade: String(nome).trim(),
-      leitura_anterior: 0,
-      leitura_anterior_gas: 0
-    }));
-    localStorage.setItem(`leituras_anteriores_${condominioId}`, JSON.stringify(leiturasZeradas));
+    // 3. Gaveta unificada de leituras anteriores (`leituras_anteriores_${condominioId}`)
+    //    Lida diretamente pelo LeituraFotoModal. Não sobrescreve leitura com 0.
+    const chaveLeituras = `leituras_anteriores_${condominioId}`;
+    let gaveta = [];
+    try {
+      const raw = localStorage.getItem(chaveLeituras);
+      if (raw) gaveta = JSON.parse(raw) || [];
+      if (!Array.isArray(gaveta)) gaveta = [];
+    } catch { gaveta = []; }
 
-    // 4. Supabase — tentativa em background
+    const propServico = servico === 'GAS' ? 'leitura_anterior_gas'
+      : servico === 'ENERGIA' ? 'leitura_anterior_energia'
+      : 'leitura_anterior';
+
+    for (const par of pares) {
+      const idx = gaveta.findIndex(g => String(g.unidade).trim() === par.unidade);
+      if (idx !== -1) {
+        // Unidade já existe na gaveta — atualiza só se a planilha trouxe valor
+        if (par.leituraAnterior !== null) {
+          gaveta[idx] = { ...gaveta[idx], unidade: par.unidade, [propServico]: par.leituraAnterior };
+        } else {
+          // Garante que unidade existe na gaveta sem sobrescrever leitura existente
+          gaveta[idx] = { ...gaveta[idx], unidade: par.unidade };
+        }
+      } else {
+        // Unidade nova: só adiciona leitura se vier da planilha
+        const entrada = { unidade: par.unidade };
+        if (par.leituraAnterior !== null) entrada[propServico] = par.leituraAnterior;
+        gaveta.push(entrada);
+      }
+    }
+    localStorage.setItem(chaveLeituras, JSON.stringify(gaveta));
+
+    // 4. Gaveta por serviço (`leituras_anteriores_${condominioId}_AGUA` etc.) — consumida por App.jsx
+    //    Só grava e enfileira para sync se a planilha trouxe leituras reais.
+    if (temLeituras) {
+      const chaveServico = `leituras_anteriores_${condominioId}_${servico}`;
+      const leiturasParaFila = pares
+        .filter(p => p.leituraAnterior !== null)
+        .map(p => ({ unidade: p.unidade, leitura_anterior: p.leituraAnterior }));
+
+      localStorage.setItem(chaveServico, JSON.stringify(leiturasParaFila));
+      // Enfileira para sincronização com Supabase (tabela unidades_leituras) via offline queue
+      enfileirarLeiturasAnteriores(String(condominioId), leiturasParaFila, servico);
+    }
+
+    // 5. Supabase — insert de unidades em background (fire-and-forget)
     if (supabase) {
       try {
-        const unidadesParaInserir = unidades.map(nome => ({
+        const unidadesParaInserir = nomesUnidades.map(nome => ({
           condominio_id: condominioId,
-          nome: String(nome).trim(),
-          numero: String(nome).trim(),
-          identificador: String(nome).trim(),
+          nome,
+          numero: nome,
+          identificador: nome,
           status: 'pendente',
         }));
-        // Fire-and-forget
         supabase
           .from('unidades')
           .delete()
@@ -334,14 +548,16 @@ export const UCondoImportService = {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
 
-      // 2. Extrai unidades no formato uCondo
-      let unidades = [];
+      // 2. Extrai unidades (e leituras anteriores, se existirem) no formato uCondo
+      let pares = [];
       try {
-        unidades = this.extrairUnidades(fileData);
+        pares = this.extrairUnidadesELeituras(fileData);
       } catch (_) {
-        unidades = [];
+        pares = [];
       }
+      const unidades = pares.map(p => p.unidade);
 
+      // Determina serviço a partir dos metadados (extraído mais abaixo, mas necessário aqui)
       // Se encontrou unidades da planilha uCondo
       if (unidades && unidades.length > 0) {
         // 2.1 Extração dinâmica de metadados das células (Condomínio e Consumo de)
@@ -434,8 +650,8 @@ export const UCondoImportService = {
             return { cancelado: true };
           }
 
-          // Atualiza as unidades locais zerando as leituras
-          await this.persistirUnidadesLocal(condExistente.id, unidades);
+          // Atualiza as unidades locais preservando leituras anteriores da planilha
+          await this.persistirUnidadesLocal(condExistente.id, pares, this.normalizarTipoLeituraParaServico(tipoMedicaoExtraido));
 
           // Atualiza contagem no Supabase
           if (supabase) {
@@ -489,8 +705,8 @@ export const UCondoImportService = {
             }
           }
 
-          // Insere todas as unidades extraídas com o ID gerado (e zera o histórico de leituras)
-          await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
+          // Insere todas as unidades extraídas com o ID gerado e persiste leituras anteriores
+          await this.persistirUnidadesLocal(condominioSalvo.id, pares, this.normalizarTipoLeituraParaServico(tipoMedicaoExtraido));
 
           return {
             tipo: 'criado',
