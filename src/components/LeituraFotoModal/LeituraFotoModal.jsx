@@ -1512,76 +1512,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     setExportando(true);
 
     try {
-      // -------------------------------------------------
-      // SINCRONIZAÇÃO HISTÓRICO (Supabase)
-      // -------------------------------------------------
-      etapaAtual = 'SINCRONIZAR_HIST';
       const condId = leitura?.id || leitura?.condominio_id;
 
-      // listaDeUnidades declarada no escopo externo para ser acessível pelo loop
-      // de payloads abaixo. Fonte canônica: unidadesCarregadas.
-      // O cache do localStorage (leituras_anteriores) apenas sobrescreve quando existir.
+      // listaDeUnidades: fonte canônica de unidades para o loop de processarServico.
+      // Exportar NÃO rotaciona leitura anterior — isso é responsabilidade da lixeira (Fase 3B).
       const storageAnteriorExterno = localStorage.getItem(`leituras_anteriores_${condId}`);
       let listaDeUnidades = storageAnteriorExterno
         ? JSON.parse(storageAnteriorExterno)
         : unidadesCarregadas.map(u => ({
             unidade: String(u.unidade || u.nome || u).trim(),
-            leitura_anterior: 0,
-            leitura_anterior_gas: 0,
           }));
-
-      if (condId && supabase) {
-        try {
-          const payloadLote = [];
-          const cacheAtualizado = [];
-
-          listaDeUnidades.forEach(unidade => {
-            const apString = String(unidade.unidade).trim();
-            const valAtualAgua = leiturasValores[`${apString}_agua`];
-            const valAtualGas = leiturasValores[`${apString}_gas`];
-
-            const parseValorLeituraLocal = (val) => {
-              if (val === null || val === undefined || val === '') return null;
-              const limpo = String(val).replace(/\./g, '').replace(',', '.').trim();
-              const num = parseFloat(limpo);
-              return isNaN(num) ? null : num;
-            };
-
-            const pAgua = parseValorLeituraLocal(valAtualAgua);
-            const novaLeituraAnterior = pAgua !== null ? pAgua : unidade.leitura_anterior;
-
-            const pGas = parseValorLeituraLocal(valAtualGas);
-            const novaLeituraAnteriorGas = pGas !== null ? pGas : unidade.leitura_anterior_gas;
-
-            payloadLote.push({
-              condominio_id: condId,
-              unidade: apString,
-              leitura_anterior: novaLeituraAnterior,
-              leitura_anterior_gas: novaLeituraAnteriorGas,
-              updated_at: new Date().toISOString(),
-            });
-
-            cacheAtualizado.push({
-              ...unidade,
-              leitura_anterior: novaLeituraAnterior,
-              leitura_anterior_gas: novaLeituraAnteriorGas,
-            });
-          });
-
-          if (payloadLote.length > 0) {
-            const { error: upsertErr } = await supabase
-              .from('unidades_leituras')
-              .upsert(payloadLote, { onConflict: 'condominio_id,unidade' });
-            if (upsertErr) {
-              console.error('Erro ao sincronizar leituras com o Supabase:', upsertErr);
-            } else {
-              localStorage.setItem(`leituras_anteriores_${condId}`, JSON.stringify(cacheAtualizado));
-            }
-          }
-        } catch (errSyncHist) {
-          console.error('Falha ao salvar histórico no Supabase:', errSyncHist);
-        }
-      }
 
       // -------------------------------------------------
       // PREPARA DADOS PARA LEITURAS_DETALHES
