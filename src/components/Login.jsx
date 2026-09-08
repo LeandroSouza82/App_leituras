@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus, UserRound, Phone, KeyRound, ArrowLeft } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { Capacitor } from '@capacitor/core';
@@ -162,7 +162,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   );
 };
 
-const Login = ({ onLoginSuccess }) => {
+const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
   const [modoCadastro, setModoCadastro] = useState(false);
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [nomeCompleto, setNomeCompleto] = useState('');
@@ -172,6 +172,16 @@ const Login = ({ onLoginSuccess }) => {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  // Retorno via deep link de confirmação de e-mail: garante modo login ativo.
+  // Reage mesmo com o app já aberto/em background (retornoConfirmacao é Date.now()).
+  // retornoConfirmacao === 0 é o valor inicial; não dispara ação no mount normal.
+  useEffect(() => {
+    if (retornoConfirmacao > 0) {
+      setModoCadastro(false);
+      setFeedback(null);
+    }
+  }, [retornoConfirmacao]);
 
   // ── Fluxo WEB: usa popup nativo do @react-oauth/google
   const loginGoogleWeb = useGoogleLogin({
