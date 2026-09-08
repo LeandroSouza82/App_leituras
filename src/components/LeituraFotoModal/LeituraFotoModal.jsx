@@ -84,6 +84,32 @@ const formatarLeituraLocal = (valor) => {
 };
 
 /**
+ * Helper canônico de normalização numérica para leituras.
+ * Suporta formatos: "8550", 8550, "8.550", "8.550,25", "8550,25".
+ * Retorna null para entradas inválidas (null, undefined, "", NaN, "abc").
+ * Regra: separador de milhar pode ser ponto; vírgula é sempre decimal.
+ */
+const parseLeituraNum = (valor) => {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const s = String(valor).trim();
+  if (s === '') return null;
+  // Se há vírgula: tudo após a última vírgula é decimal; pontos anteriores são milhar
+  // Se não há vírgula: pontos intermediários são milhar (ex: "8.550" → 8550)
+  let normalizado;
+  if (s.includes(',')) {
+    // ex: "8.550,25" → "8550.25";  "8550,25" → "8550.25"
+    normalizado = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    // ex: "8.550" → "8550";  "8550" → "8550";  "8550.25" → "8550.25"
+    // Heurística: se há exatamente um ponto com 3 dígitos após → milhar
+    const pontoMilhar = /^\d+\.\d{3}$/.test(s);
+    normalizado = pontoMilhar ? s.replace('.', '') : s;
+  }
+  const num = parseFloat(normalizado);
+  return isNaN(num) ? null : num;
+};
+
+/**
  * Lê o valor atual de uma leitura DIRETAMENTE do localStorage (fonte persistida).
  * Esta é a mesma fonte que restaura o campo quando o usuário sai e volta ao apartamento.
  * @param {string} condominioId - ID do condomínio (leitura.id)
@@ -960,7 +986,40 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       const condId = leitura?.id || leitura?.condominio_id;
-      const valorNumerico = parseFloat(String(valor).replace(',', '.'));
+      const valorNumerico = parseLeituraNum(valor);
+
+      if (valorNumerico === null) {
+        throw new Error('Valor da leitura ausente ou inválido.');
+      }
+
+      // ── FASE 2: Validação leitura atual < anterior ──────────────────────
+      // Lê a leitura anterior da gaveta canônica (mesma fonte da UI)
+      (() => {
+        try {
+          const propAnterior = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || 'leitura_anterior';
+          const chaveGaveta = `leituras_anteriores_${condId}`;
+          const raw = localStorage.getItem(chaveGaveta);
+          if (!raw) return; // sem baseline: primeira leitura, permitir
+          const arr = JSON.parse(raw);
+          const obj = arr.find(l => String(l.unidade).trim() === unidadeId);
+          if (!obj) return; // unidade sem entrada: permitir
+          const leitAnt = parseLeituraNum(obj[propAnterior]);
+          if (leitAnt === null) return; // sem leitura anterior válida: permitir
+          // Validação: bloquear somente se estritamente menor
+          if (valorNumerico < leitAnt) {
+            // Usa IIFE async para aguardar e depois retornar sinalizando bloqueio
+            // Não é possível retornar de dentro de IIFE, então lança exceção especial
+            throw Object.assign(new Error('LEITURA_MENOR_QUE_ANTERIOR'), {
+              leituraAnterior: leitAnt,
+              leituraAtual: valorNumerico,
+            });
+          }
+        } catch (e) {
+          if (e.message === 'LEITURA_MENOR_QUE_ANTERIOR') throw e;
+          // Outros erros (parse, localStorage): não bloquear
+        }
+      })();
+      // ────────────────────────────────────────────────────────────────────
 
       // O salvamento diário não deve rotacionar a leitura anterior. A leitura anterior fica INTACTA.
 
@@ -1067,6 +1126,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setActiveApto(null);
 
     } catch (error) {
+      if (error.message === 'LEITURA_MENOR_QUE_ANTERIOR') {
+        const fmtAnt = String(error.leituraAnterior).replace('.', ',');
+        const fmtAt  = String(error.leituraAtual).replace('.', ',');
+        await customAlert(
+          `A leitura atual não pode ser menor que a leitura anterior.\n\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
+          'Leitura inválida'
+        );
+        // NÃO salva, NÃO persiste, NÃO fecha — mantém usuário no fluxo
+        return;
+      }
       await customAlert('❌ Erro inesperado ao salvar: ' + error.message);
       throw error;
     }
@@ -1330,6 +1399,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       servicosParaValidar = [scopeParam];
     }
 
+    const condId = leitura?.id || leitura?.condominio_id;
+    // Lê gaveta de leituras anteriores UMA vez para todo o lote
+    let gavetaAnteriores = [];
+    try {
+      const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
+      if (rawGav) gavetaAnteriores = JSON.parse(rawGav) || [];
+      if (!Array.isArray(gavetaAnteriores)) gavetaAnteriores = [];
+    } catch { gavetaAnteriores = []; }
+
     for (const uni of unidadesList) {
       const apStr = String(uni.unidade || uni.nome || uni).trim();
       for (const srv of servicosParaValidar) {
@@ -1344,15 +1422,29 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
         // Se interagiu, verifica se a leitura é válida e maior que zero
         const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv];
-        let numVal = NaN;
-        if (val !== undefined && val !== null && val !== '') {
-          const valLimpo = String(val).replace(/\./g, '').replace(',', '.').trim();
-          numVal = Number(valLimpo);
-        }
+        const numVal = parseLeituraNum(val);
 
-        if (val === undefined || val === null || val === '' || numVal === 0 || Number.isNaN(numVal)) {
+        if (val === undefined || val === null || val === '' || numVal === 0 || numVal === null || Number.isNaN(numVal)) {
           return { isValid: false, unidade: apStr, servico: srv };
         }
+
+        // ── FASE 2: barreira atual < anterior ─────────────────────────────
+        const propAnterior = PROP_LEITURA_ANTERIOR[srv] || 'leitura_anterior';
+        const objAnt = gavetaAnteriores.find(l => String(l.unidade).trim() === apStr);
+        if (objAnt) {
+          const leitAnt = parseLeituraNum(objAnt[propAnterior]);
+          if (leitAnt !== null && numVal < leitAnt) {
+            return {
+              isValid: false,
+              motivo: 'MENOR_QUE_ANTERIOR',
+              unidade: apStr,
+              servico: srv,
+              leituraAtual: numVal,
+              leituraAnterior: leitAnt,
+            };
+          }
+        }
+        // ──────────────────────────────────────────────────────────────────
       }
     }
     return { isValid: true };
@@ -1382,8 +1474,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       concluidosMemoria
     );
     if (!validacao.isValid) {
-      const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
-      await customAlert(msg, 'Leitura Pendente');
+      if (validacao.motivo === 'MENOR_QUE_ANTERIOR') {
+        const fmtAnt = String(validacao.leituraAnterior).replace('.', ',');
+        const fmtAt  = String(validacao.leituraAtual).replace('.', ',');
+        await customAlert(
+          `A leitura atual não pode ser menor que a leitura anterior.\n\nUnidade: ${validacao.unidade} (${validacao.servico.toUpperCase()})\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
+          'Leitura inválida'
+        );
+      } else {
+        const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
+        await customAlert(msg, 'Leitura Pendente');
+      }
       setTimeout(() => {
         const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
         if (cardErro) {
