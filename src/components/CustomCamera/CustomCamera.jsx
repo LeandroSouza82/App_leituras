@@ -1,9 +1,10 @@
 import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { Capacitor } from "@capacitor/core";
 import { X, Camera as CameraIcon } from "lucide-react";
+import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
 import "./CustomCamera.css";
 
 /**
@@ -29,23 +30,18 @@ const gerarFotoMockBase64 = () => {
   ctx.strokeStyle = "#0284c7";
   ctx.stroke();
 
-  // Mostrador interno
+  // Mostrador
   ctx.beginPath();
   ctx.arc(400, 300, 190, 0, Math.PI * 2);
-  ctx.fillStyle = "#f8fafc";
+  ctx.fillStyle = "#ffffff";
   ctx.fill();
 
-  // Visor numérico (odômetro)
+  // Display digital (Simulação de números pretos e vermelhos)
   ctx.fillStyle = "#000000";
-  ctx.fillRect(260, 240, 280, 70);
-  ctx.strokeStyle = "#94a3b8";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(260, 240, 280, 70);
-
-  // Dígitos gerados
-  const numRandom = String(Math.floor(10000 + Math.random() * 90000));
-  ctx.font = "bold 38px 'Courier New', monospace";
+  ctx.fillRect(260, 230, 280, 70);
   ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 42px monospace";
+  const numRandom = Math.floor(100000 + Math.random() * 900000).toString();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(`00${numRandom.slice(0, 3)},${numRandom.slice(3)} m³`, 400, 275);
@@ -76,36 +72,22 @@ const gerarFotoMockBase64 = () => {
 };
 
 const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}, unidadeAtiva = '' }) => {
-  const leituraAnterior = leituras?.[unidadeAtiva] ?? 0;
+  const objOuVal = leituras?.[unidadeAtiva];
+  const leituraAnterior = (typeof objOuVal === 'object' && objOuVal !== null) ? (objOuVal.leitura_anterior ?? null) : (objOuVal ?? null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [leituraValue, setLeituraValue] = useState('');
   const [erroValidacao, setErroValidacao] = useState("");
   const [isZoomed, setIsZoomed] = useState(false);
+  const inputRef = useRef(null);
   
   const isNative = Capacitor.isNativePlatform();
 
-  const handleLeituraChange = (e) => {
-    const rawValue = e.target.value.replace(/\D/g, "");
-    if (!rawValue) {
-      setLeituraValue("");
-      return;
-    }
-    const intValue = parseInt(rawValue, 10);
-    if (isNaN(intValue)) {
-      setLeituraValue("");
-      return;
-    }
-    const strValue = intValue.toString().padStart(5, "0");
-    const inteiros = strValue.slice(0, -4);
-    const decimais = strValue.slice(-4);
-    const novoValor = `${inteiros},${decimais}`;
-    setLeituraValue(novoValor);
-
-    if (leituraAnterior) {
-      const valorAtualFloat = parseFloat(`${inteiros}.${decimais}`);
-      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
-      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+  const validarLeitura = (valor) => {
+    if (leituraAnterior !== null && leituraAnterior !== undefined) {
+      const valorAtualFloat = parseLeituraNumerica(valor);
+      const valorAnteriorFloat = parseLeituraNumerica(leituraAnterior);
+      if (valorAtualFloat !== null && valorAnteriorFloat !== null && valorAtualFloat < valorAnteriorFloat) {
         setErroValidacao('A leitura não pode ser menor que o mês anterior');
       } else {
         setErroValidacao('');
@@ -115,17 +97,93 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}
     }
   };
 
-  useEffect(() => {
-    if (leituraValue && leituraAnterior) {
-      const valorAtualFloat = parseFloat(leituraValue.replace(',', '.'));
-      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
-      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
-        setErroValidacao('A leitura não pode ser menor que o mês anterior');
-      } else {
-        setErroValidacao('');
+  const handleLeituraChange = (e) => {
+    const rawValue = e.target.value;
+    if (!rawValue) {
+      setLeituraValue("");
+      setErroValidacao("");
+      return;
+    }
+
+    const input = e.target;
+    const cursor = input.selectionStart || 0;
+    const textBeforeCursor = rawValue.slice(0, cursor);
+    const digitsBeforeCursor = textBeforeCursor.replace(/\D/g, '').length;
+    const totalDigits = rawValue.replace(/\D/g, '').length;
+
+    let formatted = '';
+    if (!leituraValue && (rawValue.includes('.') || rawValue.includes(','))) {
+      formatted = aplicarMascaraLeitura(rawValue);
+    } else {
+      formatted = formatarDigitosLeitura(rawValue);
+    }
+
+    setLeituraValue(formatted);
+    validarLeitura(formatted);
+
+    const newPos = calcularPosicaoCursor(formatted, digitsBeforeCursor, totalDigits);
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.setSelectionRange(newPos, newPos);
+      }
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Backspace') {
+      const input = e.currentTarget;
+      const { selectionStart, selectionEnd, value } = input;
+      if (selectionStart === selectionEnd && selectionStart > 0) {
+        const charBefore = value[selectionStart - 1];
+        if (charBefore === ',' || charBefore === '.') {
+          e.preventDefault();
+          const posToDelete = selectionStart - 2;
+          if (posToDelete >= 0) {
+            const newValue = value.slice(0, posToDelete) + value.slice(selectionStart - 1);
+            const digitsBefore = value.slice(0, posToDelete).replace(/\D/g, '').length;
+            const totalDigits = newValue.replace(/\D/g, '').length;
+            const formatted = formatarDigitosLeitura(newValue);
+            const newPos = calcularPosicaoCursor(formatted, digitsBefore, totalDigits);
+            setLeituraValue(formatted);
+            validarLeitura(formatted);
+            requestAnimationFrame(() => {
+              if (inputRef.current) {
+                inputRef.current.setSelectionRange(newPos, newPos);
+              }
+            });
+          }
+        }
       }
     }
-  }, [leituraValue, leituraAnterior]);
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData?.getData('text') || '';
+    const trimmed = pasted.trim();
+    if (!trimmed) return;
+
+    const formatted = aplicarMascaraLeitura(trimmed);
+    if (formatted) {
+      setLeituraValue(formatted);
+      validarLeitura(formatted);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.setSelectionRange(formatted.length, formatted.length);
+        }
+      });
+    }
+  };
+
+  useEffect(() => {
+    const formattedInitial = initialValue ? aplicarMascaraLeitura(initialValue) : '';
+    setLeituraValue(formattedInitial);
+    if (formattedInitial) {
+      validarLeitura(formattedInitial);
+    } else {
+      setErroValidacao('');
+    }
+  }, [initialValue, leituraAnterior]);
 
   const handleCapture = async () => {
     if (isCapturing) return;
@@ -233,16 +291,16 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}
               
               <div className="bg-slate-50 p-2 rounded-md mb-2 border border-slate-200" style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
                 <p className="text-sm text-gray-600 font-medium" style={{ fontSize: '13px', color: '#475569' }}>
-                  Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? Number(leituraAnterior).toFixed(4).replace('.', ',') : '0,0000'}</strong>
+                  Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? formatarLeitura4Casas(leituraAnterior) : '0,0000'}</strong>
                 </p>
                 {leituraValue && (() => {
-                  const atualFloat = parseFloat(leituraValue.replace(',', '.'));
-                  const anteriorFloat = parseFloat(String(leituraAnterior || 0).replace(',', '.'));
-                  if (!isNaN(atualFloat) && !isNaN(anteriorFloat) && atualFloat >= anteriorFloat) {
-                    const consumo = (atualFloat - anteriorFloat).toFixed(4);
+                  const atualFloat = parseLeituraNumerica(leituraValue);
+                  const anteriorFloat = parseLeituraNumerica(leituraAnterior !== null && leituraAnterior !== undefined ? leituraAnterior : 0);
+                  if (atualFloat !== null && anteriorFloat !== null && atualFloat >= anteriorFloat) {
+                    const consumo = atualFloat - anteriorFloat;
                     return (
                       <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
-                        Consumo Calculado: <strong>{consumo.replace('.', ',')} m³</strong>
+                        Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} m³</strong>
                       </p>
                     );
                   }
@@ -251,13 +309,19 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}
               </div>
 
               <input
-                type="tel"
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 className={`reading-input ${erroValidacao ? 'border-red-500' : ''}`}
                 style={erroValidacao ? { borderColor: '#ef4444' } : {}}
-                placeholder="0,0000"
+                placeholder="Digite a leitura..."
                 value={leituraValue}
                 onChange={handleLeituraChange}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 autoFocus
+                autoComplete="off"
               />
               {erroValidacao && (
                 <span className="text-xs text-red-500 mt-1" style={{ fontSize: '12px', color: '#ef4444', display: 'block', marginTop: '4px' }}>

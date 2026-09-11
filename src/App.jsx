@@ -132,11 +132,24 @@ const MainApp = ({ onLogout }) => {
         // Mapa de chave "condId__servico" -> array de leituras (deduplicado por unidade)
         const gruposApp = {};
 
+        const { data: dbCondominios } = await supabase
+          .from('condominios')
+          .select('id, nome')
+          .eq('user_id', user.id);
+
+        const mapCondominios = {};
+        if (dbCondominios) {
+          for (const cond of dbCondominios) {
+            mapCondominios[cond.nome] = cond.id;
+          }
+        }
+
         if (!errDetalhes && Array.isArray(detalhes) && detalhes.length > 0) {
           // Deduplicar: mantém apenas o registro mais recente por unidade+serviço
           const vistos = new Set();
           for (const reg of detalhes) {
-            const condId = reg.condominio_nome; // guarda condominio_id
+            const condId = mapCondominios[reg.condominio_nome];
+            if (!condId) continue; // Ignora se não achar o ID correspondente
             const servico = (reg.servico || 'AGUA').toUpperCase();
             const chaveUnidade = `${condId}__${servico}__${String(reg.unidade_id).trim()}`;
 
@@ -162,7 +175,7 @@ const MainApp = ({ onLogout }) => {
         const gruposPlanilha = {};
         if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
           for (const reg of planilhas) {
-            const condId = reg.condominio_nome;
+            const condId = reg.condominio_nome; // No legado, condominio_nome já contém o ID
             const servico = (reg.servico || 'AGUA').toUpperCase();
             const chaveGrupo = `${condId}__${servico}`;
             // Só usa planilha se o app ainda não tem dados do ciclo contínuo

@@ -12,6 +12,8 @@ import './ModalGerenciarUnidades.css';
 const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome, onUnidadesAtualizadas }) => {
   const [tab, setAba] = useState('importar'); // 'importar' | 'gerar' | 'avulso'
   const [unidadesTemp, setUnidadesTemp] = useState([]);
+  const [paresImportados, setParesImportados] = useState([]);
+  const [servicoExtraido, setServicoExtraido] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -29,22 +31,27 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   const storageKey = `unidades_${condominioId}`;
 
-  const processarWorkbook = async (workbook) => {
+  const processarFileData = async (fileData) => {
     try {
-      const firstSheetName = workbook.SheetNames[0];
-      const firstSheet = workbook.Sheets[firstSheetName];
-      const unicas = UCondoImportService.extrairUnidades(
-        XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
-      );
+      const result = UCondoImportService.analisarPlanilhaCompleta(fileData);
+      const pares = result.pares;
+      const metadados = result.metadados;
 
-      if (unicas.length === 0) {
-        throw new Error('Nenhuma coluna de unidades identificada na planilha.');
+      if (!pares || pares.length === 0) {
+        throw new Error('Nenhuma unidade identificada na planilha.');
       }
 
+      setParesImportados(pares);
+
+      const servicoDetectado = metadados?.servico || null;
+      setServicoExtraido(servicoDetectado);
+
+      const unicas = pares.map(p => p.unidade);
       setUnidadesTemp(prev => [...new Set([...prev, ...unicas])]);
-      await customAlert(`✅ ${unicas.length} unidades identificadas com sucesso!`);
+      const servicoMsg = servicoDetectado ? `\nServiço detectado: ${servicoDetectado}` : '';
+      await customAlert(`✅ ${unicas.length} unidades identificadas com sucesso!${servicoMsg}`);
     } catch (err) {
-      await customAlert('Erro ao processar planilha: ' + err.message);
+      await customAlert('Não foi possível ler esta planilha. Verifique o formato do arquivo.');
     } finally {
       setIsProcessing(false);
     }
@@ -66,8 +73,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
           directory: Directory.Data
         });
 
-        const workbook = XLSX.read(fileContents.data, { type: 'base64' });
-        processarWorkbook(workbook);
+        processarFileData(fileContents.data);
       } else {
         if (fileInputRef.current) {
           fileInputRef.current.click();
@@ -86,10 +92,9 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
     setIsProcessing(true);
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      processarWorkbook(workbook);
+      processarFileData(data);
     } catch (err) {
-      await customAlert('Erro ao ler planilha: ' + err.message);
+      await customAlert('Não foi possível ler esta planilha. Verifique o formato do arquivo.');
       setIsProcessing(false);
     } finally {
       if (event.target) event.target.value = '';
@@ -126,12 +131,27 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
     }
 
     try {
-      // 1. Salvar no localStorage (Cache Rápido)
-      localStorage.setItem(storageKey, JSON.stringify(unidadesTemp));
+      // Mescla as unidades geradas/manuais com os pares importados (se houver)
+      const paresParaSalvar = unidadesTemp.map(nome => {
+        const parEncontrado = paresImportados.find(p => p.unidade === nome);
+        return {
+          unidade: nome,
+          leituraAnterior: parEncontrado ? parEncontrado.leituraAnterior : null
+        };
+      });
 
-      // 2. Persistência Permanente no Filesystem (Directory.Data)
-      const fileName = `unidades_${condominioId}.json`;
-      await salvarArquivoSeguro(fileName, JSON.stringify(unidadesTemp));
+      const temLeituraNaPlanilha = paresParaSalvar.some(p => p.leituraAnterior !== null);
+      let servicoParaSalvar = servicoExtraido;
+
+      if (temLeituraNaPlanilha && !servicoParaSalvar) {
+        await customAlert(
+          '⚠️ Não foi possível identificar com segurança se as leituras desta planilha pertencem a Água, Gás ou Energia.\n\nPara importar leituras anteriores, importe uma planilha do uCondo que identifique expressamente o serviço (ex: "Consumo de: Água" ou "Consumo de: Gás").'
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      await UCondoImportService.persistirUnidadesLocal(condominioId, paresParaSalvar, servicoParaSalvar);
 
       onUnidadesAtualizadas(unidadesTemp);
       await customAlert('✅ Unidades salvas permanentemente no dispositivo!');
