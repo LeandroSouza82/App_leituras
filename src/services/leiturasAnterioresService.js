@@ -1,11 +1,154 @@
-import { supabase } from './supabase';
+import { supabase } from './supabase.js';
 import { Network } from '@capacitor/network';
-import { enfileirarLeiturasAnteriores, sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
+import { enfileirarLeiturasAnteriores, sincronizarLeiturasAnterioresOffline } from './syncOfflineService.js';
+import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 
 const PROPRIEDADE_POR_SERVICO = {
   AGUA: 'leitura_anterior',
   GAS: 'leitura_anterior_gas',
   ENERGIA: 'leitura_anterior_energia',
+};
+
+/**
+ * Deduplica um array de leituras anteriores por unidade, preservando os dados mais recentes de cada unidade.
+ * @param {Array} lista
+ * @returns {Array}
+ */
+export const deduplicarGavetaAnteriores = (lista) => {
+  if (!Array.isArray(lista) || lista.length === 0) return [];
+  const map = new Map();
+  for (const item of lista) {
+    if (!item || !item.unidade) continue;
+    const u = String(item.unidade).trim();
+    if (!u) continue;
+    const existing = map.get(u) || {};
+    map.set(u, { ...existing, ...item, unidade: u });
+  }
+  return Array.from(map.values());
+};
+
+const matchUnidade = (a, b) => {
+  const sa = String(a || '').trim().toLowerCase();
+  const sb = String(b || '').trim().toLowerCase();
+  if (sa === sb) return true;
+  const na = sa.replace(/^(apartamento|apto|ap|a)[-\s]*/i, '');
+  const nb = sb.replace(/^(apartamento|apto|ap|a)[-\s]*/i, '');
+  return Boolean(na && nb && na === nb);
+};
+
+/**
+ * Resolve a leitura anterior canônica de uma unidade para um serviço específico.
+ * Utilizada de forma unificada na tela, validação ao salvar e exportação.
+ *
+ * @param {string|number} condominioId
+ * @param {string} unidadeId
+ * @param {'agua'|'gas'|'energia'|string} servico
+ * @returns {number|null}
+ */
+export const obterLeituraAnterior = (condominioId, unidadeId, servico = 'AGUA') => {
+  if (!condominioId || !unidadeId) return null;
+  const condId = String(condominioId).trim();
+  const uId = String(unidadeId).trim();
+  const srv = String(servico || 'agua').toUpperCase();
+  const propAlvo = PROPRIEDADE_POR_SERVICO[srv] || 'leitura_anterior';
+
+  // 1. Gaveta unificada (leituras_anteriores_${condId}) - varre do final para o início (mais recente)
+  const chaveUnificada = `leituras_anteriores_${condId}`;
+  try {
+    const raw = localStorage.getItem(chaveUnificada);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        for (let i = parsed.length - 1; i >= 0; i--) {
+          const item = parsed[i];
+          if (item && matchUnidade(item.unidade, uId)) {
+            if (item[propAlvo] !== undefined && item[propAlvo] !== null) {
+              const num = parseLeituraNumerica(item[propAlvo]);
+              if (num !== null) return num;
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 2. Gaveta por serviço (leituras_anteriores_${condId}_${srv}) - varre do final para o início
+  const chaveServico = `leituras_anteriores_${condId}_${srv}`;
+  try {
+    const rawServico = localStorage.getItem(chaveServico);
+    if (rawServico) {
+      const parsedServico = JSON.parse(rawServico);
+      if (Array.isArray(parsedServico) && parsedServico.length > 0) {
+        for (let i = parsedServico.length - 1; i >= 0; i--) {
+          const item = parsedServico[i];
+          if (item && matchUnidade(item.unidade, uId)) {
+            if (item.leitura_anterior !== undefined && item.leitura_anterior !== null) {
+              const num = parseLeituraNumerica(item.leitura_anterior);
+              if (num !== null) return num;
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  return null;
+};
+
+/**
+ * Retorna o mapa { [unidade]: number } com as leituras anteriores de todas as unidades
+ * para o condomínio e serviço especificados.
+ *
+ * @param {string|number} condominioId
+ * @param {'agua'|'gas'|'energia'|string} servico
+ * @returns {Record<string, number>}
+ */
+export const obterMapaLeiturasAnteriores = (condominioId, servico = 'AGUA') => {
+  if (!condominioId) return {};
+  const condId = String(condominioId).trim();
+  const srv = String(servico || 'agua').toUpperCase();
+  const propAlvo = PROPRIEDADE_POR_SERVICO[srv] || 'leitura_anterior';
+  const mapa = {};
+
+  // 1. Lê gaveta unificada (itera em ordem; entradas posteriores sobrescrevem anteriores)
+  const chaveUnificada = `leituras_anteriores_${condId}`;
+  try {
+    const raw = localStorage.getItem(chaveUnificada);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (!item || !item.unidade) continue;
+          const u = String(item.unidade).trim();
+          if (item[propAlvo] !== undefined && item[propAlvo] !== null) {
+            const num = parseLeituraNumerica(item[propAlvo]);
+            if (num !== null) mapa[u] = num;
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 2. Complementa com gaveta por serviço para unidades sem valor na unificada
+  const chaveServico = `leituras_anteriores_${condId}_${srv}`;
+  try {
+    const rawServico = localStorage.getItem(chaveServico);
+    if (rawServico) {
+      const parsedServico = JSON.parse(rawServico);
+      if (Array.isArray(parsedServico)) {
+        for (const item of parsedServico) {
+          if (!item || !item.unidade) continue;
+          const u = String(item.unidade).trim();
+          if (mapa[u] === undefined && item.leitura_anterior !== undefined && item.leitura_anterior !== null) {
+            const num = parseLeituraNumerica(item.leitura_anterior);
+            if (num !== null) mapa[u] = num;
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  return mapa;
 };
 
 /**
@@ -21,8 +164,8 @@ const PROPRIEDADE_POR_SERVICO = {
 export const rotacionarLeituraAnteriorLocal = (condominioId, unidadeId, tipoLeitura, valorDigitado) => {
   if (!condominioId || !unidadeId) return { ok: false, unidadeLocal: null };
 
-  const valorNumerico = parseFloat(String(valorDigitado).replace(',', '.'));
-  if (isNaN(valorNumerico)) return { ok: false, unidadeLocal: null };
+  const valorNumerico = parseLeituraNumerica(valorDigitado);
+  if (valorNumerico === null) return { ok: false, unidadeLocal: null };
 
   const servico = String(tipoLeitura || 'agua').toUpperCase();
   const propAlvo = PROPRIEDADE_POR_SERVICO[servico] || 'leitura_anterior';
@@ -37,7 +180,7 @@ export const rotacionarLeituraAnteriorLocal = (condominioId, unidadeId, tipoLeit
     const raw = localStorage.getItem(chaveUnificada);
     if (raw) {
       const parsed = JSON.parse(raw);
-      lista = Array.isArray(parsed) ? parsed : [];
+      lista = deduplicarGavetaAnteriores(Array.isArray(parsed) ? parsed : []);
     }
 
     const idx = lista.findIndex((l) => String(l.unidade).trim() === unidadeTrim);

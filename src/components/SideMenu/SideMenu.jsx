@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { sincronizarFilaEmBackground } from '../../services/syncService';
 import { supabase } from '../../services/supabase';
-import { customAlert } from '../CustomPrompt/CustomPrompt';
+import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import './SideMenu.css';

@@ -12,6 +12,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase } from '../../services/supabase';
+import { customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import './Perfil.css';
 
 const FALLBACK_USER = {
@@ -21,6 +22,7 @@ const FALLBACK_USER = {
   role: 'Leiturista',
   pix: '',
   phone: '',
+  avatar: null,
 };
 
 const getInitials = (name) => String(name || '')
@@ -37,6 +39,7 @@ const getUserData = (user) => ({
   role: user?.user_metadata?.role || 'Leiturista',
   pix: user?.user_metadata?.pix || '',
   phone: user?.user_metadata?.phone || user?.phone || '',
+  avatar: user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null,
 });
 
 const loadProfileData = async (userId) => {
@@ -59,6 +62,7 @@ const loadProfileData = async (userId) => {
 
 const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
   const [user, setUser] = useState(FALLBACK_USER);
+  const [name, setName] = useState('');
   const [pix, setPix] = useState('');
   const [phone, setPhone] = useState('');
   const [loadingUser, setLoadingUser] = useState(true);
@@ -122,12 +126,14 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
         };
 
         setUser(userData);
+        setName(userData.name);
         setPix(userData.pix);
         setPhone(userData.phone);
         setLoadingUser(false);
       } catch {
         if (isMounted) {
           setUser(FALLBACK_USER);
+          setName('');
           setPix('');
           setPhone('');
           setLoadingUser(false);
@@ -149,19 +155,45 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
     event.preventDefault();
     setSaving(true);
 
+    const nameNormalizado = name.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!nameNormalizado) {
+      onShowToast('O nome completo não pode estar vazio.', 'error');
+      setSaving(false);
+      return;
+    }
+    
+    if (nameNormalizado.includes('@') || emailRegex.test(nameNormalizado)) {
+      onShowToast('Informe seu nome completo, não um endereço de e-mail.', 'error');
+      setSaving(false);
+      return;
+    }
+
     if (supabase && user.id !== FALLBACK_USER.id) {
-      const { error } = await supabase.auth.updateUser({
-        data: { pix: pix.trim(), phone: phone.trim() },
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ nome: nameNormalizado, celular: phone.trim() })
+        .eq('id', user.id);
+        
+      if (profileError) {
+        onShowToast('Não foi possível atualizar o perfil.', 'error');
+        setSaving(false);
+        return;
+      }
+
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: nameNormalizado, pix: pix.trim(), phone: phone.trim() },
       });
 
-      if (error) {
-        onShowToast('Não foi possível salvar os dados agora.', 'error');
+      if (authError) {
+        onShowToast('Não foi possível salvar os dados no momento.', 'error');
         setSaving(false);
         return;
       }
     }
 
-    setUser((previous) => ({ ...previous, pix: pix.trim(), phone: phone.trim() }));
+    setUser((previous) => ({ ...previous, name: nameNormalizado, pix: pix.trim(), phone: phone.trim() }));
     onShowToast('Dados operacionais salvos com sucesso.');
     setSaving(false);
   };
@@ -173,14 +205,22 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
       return;
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+    if (!await customConfirm('Deseja realmente alterar sua senha de acesso?')) return;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: 'https://fastleitura.appviper.com.br/redefinir-senha',
+    });
     onShowToast(
-      error ? 'Não foi possível enviar o e-mail de alteração.' : 'Confira seu e-mail para alterar a senha.',
+      error
+        ? 'Não foi possível enviar o e-mail de alteração de senha. Tente novamente.'
+        : 'Enviamos um e-mail para você criar uma nova senha.',
       error ? 'error' : 'success',
     );
   };
 
   const handleSignOut = async () => {
+    if (!await customConfirm('Deseja realmente sair da sua conta?')) return;
+
     if (onLogout) {
       const saiu = await onLogout();
       if (saiu === false) {
@@ -205,7 +245,7 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
     <main className="perfil-page" aria-labelledby="perfil-title">
       <header className="perfil-header" style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--primary-color)', padding: '24px 16px 16px', marginBottom: 0 }}>
         <div className="perfil-avatar" aria-hidden="true">
-          {initials || <UserRound size={30} />}
+          {user.avatar ? <img src={user.avatar} alt="Avatar" className="perfil-avatar-img" /> : (initials || <UserRound size={30} />)}
         </div>
         <div className="perfil-heading">
           <span className="perfil-eyebrow">Minha conta</span>
@@ -248,6 +288,19 @@ const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
               >
                 {showPix ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
+            </div>
+          </label>
+          <label className="perfil-field">
+            <span>Nome completo</span>
+            <div className="perfil-input-with-icon">
+              <UserRound size={17} aria-hidden="true" />
+              <input
+                type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Seu nome completo"
+                autoComplete="name"
+              />
             </div>
           </label>
           <label className="perfil-field">

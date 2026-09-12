@@ -215,6 +215,7 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
       }
 
       // 2. Tentar processamento inteligente uCondo com extração dinâmica e tolerância a offset
+      let uCondoErroMsg = null;
       try {
         const resultadoUCondo = await UCondoImportService.processarPlanilhaCadastro(
           fileName,
@@ -245,6 +246,8 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
           return;
         }
       } catch (uCondoErr) {
+        // Captura a mensagem do fluxo uCondo para usar como fallback final amigável
+        uCondoErroMsg = uCondoErr?.message || null;
       }
 
       // 3. Fallback: Planilha de Lista Geral de Múltiplos Condomínios
@@ -273,7 +276,11 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
 
       const listaCondominios = parseCondominiosFromRows(rows);
       if (!listaCondominios || listaCondominios.length === 0) {
-        throw new Error('Nenhuma coluna de Unidades ou lista de condomínios válida encontrada nesta planilha.');
+        // Usa mensagem do fluxo uCondo se for mais específica e amigável
+        const msgFinal = (uCondoErroMsg && uCondoErroMsg.length < 200)
+          ? uCondoErroMsg
+          : 'Não foi possível identificar os dados da planilha. Verifique se existe uma coluna com cabeçalho Unidade, Apto ou Apartamento.';
+        throw new Error(msgFinal);
       }
 
       const totalImportado = await syncCondominios(listaCondominios);

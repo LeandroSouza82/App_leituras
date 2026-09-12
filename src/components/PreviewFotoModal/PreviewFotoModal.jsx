@@ -1,45 +1,28 @@
 import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, RefreshCw, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
+import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
 import './PreviewFotoModal.css';
 
 const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituras = {}, unidadeAtiva = '' }) => {
   const objOuVal = leituras?.[unidadeAtiva];
-  const leituraAnterior = (typeof objOuVal === 'object' && objOuVal !== null) ? (objOuVal.leitura_anterior ?? 0) : (objOuVal ?? 0);
+  const leituraAnterior = (typeof objOuVal === 'object' && objOuVal !== null) ? (objOuVal.leitura_anterior ?? null) : (objOuVal ?? null);
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
+  const inputRef = useRef(null);
 
-  const formatarComMascara = (val) => {
-    if (!val) return '';
-    let num = String(val).replace(/\D/g, '');
-    if (!num) return '';
-    num = parseInt(num, 10).toString();
-    num = num.padStart(5, '0');
-    const intPart = num.slice(0, -4);
-    const decPart = num.slice(-4);
-    return `${intPart},${decPart}`;
-  };
-
-  const handleInputChange = (e) => {
-    let num = e.target.value.replace(/\D/g, '');
-    if (!num) {
-      setLeituraValor('');
-      return;
-    }
-    num = parseInt(num, 10).toString();
-    num = num.padStart(5, '0');
-    const intPart = num.slice(0, -4);
-    const decPart = num.slice(-4);
-    const novoValor = `${intPart},${decPart}`;
-    setLeituraValor(novoValor);
-
-    if (leituraAnterior) {
-      const valorAtualFloat = parseFloat(`${intPart}.${decPart}`);
-      const valorAnteriorFloat = parseFloat(String(leituraAnterior).replace(',', '.'));
-      if (!isNaN(valorAtualFloat) && !isNaN(valorAnteriorFloat) && valorAtualFloat < valorAnteriorFloat) {
+  const validarLeitura = (valor) => {
+    if (leituraAnterior !== null && leituraAnterior !== undefined) {
+      const valorAtualFloat = parseLeituraNumerica(valor);
+      const valorAnteriorFloat = parseLeituraNumerica(leituraAnterior);
+      if (
+        valorAtualFloat !== null &&
+        valorAnteriorFloat !== null &&
+        Math.round(valorAtualFloat * 10000) < Math.round(valorAnteriorFloat * 10000)
+      ) {
         setErroValidacao('A leitura não pode ser menor que o mês anterior');
       } else {
         setErroValidacao('');
@@ -49,29 +32,100 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
     }
   };
 
+  const handleInputChange = (e) => {
+    const raw = e.target.value;
+    if (!raw) {
+      setLeituraValor('');
+      setErroValidacao('');
+      return;
+    }
+
+    const input = e.target;
+    const cursor = input.selectionStart || 0;
+    const textBeforeCursor = raw.slice(0, cursor);
+    const digitsBeforeCursor = textBeforeCursor.replace(/\D/g, '').length;
+    const totalDigits = raw.replace(/\D/g, '').length;
+
+    // Se o usuário colou ou inseriu valor com separadores em campo vazio/novo
+    let formatted = '';
+    if (!leituraValor && (raw.includes('.') || raw.includes(','))) {
+      formatted = aplicarMascaraLeitura(raw);
+    } else {
+      formatted = formatarDigitosLeitura(raw);
+    }
+
+    setLeituraValor(formatted);
+    validarLeitura(formatted);
+
+    const newPos = calcularPosicaoCursor(formatted, digitsBeforeCursor, totalDigits);
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.setSelectionRange(newPos, newPos);
+      }
+    });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Backspace') {
+      const input = e.currentTarget;
+      const { selectionStart, selectionEnd, value } = input;
+      if (selectionStart === selectionEnd && selectionStart > 0) {
+        const charBefore = value[selectionStart - 1];
+        if (charBefore === ',' || charBefore === '.') {
+          e.preventDefault();
+          const posToDelete = selectionStart - 2;
+          if (posToDelete >= 0) {
+            const newValue = value.slice(0, posToDelete) + value.slice(selectionStart - 1);
+            const digitsBefore = value.slice(0, posToDelete).replace(/\D/g, '').length;
+            const totalDigits = newValue.replace(/\D/g, '').length;
+            const formatted = formatarDigitosLeitura(newValue);
+            const newPos = calcularPosicaoCursor(formatted, digitsBefore, totalDigits);
+            setLeituraValor(formatted);
+            validarLeitura(formatted);
+            requestAnimationFrame(() => {
+              if (inputRef.current) {
+                inputRef.current.setSelectionRange(newPos, newPos);
+              }
+            });
+          }
+        }
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData?.getData('text') || '';
+    const trimmed = pasted.trim();
+    if (!trimmed) return;
+
+    const formatted = aplicarMascaraLeitura(trimmed);
+    if (formatted) {
+      setLeituraValor(formatted);
+      validarLeitura(formatted);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.setSelectionRange(formatted.length, formatted.length);
+        }
+      });
+    }
+  };
+
   // Garante limpeza e estado pronto para digitação sempre que o modal abrir
   useEffect(() => {
     if (isOpen) {
-      if (unitInfo && unitInfo.includes('A-101')) {
-        console.log(`
-[DEBUG FORMATAÇÃO]
-initialValue recebido: "${initialValue}"
-typeof initialValue: ${typeof initialValue}
-
-leituraValor antes da inicialização: "${leituraValor}"
-leituraValor depois da inicialização: "${initialValue || ''}"
-
-valor enviado ao input: "${initialValue || ''}"
-typeof valor enviado ao input: ${typeof (initialValue || '')}
-        `);
+      const formattedInitial = initialValue ? aplicarMascaraLeitura(initialValue) : '';
+      setLeituraValor(formattedInitial);
+      if (formattedInitial) {
+        validarLeitura(formattedInitial);
+      } else {
+        setErroValidacao('');
       }
-
-      setLeituraValor(initialValue || ''); // CIRÚRGICO: carrega o valor pré-salvo, se existir
-      setErroValidacao('');
     }
   }, [isOpen, initialValue, leituraAnterior]);
 
-  if (!isOpen) return null;
+
+  if (!isOpen || !imageUri) return null;
 
   const handleSave = async () => {
     if (!leituraValor || isSaving) return;
@@ -123,16 +177,16 @@ typeof valor enviado ao input: ${typeof (initialValue || '')}
             
             <div className="bg-slate-50 p-2 rounded-md mb-2 border border-slate-200" style={{ backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '8px' }}>
               <p className="text-sm text-gray-600 font-medium" style={{ fontSize: '13px', color: '#475569' }}>
-                Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? Number(leituraAnterior).toFixed(4).replace('.', ',') : '0,0000'}</strong>
+                Leitura Anterior: <strong>{leituraAnterior !== null && leituraAnterior !== undefined ? formatarLeitura4Casas(leituraAnterior) : '0,0000'}</strong>
               </p>
               {leituraValor && (() => {
-                const atualFloat = parseFloat(leituraValor.replace(',', '.'));
-                const anteriorFloat = parseFloat(String(leituraAnterior || 0).replace(',', '.'));
-                if (!isNaN(atualFloat) && !isNaN(anteriorFloat) && atualFloat >= anteriorFloat) {
-                  const consumo = (atualFloat - anteriorFloat).toFixed(4);
+                const atualFloat = parseLeituraNumerica(leituraValor);
+                const anteriorFloat = parseLeituraNumerica(leituraAnterior !== null && leituraAnterior !== undefined ? leituraAnterior : 0);
+                if (atualFloat !== null && anteriorFloat !== null && atualFloat >= anteriorFloat) {
+                  const consumo = atualFloat - anteriorFloat;
                   return (
                     <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
-                      Consumo Calculado: <strong>{consumo.replace('.', ',')} m³</strong>
+                      Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} m³</strong>
                     </p>
                   );
                 }
@@ -141,15 +195,19 @@ typeof valor enviado ao input: ${typeof (initialValue || '')}
             </div>
 
             <input
+              ref={inputRef}
               id="leitura-atual"
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
               value={leituraValor}
               onChange={handleInputChange}
-              placeholder="0,0000"
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder="Digite a leitura..."
               className={`reading-input-field ${erroValidacao ? 'border-red-500' : ''}`}
               style={erroValidacao ? { borderColor: '#ef4444' } : {}}
+              autoComplete="off"
             />
             {erroValidacao && (
               <span className="text-xs text-red-500 mt-1" style={{ fontSize: '12px', color: '#ef4444', display: 'block', marginTop: '4px' }}>

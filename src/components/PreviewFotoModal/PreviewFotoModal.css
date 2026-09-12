@@ -144,11 +144,11 @@
 /* ---------- Container do Campo de Lançamento ---------- */
 .reading-input-container {
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -156,7 +156,7 @@
 
 .reading-input-container label {
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 700;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -165,22 +165,23 @@
 
 .reading-input-field {
   width: 100%;
-  height: 46px;
-  padding: 6px 12px;
-  font-size: 1.45rem;
-  font-weight: 800;
+  height: 40px;
+  padding: 4px 10px;
+  font-size: 1.15rem;
+  font-weight: 600;
   color: #1e293b;
-  border: 2px solid #1e88e5;
-  border-radius: 10px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
   text-align: center;
   background: #f8fafc;
   outline: none;
   transition: all 0.2s;
+  letter-spacing: 0.02em;
 }
 
 .reading-input-field:focus {
   background: #ffffff;
-  border-color: #1565c0;
+  border-color: #1e88e5;
   box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.15);
 }
 

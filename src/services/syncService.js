@@ -2,7 +2,6 @@ import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
 import { sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
-import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 
 /**
  * syncService - Arquitetura Offline-First com Sincronização Automática em Background e Auditoria Visual.
@@ -68,6 +67,17 @@ const base64ToBlob = (base64, mimeType = 'image/jpeg') => {
  */
 export async function salvarLeituraOffline(payload, base64Image = null, fileName = null) {
   try {
+    let resolvedUserId = payload.leiturista_id || null;
+
+    if (!resolvedUserId) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        resolvedUserId = data?.session?.user?.id || null;
+      } catch (_) {
+        resolvedUserId = null;
+      }
+    }
+
     if (base64Image && fileName) {
       try {
         await Filesystem.writeFile({
@@ -90,7 +100,7 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
       condominio_nome: payload.condominio_nome || null,
       servico: (payload.servico || 'AGUA').toUpperCase(),
       leitura_atual: payload.leitura_atual !== undefined ? parseFloat(payload.leitura_atual) : null,
-      leiturista_id: payload.leiturista_id || null,
+      leiturista_id: resolvedUserId,
       data_leitura: payload.data_leitura || new Date().toISOString(),
       fileName: fileName || payload.fileName || null,
       photoPath: payload.photoPath || null,
@@ -166,13 +176,45 @@ export async function sincronizarFilaEmBackground() {
     isSyncRunning = true;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const userIdPadrao = user?.id || 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user?.id) {
+      return;
+    }
+    const currentUserId = user.id;
 
     for (const item of [...fila]) {
       etapaSync = 'PROCESSAR_ITEM';
       
       try {
+        if (item.leiturista_id && item.leiturista_id !== currentUserId) {
+          continue;
+        }
+
+        if (!item.leiturista_id) {
+          if (!item.condominio_id) {
+            continue;
+          }
+
+          const { data: condoPermitido, error: condoError } = await supabase
+            .from('condominios')
+            .select('id')
+            .eq('id', item.condominio_id)
+            .maybeSingle();
+
+          if (condoError || !condoPermitido) {
+            continue;
+          }
+
+          item.leiturista_id = currentUserId;
+          const filaAtualizada = readFilaSync();
+          const idx = filaAtualizada.findIndex(f => f.id === item.id);
+          if (idx !== -1) {
+            filaAtualizada[idx].leiturista_id = currentUserId;
+            writeFilaSync(filaAtualizada);
+          }
+        }
+
+        const leituristaEnvio = item.leiturista_id;
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
@@ -213,7 +255,18 @@ export async function sincronizarFilaEmBackground() {
                 .replace(/[^a-zA-Z0-9._-]/g, '_');
             };
             const nomeStorage = sanitizarNomeStorage(item.fileName);
-            const remotePath = `leituras/${Date.now()}_${nomeStorage}`;
+            
+            let remotePath = item.remotePath;
+            if (!remotePath) {
+              remotePath = `leituras/${Date.now()}_${nomeStorage}`;
+              item.remotePath = remotePath;
+              const filaAtual = readFilaSync();
+              const idx = filaAtual.findIndex(f => f.id === item.id);
+              if (idx !== -1) {
+                filaAtual[idx].remotePath = remotePath;
+                writeFilaSync(filaAtual);
+              }
+            }
 
             let uploadSuccess = false;
             let lastUploadError = null;
@@ -256,7 +309,7 @@ export async function sincronizarFilaEmBackground() {
           servico: item.servico,
           leitura_atual: item.leitura_atual,
           foto_url: publicPhotoUrl || '',
-          leiturista_id: item.leiturista_id || userIdPadrao,
+          leiturista_id: leituristaEnvio,
           data_leitura: item.data_leitura || new Date().toISOString()
         };
 
@@ -300,19 +353,6 @@ export async function sincronizarFilaEmBackground() {
           db_id: item?.db_id,
           fileName: item?.fileName
         }));
-
-        try {
-          await customAlert(
-            `[SYNC ERRO]\n` +
-            `Etapa: ${etapaSync}\n` +
-            `Unidade: ${item?.unidade_id}\n` +
-            `Serviço: ${item?.servico}\n` +
-            `db_id: ${item?.db_id}\n` +
-            `fileName: ${item?.fileName}\n` +
-            `Erro: ${erroMsg}`,
-            'ERRO SALVAR LEITURAS'
-          );
-        } catch (_) {}
       }
     }
 
