@@ -124,11 +124,17 @@ select {
 
 .dashboard-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 20px 16px 110px;
+  padding: 16px 16px 96px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+.dashboard-alerta-banner {
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
 .dashboard-section-label {

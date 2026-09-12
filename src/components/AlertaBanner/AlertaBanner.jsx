@@ -1,4 +1,4 @@
-const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasado }) => {
+const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasado, className = '' }) => {
   const temHoje = leiturasHoje.length > 0;
   const temAtrasadas = leiturasAtrasadas.length > 0;
 
@@ -8,11 +8,11 @@ const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasa
 
   return (
     <div
+      className={`alerta-banner-wrapper ${className}`.trim()}
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        marginBottom: '12px',
       }}
     >
       {temHoje && (

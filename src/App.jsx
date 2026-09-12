@@ -326,6 +326,7 @@ const MainApp = ({ onLogout }) => {
                 leiturasHoje={leiturasHoje}
                 leiturasAtrasadas={leiturasAtrasadas}
                 onFocarAtrasado={handleNavegarParaAtrasados}
+                className="dashboard-alerta-banner"
               />
 
               <p className="dashboard-section-label">Ações</p>

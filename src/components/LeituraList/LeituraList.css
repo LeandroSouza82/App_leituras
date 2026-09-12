@@ -42,6 +42,12 @@
   padding: 0;
 }
 
+/* Espaço cirúrgico entre o campo de busca e o aviso quando visível */
+.list-alerta-banner {
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+
 .busca-wrapper {
   position: relative;
   display: flex;

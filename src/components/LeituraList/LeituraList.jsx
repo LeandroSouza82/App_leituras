@@ -150,6 +150,7 @@ const LeituraList = ({
           leiturasHoje={leiturasHoje}
           leiturasAtrasadas={leiturasAtrasadas}
           onFocarAtrasado={handleFocarAtrasado}
+          className="list-alerta-banner"
         />
       </div>
 
