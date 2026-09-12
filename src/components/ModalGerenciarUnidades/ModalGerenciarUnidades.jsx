@@ -4,7 +4,6 @@ import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { FilePickerService } from '../../services/filePickerService';
-import { salvarArquivoSeguro } from '../../services/filesystemService';
 import * as XLSX from 'xlsx';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import './ModalGerenciarUnidades.css';

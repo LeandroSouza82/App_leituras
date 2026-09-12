@@ -67,3 +67,16 @@ export const salvarArquivoSeguro = async (fileName, data) => {
     recursive: true
   });
 };
+
+export const salvarArquivoBinarioSeguro = async (fileName, base64Data) => {
+  const cleanBase64 = typeof base64Data === 'string' && base64Data.includes(',')
+    ? base64Data.split(',')[1]
+    : base64Data;
+
+  await Filesystem.writeFile({
+    path: fileName,
+    data: cleanBase64,
+    directory: Directory.Data,
+    recursive: true
+  });
+};
