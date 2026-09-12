@@ -21,6 +21,8 @@ const getCurrentMonthYear = () => {
   return mesAnoFormatado.charAt(0).toUpperCase() + mesAnoFormatado.slice(1);
 };
 
+const VISIBILIDADE_VALORES_KEY = 'fast_leituras_mostrar_valores';
+
 const Header = ({
   mesAnoFormatado,
   totalCondominios,
@@ -38,7 +40,13 @@ const Header = ({
 }) => {
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
-  const [mostrarValor, setMostrarValor] = useState(true);
+  const [mostrarValor, setMostrarValor] = useState(() => {
+    const salvo = localStorage.getItem(VISIBILIDADE_VALORES_KEY);
+    if (salvo === null) {
+      return true;
+    }
+    return salvo === 'true';
+  });
   const title = getCurrentMonthYear();
 
   const handleExportClick = async () => {
@@ -107,7 +115,11 @@ const Header = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setMostrarValor(!mostrarValor);
+              setMostrarValor((valorAtual) => {
+                const novoValor = !valorAtual;
+                localStorage.setItem(VISIBILIDADE_VALORES_KEY, String(novoValor));
+                return novoValor;
+              });
             }}
             aria-label={mostrarValor ? 'Ocultar valor' : 'Mostrar valor'}
             className="bg-transparent border-none outline-none shadow-none text-white p-1 hover:opacity-80 flex items-center justify-center cursor-pointer ml-auto"
@@ -153,7 +165,7 @@ const Header = ({
           aria-label="Ver faturamento detalhado"
         >
           <span className="header-metrica-label">Faturado</span>
-          <strong className="header-metrica-valor">{formatCurrency(totalValor)}</strong>
+          <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
         </div>
       </div>
 

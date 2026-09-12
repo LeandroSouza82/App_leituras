@@ -2,48 +2,67 @@ import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
 import { supabase } from './supabase';
-import { customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
+import { customAlert, customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
 import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
+import { deduplicarGavetaAnteriores } from './leiturasAnterioresService';
+import {
+  normalizarNome,
+  calcularDistanciaLevenstein,
+  extrairServicoDeTexto,
+  extrairMetadadosPlanilha,
+  extrairUnidadesELeituras,
+  analisarPlanilhaCompleta,
+} from './ucondoSpreadsheetParser';
+
+export { normalizarNome, calcularDistanciaLevenstein };
 
 /**
- * Normaliza o nome do condomínio removendo acentos, múltiplos espaços,
- * caracteres invisíveis e convertendo para minúsculas para comparação 100% precisa.
- */
-export const normalizarNome = (txt) => {
-  if (!txt) return '';
-  return String(txt)
-    .toLowerCase()
-    .normalize('NFD') // Separa os acentos das letras
-    .replace(/[\u0300-\u036f]/g, '') // Remove os acentos
-    .replace(/[^a-z0-9]/g, ''); // Remove tudo que não for letra ou número (espaços, hífens, acentos)
-};
-
-/**
- * Calcula a distância de Levenshtein (edições necessárias) entre duas strings.
- * Útil para Fuzzy Match (ex: rogerioloch vs rogeriolock).
- */
-export const calcularDistanciaLevenstein = (a, b) => {
-  if (!a || !a.length) return (b || '').length;
-  if (!b || !b.length) return a.length;
-  const matrix = [];
-  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-};
-
-/**
- * Serviço Sênior Modular para Importação Mágica de planilhas do uCondo.
+ * Serviço Sênior Modular para Importação de planilhas do uCondo.
+ * Orquestra leitura de arquivos, diálogos de confirmação e persistência local/remota.
  */
 export const UCondoImportService = {
+  /**
+   * Lê o arquivo de forma segura garantindo suporte ao Base64 gerado pelo Capacitor,
+   * sem depender exclusivamente de heurísticas de comprimento.
+   * @param {ArrayBuffer|Uint8Array|string} fileData - Conteúdo do arquivo
+   * @returns {XLSX.WorkBook}
+   */
+  lerWorkbook(fileData) {
+    if (!fileData) {
+      throw new Error('Nenhum dado de arquivo fornecido para importação.');
+    }
+
+    let workbook;
+    try {
+      if (typeof fileData === 'string') {
+        if (fileData.startsWith('data:')) {
+          // A) String iniciando com "data:" -> extrair Base64
+          const base64Content = fileData.split(',')[1] || fileData;
+          workbook = XLSX.read(base64Content, { type: 'base64' });
+        } else {
+          // D) String sem prefixo data: (Provavelmente Base64 puro do Capacitor)
+          try {
+            workbook = XLSX.read(fileData, { type: 'base64' });
+          } catch (e) {
+            // Fallback controlado para binary se não for Base64 válido
+            workbook = XLSX.read(fileData, { type: 'binary' });
+          }
+        }
+      } else if (fileData instanceof ArrayBuffer || fileData instanceof Uint8Array) {
+        // B e C) ArrayBuffer / Uint8Array
+        const uint8 = fileData instanceof ArrayBuffer ? new Uint8Array(fileData) : fileData;
+        workbook = XLSX.read(uint8, { type: 'array' });
+      } else {
+        // Fallback genérico para array (se for um array nativo)
+        workbook = XLSX.read(fileData, { type: 'array' });
+      }
+    } catch (fallbackErr) {
+      throw new Error('Falha ao ler o formato da planilha: ' + fallbackErr.message);
+    }
+
+    return workbook;
+  },
+
   /**
    * Extrai o nome limpo do condomínio a partir do nome do arquivo
    * Ex: "uCondo_Aquarela_AGUA.xlsx" -> "Aquarela"
@@ -70,17 +89,17 @@ export const UCondoImportService = {
   },
 
   /**
-   * Normaliza o tipo de leitura extraído para evitar violar a constraint do Supabase.
+   * Normaliza o tipo de leitura extraído para compatibilidade com o cadastro do Supabase.
    */
   normalizarTipoLeitura(tipoBruto) {
-    let tipoNormalizado = "Água e Gás"; // Valor padrão seguro
+    let tipoNormalizado = "Água e Gás"; // Valor padrão para cadastro de condomínio
     const tipo = String(tipoBruto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
     if (tipo.includes('agua') && tipo.includes('gas')) {
       tipoNormalizado = "Água e Gás";
-    } else if (tipo.includes('somente agua') || tipo === 'agua') {
+    } else if (tipo.includes('agua') || tipo.includes('somente agua')) {
       tipoNormalizado = "Somente Água";
-    } else if (tipo.includes('somente gas') || tipo === 'gas') {
+    } else if (tipo.includes('gas') || tipo.includes('somente gas')) {
       tipoNormalizado = "Somente Gás";
     } else if (tipo.includes('energia')) {
       tipoNormalizado = "Energia Elétrica";
@@ -90,160 +109,176 @@ export const UCondoImportService = {
   },
 
   /**
-   * Extrai estritamente a coluna de Unidades de um arquivo XLSX/CSV
-   * @param {ArrayBuffer|Uint8Array|string} fileData - Conteúdo do arquivo
-   * @returns {Array<string>} Lista de unidades extraídas no formato original literal
+   * Converte o tipo de leitura normalizado para o código de serviço ('AGUA'|'GAS'|'ENERGIA'|null).
+   * NUNCA retorna 'AGUA' silenciosamente se o tipo for ambíguo.
+   * @param {string} tipoNormalizado
+   * @returns {'AGUA'|'GAS'|'ENERGIA'|null}
    */
-  extrairUnidades(fileData) {
-    if (!fileData) {
-      throw new Error('Nenhum dado de arquivo fornecido para importação.');
-    }
-
-    let workbook;
-    try {
-      if (typeof fileData === 'string' && fileData.startsWith('data:')) {
-        const base64Content = fileData.split(',')[1] || fileData;
-        workbook = XLSX.read(base64Content, { type: 'base64' });
-      } else if (typeof fileData === 'string') {
-        workbook = XLSX.read(fileData, { type: 'binary' });
-      } else if (fileData instanceof ArrayBuffer) {
-        const uint8 = new Uint8Array(fileData);
-        workbook = XLSX.read(uint8, { type: 'array' });
-      } else if (fileData instanceof Uint8Array) {
-        workbook = XLSX.read(fileData, { type: 'array' });
-      } else {
-        workbook = XLSX.read(fileData, { type: 'array' });
-      }
-    } catch (readErr) {
-      try {
-        workbook = XLSX.read(fileData, { type: 'binary' });
-      } catch (fallbackErr) {
-        throw new Error('Falha ao ler o formato da planilha: ' + fallbackErr.message);
-      }
-    }
-
-    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-      throw new Error('Arquivo de planilha inválido ou sem abas.');
-    }
-
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    // Extrai a matriz bruta completa (array de arrays) para ignorar linhas de títulos/offset do uCondo
-    const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-
-    if (!rawData || !Array.isArray(rawData) || rawData.length === 0) {
-      throw new Error('A planilha selecionada está vazia.');
-    }
-
-    let headerIndex = -1;
-    let columnUnidadeIndex = -1;
-
-    // 1. Busca dinâmica nas primeiras 25 linhas por qualquer célula contendo "unidade", "apto", "apartamento", etc.
-    for (let i = 0; i < Math.min(25, rawData.length); i++) {
-      const row = rawData[i];
-      if (!row || !Array.isArray(row)) continue;
-
-      const colIndex = row.findIndex(cell => {
-        if (cell === null || cell === undefined) return false;
-        const str = String(cell).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        return (
-          str.includes('unidade') ||
-          str === 'apto' ||
-          str === 'apartamento' ||
-          str === 'unid' ||
-          str === 'ap' ||
-          str === 'numero' ||
-          str === 'identificador' ||
-          str === 'unidade *' ||
-          str === 'unidade*'
-        );
-      });
-
-      if (colIndex !== -1) {
-        headerIndex = i;
-        columnUnidadeIndex = colIndex;
-        break;
-      }
-    }
-
-    let unidadesExtraidas = [];
-
-    if (headerIndex !== -1 && columnUnidadeIndex !== -1) {
-      // Extrai apenas as linhas abaixo do cabeçalho detectado
-      for (let i = headerIndex + 1; i < rawData.length; i++) {
-        const row = rawData[i];
-        if (!row || !Array.isArray(row)) continue;
-        const cellVal = row[columnUnidadeIndex];
-        if (cellVal !== undefined && cellVal !== null) {
-          const nomeUnidade = String(cellVal).trim();
-          if (nomeUnidade !== '' && !nomeUnidade.toLowerCase().includes('total') && !nomeUnidade.toLowerCase().includes('legenda')) {
-            unidadesExtraidas.push(nomeUnidade);
-          }
-        }
-      }
-    }
-
-    // 2. Fallback de varredura por padrões se não encontrou cabeçalho explícito
-    if (unidadesExtraidas.length === 0) {
-      rawData.forEach((row, rIdx) => {
-        if (rIdx < 2 && rawData.length > 5) return;
-        if (Array.isArray(row)) {
-          row.forEach(cell => {
-            if (cell === null || cell === undefined) return;
-            const val = String(cell).trim();
-            if (!val) return;
-            if (/^[A-Za-z0-9]+[-/][A-Za-z0-9]+$/.test(val) || /^([A-Za-z]+\s*)?\d{2,4}$/i.test(val)) {
-              unidadesExtraidas.push(val);
-            }
-          });
-        }
-      });
-    }
-
-    // Remove duplicatas preservando a ordem original estrita de inserção
-    const unidadesUnicas = Array.from(new Set(unidadesExtraidas.map(u => String(u).trim()).filter(Boolean)));
-
-    if (unidadesUnicas.length === 0) {
-      throw new Error('Não foi possível encontrar a coluna de Unidades na planilha.');
-    }
-
-    return unidadesUnicas;
+  normalizarTipoLeituraParaServico(tipoNormalizado) {
+    return extrairServicoDeTexto(tipoNormalizado);
   },
 
   /**
-   * Salva a lista de unidades no LocalStorage e Filesystem local (Offline-First).
-   * A sincronização com o Supabase é feita em background pelo syncOfflineService
-   * quando a conexão for restabelecida — sem bloquear o fluxo de importação.
+   * Extrai pares {unidade, leituraAnterior?} e os metadados (nome e serviço) delegando ao módulo puro.
+   * @param {ArrayBuffer|Uint8Array|string|object} fileDataOuWorkbook
+   * @returns {{ pares: Array<{unidade: string, leituraAnterior: number|null}>, metadados: {nome: string, tipoMedicao: string, servico: 'AGUA'|'GAS'|'ENERGIA'|null} }}
    */
-  async persistirUnidadesLocal(condominioId, unidades) {
+  analisarPlanilhaCompleta(fileDataOuWorkbook) {
+    if (!fileDataOuWorkbook) {
+      throw new Error('Nenhum dado de arquivo fornecido para importação.');
+    }
+    const workbook = (fileDataOuWorkbook && fileDataOuWorkbook.SheetNames)
+      ? fileDataOuWorkbook
+      : this.lerWorkbook(fileDataOuWorkbook);
+    return analisarPlanilhaCompleta(workbook);
+  },
+
+  /**
+   * Extrai pares {unidade, leituraAnterior?} de forma cronológica por unidade delegando ao módulo puro.
+   * @param {ArrayBuffer|Uint8Array|string|object} fileDataOuWorkbook
+   * @returns {Array<{unidade: string, leituraAnterior: number|null}>}
+   */
+  extrairUnidadesELeituras(fileDataOuWorkbook) {
+    if (!fileDataOuWorkbook) {
+      throw new Error('Nenhum dado de arquivo fornecido para importação.');
+    }
+    const workbook = (fileDataOuWorkbook && fileDataOuWorkbook.SheetNames)
+      ? fileDataOuWorkbook
+      : this.lerWorkbook(fileDataOuWorkbook);
+    return extrairUnidadesELeituras(workbook);
+  },
+
+  /**
+   * Extrai metadados do cabeçalho da planilha delegando ao módulo puro.
+   * @param {Array<Array<any>>} rawData
+   * @param {string} [nomeArquivo='']
+   * @returns {{ nome: string, tipoMedicao: string, servico: 'AGUA'|'GAS'|'ENERGIA'|null }}
+   */
+  extrairMetadadosPlanilha(rawData, nomeArquivo = '') {
+    return extrairMetadadosPlanilha(rawData, nomeArquivo);
+  },
+
+  /**
+   * Extrai estritamente a lista de nomes de Unidades (compatibilidade retroativa).
+   * @param {ArrayBuffer|Uint8Array|string} fileData
+   * @returns {Array<string>}
+   */
+  extrairUnidades(fileData) {
+    return this.extrairUnidadesELeituras(fileData).map(p => p.unidade);
+  },
+
+  /**
+   * Extrai estritamente a lista de nomes de Unidades (compatibilidade retroativa).
+   * @param {ArrayBuffer|Uint8Array|string} fileData
+   * @returns {Array<string>}
+   */
+  extrairUnidades(fileData) {
+    return this.extrairUnidadesELeituras(fileData).map(p => p.unidade);
+  },
+
+  /**
+   * Salva a lista de unidades e leituras anteriores no LocalStorage e Filesystem (Offline-First).
+   * As leituras anteriores são gravadas na gaveta canônica já consumida pelo LeituraFotoModal:
+   *   `leituras_anteriores_${condominioId}`  — array [{unidade, leitura_anterior, leitura_anterior_gas, leitura_anterior_energia}]
+   * e na gaveta por serviço:
+   *   `leituras_anteriores_${condominioId}_AGUA` etc.
+   *
+   * Regra de segurança:
+   * - Se houver leituras e o serviço for nulo ou ambíguo, interrompe ANTES de gravar qualquer gaveta.
+   * - NÃO sobrescreve leitura_anterior com 0 quando o valor da planilha está ausente.
+   *
+   * @param {string|number} condominioId
+   * @param {Array<string|{unidade:string,leituraAnterior:number|null}>} unidades
+   * @param {'AGUA'|'GAS'|'ENERGIA'|null} [servico=null]
+   */
+  async persistirUnidadesLocal(condominioId, unidades, servico = null) {
     if (!condominioId || !Array.isArray(unidades)) return;
 
-    // 1. LocalStorage — unidades disponíveis imediatamente
+    // Normaliza entrada: aceita string pura (compatibilidade) ou objeto {unidade, leituraAnterior}
+    const pares = unidades.map(item => {
+      if (typeof item === 'string') return { unidade: String(item).trim(), leituraAnterior: null };
+      return { unidade: String(item.unidade ?? item).trim(), leituraAnterior: item.leituraAnterior ?? null };
+    });
+
+    const nomesUnidades = pares.map(p => p.unidade);
+    const temLeituras = pares.some(p => p.leituraAnterior !== null);
+
+    // REGRA DE SEGURANÇA: Se a planilha trouxer leituras, o serviço DEVE ser inequívoco.
+    // Interrompe ANTES de gravar qualquer gaveta se o serviço for ambíguo / nulo.
+    const servicoValido = (servico === 'AGUA' || servico === 'GAS' || servico === 'ENERGIA') ? servico : null;
+    if (temLeituras && !servicoValido) {
+      throw new Error(
+        'Serviço ambíguo ou não identificado. Para importar leituras anteriores, utilize uma planilha que identifique expressamente Água, Gás ou Energia.'
+      );
+    }
+
+    // 1. LocalStorage — lista de unidades
     const storageKey = `unidades_${condominioId}`;
-    localStorage.setItem(storageKey, JSON.stringify(unidades));
+    localStorage.setItem(storageKey, JSON.stringify(nomesUnidades));
 
     // 2. Filesystem — persistência permanente
     const fileName = `unidades_${condominioId}.json`;
-    await salvarArquivoSeguro(fileName, JSON.stringify(unidades));
+    await salvarArquivoSeguro(fileName, JSON.stringify(nomesUnidades));
 
-    // 3. INICIALIZAR LEITURAS ANTERIORES ZERADAS
-    const leiturasZeradas = unidades.map(nome => ({
-      unidade: String(nome).trim(),
-      leitura_anterior: 0,
-      leitura_anterior_gas: 0
-    }));
-    localStorage.setItem(`leituras_anteriores_${condominioId}`, JSON.stringify(leiturasZeradas));
+    // 3. Gaveta unificada de leituras anteriores (somente se houver leituras e serviço válido)
+    if (temLeituras && servicoValido) {
+      const chaveLeituras = `leituras_anteriores_${condominioId}`;
+      let gaveta = [];
+      try {
+        const raw = localStorage.getItem(chaveLeituras);
+        if (raw) gaveta = JSON.parse(raw) || [];
+        if (!Array.isArray(gaveta)) gaveta = [];
+        gaveta = deduplicarGavetaAnteriores(gaveta);
+      } catch { gaveta = []; }
 
-    // 4. Supabase — tentativa em background
+      const propServico = servicoValido === 'GAS' ? 'leitura_anterior_gas'
+        : servicoValido === 'ENERGIA' ? 'leitura_anterior_energia'
+        : 'leitura_anterior';
+
+      for (const par of pares) {
+        const idx = gaveta.findIndex(g => String(g.unidade).trim() === par.unidade);
+        if (idx !== -1) {
+          // Unidade já existe na gaveta — atualiza só se a planilha trouxe valor
+          if (par.leituraAnterior !== null) {
+            gaveta[idx] = { ...gaveta[idx], unidade: par.unidade, [propServico]: par.leituraAnterior };
+          } else {
+            gaveta[idx] = { ...gaveta[idx], unidade: par.unidade };
+          }
+        } else {
+          // Unidade nova: só adiciona leitura se vier da planilha
+          const entrada = { unidade: par.unidade };
+          if (par.leituraAnterior !== null) entrada[propServico] = par.leituraAnterior;
+          gaveta.push(entrada);
+        }
+      }
+      localStorage.setItem(chaveLeituras, JSON.stringify(gaveta));
+
+      // 4. Gaveta por serviço consumida por telas específicas
+      const chaveServico = `leituras_anteriores_${condominioId}_${servicoValido}`;
+      const leiturasParaFila = pares
+        .filter(p => p.leituraAnterior !== null)
+        .map(p => ({ unidade: p.unidade, leitura_anterior: p.leituraAnterior }));
+
+      localStorage.setItem(chaveServico, JSON.stringify(leiturasParaFila));
+      // Enfileira para sincronização com Supabase (tabela unidades_leituras) via offline queue
+      enfileirarLeiturasAnteriores(String(condominioId), leiturasParaFila, servicoValido);
+    }
+
+    // Notifica LeituraFotoModal e outros componentes para reidratar a tela instantaneamente
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId: String(condominioId) } }));
+    }
+
+    // 5. Supabase — insert de unidades em background (fire-and-forget)
     if (supabase) {
       try {
-        const unidadesParaInserir = unidades.map(nome => ({
+        const unidadesParaInserir = nomesUnidades.map(nome => ({
           condominio_id: condominioId,
-          nome: String(nome).trim(),
-          numero: String(nome).trim(),
-          identificador: String(nome).trim(),
+          nome,
+          numero: nome,
+          identificador: nome,
           status: 'pendente',
         }));
-        // Fire-and-forget
         supabase
           .from('unidades')
           .delete()
@@ -255,99 +290,27 @@ export const UCondoImportService = {
   },
 
   /**
-   * Extrai metadados do cabeçalho da planilha uCondo (Nome do Condomínio e Consumo de / Tipo de Medição)
-   */
-  extrairMetadadosPlanilha(rawData, nomeArquivo) {
-    let nomeExtraido = '';
-    let tipoMedicaoExtraido = 'Água e Gás'; // Valor padrão fallback
-
-    if (Array.isArray(rawData)) {
-      for (let i = 0; i < Math.min(15, rawData.length); i++) {
-        const row = rawData[i];
-        if (!row || !Array.isArray(row)) continue;
-
-        for (let j = 0; j < row.length; j++) {
-          const cellValue = String(row[j] || '').trim().toLowerCase();
-
-          // Busca "Condomínio" e pega o valor da próxima coluna
-          if (cellValue.includes('condomínio') || cellValue.includes('condominio')) {
-            if (row[j + 1] !== undefined && row[j + 1] !== null && String(row[j + 1]).trim() !== '') {
-              // Remove asteriscos que o uCondo coloca no nome
-              nomeExtraido = String(row[j + 1]).replace(/\*/g, '').trim();
-            }
-          }
-
-          // Busca "Consumo de" e pega o valor da próxima coluna (ex: Gás, Água)
-          if (cellValue.includes('consumo de') || cellValue.includes('tipo de leitura') || cellValue.includes('tipo de medicao') || cellValue.includes('tipo de medição')) {
-            if (row[j + 1] !== undefined && row[j + 1] !== null && String(row[j + 1]).trim() !== '') {
-              const tipoStr = String(row[j + 1]).replace(/\*/g, '').trim();
-              tipoMedicaoExtraido = this.normalizarTipoLeitura(tipoStr);
-            }
-          }
-        }
-      }
-    }
-
-    // Remove o fallback automático para forçar o prompt em processarPlanilhaCadastro
-    // se o nome não for encontrado nas células, evitando cards fantasmas.
-    // O nome do arquivo será usado como sugestão no prompt.
-
-    return {
-      nome: nomeExtraido,
-      tipoMedicao: tipoMedicaoExtraido,
-    };
-  },
-
-  /**
    * Processamento Inteligente para a Aba de Cadastro ("Selecionar e Importar Planilha")
-   * Suporta:
-   * 1. Extração de metadados direto das células ("Condomínio" e "Consumo de")
-   * 2. Consulta explícita de duplicidade no Supabase com .ilike()
-   * 3. Criação / Substituição de condomínio e unidades com batch insert
    */
   async processarPlanilhaCadastro(nomeArquivo, fileData, condominiosExistentes = []) {
     try {
-      // 1. Ler o arquivo com SheetJS
-      let workbook;
-      try {
-        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
-          const base64Content = fileData.split(',')[1] || fileData;
-          workbook = XLSX.read(base64Content, { type: 'base64' });
-        } else if (typeof fileData === 'string') {
-          workbook = XLSX.read(fileData, { type: 'binary' });
-        } else if (fileData instanceof ArrayBuffer) {
-          const uint8 = new Uint8Array(fileData);
-          workbook = XLSX.read(uint8, { type: 'array' });
-        } else if (fileData instanceof Uint8Array) {
-          workbook = XLSX.read(fileData, { type: 'array' });
-        } else {
-          workbook = XLSX.read(fileData, { type: 'array' });
-        }
-      } catch (readErr) {
-        workbook = XLSX.read(fileData, { type: 'binary' });
-      }
+      // 1. Ler o arquivo de forma segura e extrair dados via módulo puro
+      const workbook = this.lerWorkbook(fileData);
+      const { pares, metadados } = this.analisarPlanilhaCompleta(workbook);
+      const unidades = pares.map(p => p.unidade);
+      const temLeituras = pares.some(p => p.leituraAnterior !== null);
+      const servicoPlanilha = metadados?.servico || null;
 
-      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-        throw new Error('Arquivo de planilha inválido ou sem abas.');
-      }
-
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-
-      // 2. Extrai unidades no formato uCondo
-      let unidades = [];
-      try {
-        unidades = this.extrairUnidades(fileData);
-      } catch (_) {
-        unidades = [];
-      }
-
-      // Se encontrou unidades da planilha uCondo
       if (unidades && unidades.length > 0) {
-        // 2.1 Extração dinâmica de metadados das células (Condomínio e Consumo de)
-        const metadados = this.extrairMetadadosPlanilha(rawData, nomeArquivo);
+        // Se a planilha contém leituras, mas o serviço é ambíguo, interrompe antes de persistir
+        if (temLeituras && !servicoPlanilha) {
+          await customAlert(
+            '⚠️ A planilha contém leituras anteriores, mas não foi possível identificar de forma segura se pertencem a Água, Gás ou Energia.\n\nPor favor, importe uma planilha que identifique expressamente o serviço (ex: "Consumo de: Água" ou "Consumo de: Gás").'
+          );
+          return { cancelado: true };
+        }
+
         let nomeExtraido = metadados.nome;
-        let tipoMedicaoExtraido = this.normalizarTipoLeitura(metadados.tipoMedicao);
 
         if (!nomeExtraido) {
           // Fallback Inteligente Anti-Card Fantasma:
@@ -365,7 +328,7 @@ export const UCondoImportService = {
 
         let condExistente = null;
 
-        // 2.2 Busca flexível no Supabase (Fonte da Verdade) com correspondência parcial bidirecional
+        // 2. Busca flexível no Supabase (Fonte da Verdade)
         if (supabase && nomeLimpoPlanilha && navigator.onLine) {
           try {
             const { data: todosConds, error: fetchError } = await supabase
@@ -376,19 +339,16 @@ export const UCondoImportService = {
               condExistente = todosConds.find(c => {
                 const nomeBanco = normalizarNome(c.nome);
                 if (!nomeBanco || !nomeLimpoPlanilha) return false;
-                
-                // Match perfeito ou Contém
+
                 if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
                   return true;
                 }
-                
-                // Fuzzy Match (Permite até 2 erros de digitação se a string tiver mais de 8 caracteres)
-                // Ex: "rogerioloch" vs "rogeriolock" (1 erro)
+
                 const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
                 if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
                   return true;
                 }
-                
+
                 return false;
               }) || null;
             }
@@ -396,7 +356,7 @@ export const UCondoImportService = {
           }
         }
 
-        // 2.3 Fallback de checagem na lista em memória (condominiosExistentes) ou cache local com matching parcial
+        // 3. Fallback de checagem na lista em memória ou cache local
         if (!condExistente && nomeLimpoPlanilha) {
           let listaLocal = Array.isArray(condominiosExistentes) && condominiosExistentes.length > 0 ? condominiosExistentes : [];
           if (listaLocal.length === 0) {
@@ -408,21 +368,21 @@ export const UCondoImportService = {
           condExistente = listaLocal.find(c => {
             const nomeBanco = normalizarNome(c.nome);
             if (!nomeBanco || !nomeLimpoPlanilha) return false;
-            
+
             if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
               return true;
             }
-            
+
             const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
             if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
               return true;
             }
-            
+
             return false;
           }) || null;
         }
 
-        // 2.4 Se o condomínio já existe: Pergunta se deseja substituir
+        // 4. Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
           const querSubstituir = await customConfirmDestrutivo(
             `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja substituir a lista no condomínio '${condExistente.nome}'?`,
@@ -434,15 +394,15 @@ export const UCondoImportService = {
             return { cancelado: true };
           }
 
-          // Atualiza as unidades locais zerando as leituras
-          await this.persistirUnidadesLocal(condExistente.id, unidades);
+          // Atualiza as unidades locais no serviço correto
+          await this.persistirUnidadesLocal(condExistente.id, pares, servicoPlanilha);
 
           // Atualiza contagem no Supabase
           if (supabase) {
             try {
               await supabase
                 .from('condominios')
-                .update({ 
+                .update({
                   apartamentos: unidades.length
                 })
                 .eq('id', condExistente.id);
@@ -455,10 +415,15 @@ export const UCondoImportService = {
             totalUnidades: unidades.length,
           };
         } else {
-          // 2.5 Se NÃO existe: Cria novo condomínio com nome e tipo de medição extraídos
+          // 5. Se NÃO existe: Cria novo condomínio
+          const tipoLeituraCondominio = servicoPlanilha === 'GAS' ? 'Somente Gás'
+            : servicoPlanilha === 'ENERGIA' ? 'Energia Elétrica'
+            : servicoPlanilha === 'AGUA' ? 'Somente Água'
+            : this.normalizarTipoLeitura(metadados.tipoMedicao);
+
           const novoCondominioData = {
             nome: nomeExtraido,
-            tipoLeitura: this.normalizarTipoLeitura(tipoMedicaoExtraido),
+            tipoLeitura: tipoLeituraCondominio,
             diaLeitura: '10',
             apartamentos: unidades.length,
             valor: 0,
@@ -474,7 +439,6 @@ export const UCondoImportService = {
               throw new Error('Não foi possível salvar o novo condomínio no Supabase.');
             }
           } catch (err) {
-            // Fallback Offline-First se falhar a rede (fetch)
             if (err.message.toLowerCase().includes('fetch') || err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('sessão')) {
               const offId = crypto.randomUUID ? crypto.randomUUID() : `off_${Date.now()}`;
               condominioSalvo = {
@@ -489,8 +453,8 @@ export const UCondoImportService = {
             }
           }
 
-          // Insere todas as unidades extraídas com o ID gerado (e zera o histórico de leituras)
-          await this.persistirUnidadesLocal(condominioSalvo.id, unidades);
+          // Insere todas as unidades extraídas com o ID gerado e persiste leituras anteriores
+          await this.persistirUnidadesLocal(condominioSalvo.id, pares, servicoPlanilha);
 
           return {
             tipo: 'criado',
@@ -500,9 +464,8 @@ export const UCondoImportService = {
         }
       }
 
-      // 2. Se não foi detectada como planilha de unidades uCondo, tenta formato geral
+      // Se não encontrou unidades
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: false, blankrows: false });
-
       if (!rows || rows.length === 0) {
         throw new Error('A planilha selecionada está vazia ou ilegível.');
       }
@@ -514,51 +477,45 @@ export const UCondoImportService = {
   },
 
   /**
-   * FRENTE 1: Atualização / Substituição de Unidades de Condomínio Existente (com validação de segurança)
+   * Atualização / Substituição de Unidades de Condomínio Existente
    */
   async atualizarUnidadesCondominio(condominioId, fileData, unidadesAtuais = [], condominoAtualNome = '') {
     try {
-      // 1. Extração das novas unidades
-      const novasUnidades = this.extrairUnidades(fileData);
-
-      // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
       let workbook;
       try {
-        if (typeof fileData === 'string' && fileData.startsWith('data:')) {
-          const base64Content = fileData.split(',')[1] || fileData;
-          workbook = XLSX.read(base64Content, { type: 'base64' });
-        } else if (typeof fileData === 'string') {
-          workbook = XLSX.read(fileData, { type: 'binary' });
-        } else if (fileData instanceof ArrayBuffer) {
-          const uint8 = new Uint8Array(fileData);
-          workbook = XLSX.read(uint8, { type: 'array' });
-        } else if (fileData instanceof Uint8Array) {
-          workbook = XLSX.read(fileData, { type: 'array' });
-        } else {
-          workbook = XLSX.read(fileData, { type: 'array' });
-        }
+        workbook = this.lerWorkbook(fileData);
+      } catch (e) {
+        throw new Error('Falha ao ler a planilha: ' + e.message);
+      }
 
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rawData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
-        
-        const metadados = this.extrairMetadadosPlanilha(rawData, '');
+      // 1. Extração estruturada de pares e metadados via módulo puro
+      const { pares, metadados } = this.analisarPlanilhaCompleta(workbook);
+      const novasUnidades = pares.map(p => p.unidade);
+      const servico = metadados?.servico || null;
+      const temLeituras = pares.some(p => p.leituraAnterior !== null);
 
-        if (metadados.nome && condominoAtualNome) {
-          const nomePlanilhaNorm = normalizarNome(metadados.nome);
-          const nomeAtualNorm = normalizarNome(condominoAtualNome);
+      if (temLeituras && !servico) {
+        await customAlert(
+          '⚠️ Não foi possível identificar com segurança se as medições desta planilha pertencem a Água, Gás ou Energia.\n\nPor favor, importe uma planilha do uCondo que identifique expressamente o serviço (ex: "Consumo de: Água" ou "Consumo de: Gás").'
+        );
+        return null;
+      }
 
-          const temCorrespondencia = nomePlanilhaNorm.includes(nomeAtualNorm) || nomeAtualNorm.includes(nomePlanilhaNorm);
+      // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
+      if (metadados.nome && condominoAtualNome) {
+        const nomePlanilhaNorm = normalizarNome(metadados.nome);
+        const nomeAtualNorm = normalizarNome(condominoAtualNome);
 
-          if (!temCorrespondencia) {
-            const confirmarDivergencia = await customConfirm(
-              `⚠️ Aviso de Segurança:\nA planilha selecionada é do condomínio "${metadados.nome}", mas você está no condomínio "${condominoAtualNome}".\n\nDeseja realmente vincular estas ${novasUnidades.length} unidades aqui?`
-            );
-            if (!confirmarDivergencia) {
-              return null;
-            }
+        const temCorrespondencia = nomePlanilhaNorm.includes(nomeAtualNorm) || nomeAtualNorm.includes(nomePlanilhaNorm);
+
+        if (!temCorrespondencia) {
+          const confirmarDivergencia = await customConfirm(
+            `⚠️ Aviso de Segurança:\nA planilha selecionada é do condomínio "${metadados.nome}", mas você está no condomínio "${condominoAtualNome}".\n\nDeseja realmente vincular estas ${novasUnidades.length} unidades aqui?`
+          );
+          if (!confirmarDivergencia) {
+            return null;
           }
         }
-      } catch (errParse) {
       }
 
       if (unidadesAtuais && unidadesAtuais.length > 0) {
@@ -572,9 +529,14 @@ export const UCondoImportService = {
         }
       }
 
-      await this.persistirUnidadesLocal(condominioId, novasUnidades);
+      // 3. Persistência canônica
+      await this.persistirUnidadesLocal(condominioId, pares, servico);
 
-      return novasUnidades;
+      return {
+        unidades: novasUnidades,
+        servico,
+        totalLeituras: pares.filter(p => p.leituraAnterior !== null).length,
+      };
     } catch (error) {
       throw error;
     }

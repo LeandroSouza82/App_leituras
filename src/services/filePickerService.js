@@ -1,6 +1,6 @@
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { salvarArquivoSeguro } from './filesystemService';
+import { salvarArquivoBinarioSeguro } from './filesystemService';
 
 /**
  * Serviço Sênior Modular para seleção e persistência local de arquivos de planilha.
@@ -28,7 +28,7 @@ export const FilePickerService = {
       const safeName = `picked_${new Date().getTime()}_${file.name.replace(/\s+/g, '_')}`;
       const targetPath = `${targetDir}/${safeName}`;
 
-      await salvarArquivoSeguro(targetPath, file.data);
+      await salvarArquivoBinarioSeguro(targetPath, file.data);
 
       const uriResult = await Filesystem.getUri({
         path: targetPath,

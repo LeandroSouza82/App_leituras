@@ -1,10 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus, UserRound, Phone, KeyRound, ArrowLeft } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { Capacitor } from '@capacitor/core';
 import { useGoogleLogin } from '@react-oauth/google';
 import { loginGoogleNativo } from '../services/googleAuthService';
 import './Login.css';
+
+const traduzirErroAuth = (err) => {
+  const msg = (err?.message || '').toLowerCase();
+  if (msg.includes('error sending confirmation email')) return 'Não foi possível enviar o e-mail de confirmação. Tente novamente.';
+  if (msg.includes('email rate limit exceeded'))        return 'Limite temporário de envio de e-mails atingido. Aguarde alguns minutos e tente novamente.';
+  if (msg.includes('invalid login credentials'))       return 'E-mail ou senha incorretos.';
+  if (msg.includes('email not confirmed'))             return 'Confirme seu e-mail antes de entrar.';
+  return 'Não foi possível concluir a operação. Tente novamente.';
+};
 
 const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   const [etapa, setEtapa] = useState(1);
@@ -27,12 +36,14 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
     setFeedback(null);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperacao);
+      const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperacao, {
+        redirectTo: 'https://fastleitura.appviper.com.br/redefinir-senha',
+      });
       if (error) throw error;
       setEtapa(2);
       setFeedback({ tipo: 'sucesso', mensagem: 'Código de recuperação enviado para seu e-mail.' });
     } catch (err) {
-      setFeedback({ tipo: 'erro', mensagem: err.message || 'Falha ao enviar código.' });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }
@@ -66,7 +77,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
       setFeedback({ tipo: 'sucesso', mensagem: 'Senha alterada com sucesso! Você já pode entrar.' });
       setTimeout(() => onClose(), 2000);
     } catch (err) {
-      setFeedback({ tipo: 'erro', mensagem: err.message || 'Falha ao redefinir senha.' });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }
@@ -151,7 +162,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   );
 };
 
-const Login = ({ onLoginSuccess }) => {
+const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
   const [modoCadastro, setModoCadastro] = useState(false);
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [nomeCompleto, setNomeCompleto] = useState('');
@@ -161,6 +172,16 @@ const Login = ({ onLoginSuccess }) => {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  // Retorno via deep link de confirmação de e-mail: garante modo login ativo.
+  // Reage mesmo com o app já aberto/em background (retornoConfirmacao é Date.now()).
+  // retornoConfirmacao === 0 é o valor inicial; não dispara ação no mount normal.
+  useEffect(() => {
+    if (retornoConfirmacao > 0) {
+      setModoCadastro(false);
+      setFeedback(null);
+    }
+  }, [retornoConfirmacao]);
 
   // ── Fluxo WEB: usa popup nativo do @react-oauth/google
   const loginGoogleWeb = useGoogleLogin({
@@ -204,15 +225,24 @@ const Login = ({ onLoginSuccess }) => {
     const nomeNormalizado = nomeCompleto.trim();
     const celularNormalizado = celular.trim();
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (modoCadastro) {
-      if (!nomeNormalizado || !celularNormalizado || !emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+      if (!nomeNormalizado || !celularNormalizado || !emailNormalizado || !emailRegex.test(emailNormalizado) || senha.length < 6) {
         setFeedback({
           tipo: 'erro',
           mensagem: 'Informe nome completo, celular, e-mail válido e uma senha com pelo menos 6 caracteres.',
         });
         return;
       }
-    } else if (!emailNormalizado || !emailNormalizado.includes('@') || senha.length < 6) {
+      if (nomeNormalizado.includes('@') || emailRegex.test(nomeNormalizado)) {
+        setFeedback({
+          tipo: 'erro',
+          mensagem: 'Informe seu nome completo, não um endereço de e-mail.',
+        });
+        return;
+      }
+    } else if (!emailNormalizado || !emailRegex.test(emailNormalizado) || senha.length < 6) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe um e-mail válido e uma senha com pelo menos 6 caracteres.' });
       return;
     }
@@ -231,10 +261,10 @@ const Login = ({ onLoginSuccess }) => {
           email: emailNormalizado,
           password: senha,
           options: {
+            emailRedirectTo: 'https://fastleitura.appviper.com.br/confirmacao-email',
             data: {
               full_name: nomeNormalizado,
               phone: celularNormalizado,
-              role: 'Leiturista',
             },
           },
         });
@@ -276,10 +306,7 @@ const Login = ({ onLoginSuccess }) => {
 
       throw new Error('Sessão não foi retornada pelo Supabase.');
     } catch (err) {
-      setFeedback({
-        tipo: 'erro',
-        mensagem: err.message || 'Falha ao autenticar. Verifique seus dados.',
-      });
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
       setCarregando(false);
     }

@@ -28,6 +28,7 @@ import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator'
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { logoutGoogleNativo } from './services/googleAuthService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
@@ -131,11 +132,24 @@ const MainApp = ({ onLogout }) => {
         // Mapa de chave "condId__servico" -> array de leituras (deduplicado por unidade)
         const gruposApp = {};
 
+        const { data: dbCondominios } = await supabase
+          .from('condominios')
+          .select('id, nome')
+          .eq('user_id', user.id);
+
+        const mapCondominios = {};
+        if (dbCondominios) {
+          for (const cond of dbCondominios) {
+            mapCondominios[cond.nome] = cond.id;
+          }
+        }
+
         if (!errDetalhes && Array.isArray(detalhes) && detalhes.length > 0) {
           // Deduplicar: mantém apenas o registro mais recente por unidade+serviço
           const vistos = new Set();
           for (const reg of detalhes) {
-            const condId = reg.condominio_nome; // guarda condominio_id
+            const condId = mapCondominios[reg.condominio_nome];
+            if (!condId) continue; // Ignora se não achar o ID correspondente
             const servico = (reg.servico || 'AGUA').toUpperCase();
             const chaveUnidade = `${condId}__${servico}__${String(reg.unidade_id).trim()}`;
 
@@ -161,7 +175,7 @@ const MainApp = ({ onLogout }) => {
         const gruposPlanilha = {};
         if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
           for (const reg of planilhas) {
-            const condId = reg.condominio_nome;
+            const condId = reg.condominio_nome; // No legado, condominio_nome já contém o ID
             const servico = (reg.servico || 'AGUA').toUpperCase();
             const chaveGrupo = `${condId}__${servico}`;
             // Só usa planilha se o app ainda não tem dados do ciclo contínuo
@@ -427,6 +441,7 @@ const App = () => {
   const [session, setSession] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
+  const [retornoConfirmacao, setRetornoConfirmacao] = useState(0);
 
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
@@ -471,9 +486,18 @@ const App = () => {
   }, []);
 
   useEffect(() => {
+    // Detecta retorno via deep link de confirmação de e-mail
+    // O shareIntentService.js já ignora URLs que não são content:// ou file://,
+    // portanto este listener não gera duplicata nem conflito.
+    const urlOpenListener = CapacitorApp.addListener('appUrlOpen', (data) => {
+      if (data?.url?.startsWith('com.fastleituras.app://')) {
+        setRetornoConfirmacao(Date.now());
+      }
+    });
+
     if (!supabase) {
       setLoadingSession(false);
-      return undefined;
+      return () => { urlOpenListener.then((h) => h.remove()); };
     }
 
     let isMounted = true;
@@ -531,6 +555,7 @@ const App = () => {
 
     return () => {
       isMounted = false;
+      urlOpenListener.then((h) => h.remove());
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -542,7 +567,7 @@ const App = () => {
   }
 
   if (!session) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} />;
   }
 
   return <MainApp onLogout={handleLogout} />;

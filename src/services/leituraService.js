@@ -1,9 +1,11 @@
 import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { StorageService } from './storageService';
-import { supabase } from './supabase';
+import { StorageService } from './storageService.js';
+import { supabase } from './supabase.js';
 import * as XLSX from 'xlsx';
+import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
+import { obterLeituraAnterior } from './leiturasAnterioresService.js';
 
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
@@ -13,15 +15,9 @@ export const LeituraService = {
    * Converte e formata o valor bruto para o formato numérico/decimal esperado pelo Excel do uCondo
    */
   formatarValorLeitura(valor) {
-    if (valor === null || valor === undefined || valor === '' || valor === 0 || valor === '0') {
-      return 0;
-    }
-    if (typeof valor === 'number') {
-      return isNaN(valor) ? 0 : valor;
-    }
-    const sanitized = String(valor).trim().replace(',', '.');
-    const parsed = parseFloat(sanitized);
-    return isNaN(parsed) ? 0 : parsed;
+    const num = parseLeituraNumerica(valor);
+    if (num === null) return "";
+    return num.toFixed(4);
   },
 
   /**
@@ -35,7 +31,17 @@ export const LeituraService = {
 
     // 1. Busca no Objeto de Memória (leiturasValores do componente)
     if (valoresMemoria && typeof valoresMemoria === 'object') {
-      // 1.1 Acesso direto
+      // 1.0 Chaves planas (gravadas por handleSaveReading: "APTO-101_agua")
+      const chavePlanaLower = `${unidadeStr}_${servicoKey}`;
+      if (valoresMemoria[chavePlanaLower] !== undefined && valoresMemoria[chavePlanaLower] !== null && String(valoresMemoria[chavePlanaLower]).trim() !== '') {
+        return valoresMemoria[chavePlanaLower];
+      }
+      const chavePlanaUpper = `${unidadeStr}_${servicoKey.toUpperCase()}`;
+      if (valoresMemoria[chavePlanaUpper] !== undefined && valoresMemoria[chavePlanaUpper] !== null && String(valoresMemoria[chavePlanaUpper]).trim() !== '') {
+        return valoresMemoria[chavePlanaUpper];
+      }
+
+      // 1.1 Acesso direto aninhado
       if (valoresMemoria[unidadeStr]?.[servicoKey] !== undefined) {
         return valoresMemoria[unidadeStr][servicoKey];
       }
@@ -60,12 +66,11 @@ export const LeituraService = {
       }
     }
 
-    // 2. Busca no LocalStorage por chaves específicas
+    // 2. Busca no LocalStorage por chaves específicas DO CONDOMÍNIO
     const chavesPossiveis = [
       `valor_${condIdStr}_${unidadeStr}_${servicoKey}`,
       `valor_${condIdStr}_${unidadeStr}_${servicoKey.toUpperCase()}`,
       `valor_${condIdStr}_${unidadeStr}_${servico}`,
-      `valor_${unidadeStr}_${servicoKey}`,
     ];
 
     for (const ch of chavesPossiveis) {
@@ -75,31 +80,35 @@ export const LeituraService = {
       }
     }
 
-    // 3. Varredura flexível no LocalStorage
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('valor_')) {
-          const keyLower = key.toLowerCase();
-          const uniLower = unidadeStr.toLowerCase();
-          const srvLower = servicoKey.toLowerCase();
+    // 3. Varredura flexível no LocalStorage ESTRITAMENTE DENTRO DO CONDOMÍNIO
+    if (condIdStr) {
+      try {
+        const prefix = `valor_${condIdStr}_`.toLowerCase();
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.toLowerCase().startsWith(prefix)) {
+            const keyLower = key.toLowerCase();
+            const uniLower = unidadeStr.toLowerCase();
+            const srvLower = servicoKey.toLowerCase();
 
-          if (keyLower.includes(uniLower) && keyLower.includes(srvLower)) {
-            const val = localStorage.getItem(key);
-            if (val !== null && val !== undefined && String(val).trim() !== '') {
-              return val;
+            if (keyLower.includes(uniLower) && keyLower.includes(srvLower)) {
+              const val = localStorage.getItem(key);
+              if (val !== null && val !== undefined && String(val).trim() !== '') {
+                return val;
+              }
             }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
-    // 4. Busca na fila de sincronização offline (fila_sync_auto)
+    // 4. Busca na fila de sincronização offline ESTRITAMENTE DENTRO DO CONDOMÍNIO
     try {
       const fila = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]');
       if (Array.isArray(fila)) {
         const item = fila.find(
           f =>
+            String(f.condominio_id || f.condominioId || '').trim() === condIdStr &&
             String(f.unidade_id || f.unidadeId || '').trim().toLowerCase() === unidadeStr.toLowerCase() &&
             String(f.servico || f.tipoServico || '').trim().toLowerCase() === servicoKey
         );
@@ -109,7 +118,7 @@ export const LeituraService = {
       }
     } catch (_) {}
 
-    // 5. Busca na fila de pendências offline (leituras_pendentes / pendencias_offline)
+    // 5. Busca na fila de pendências offline ESTRITAMENTE DENTRO DO CONDOMÍNIO
     try {
       const pendencias = JSON.parse(
         localStorage.getItem('leituras_pendentes') || localStorage.getItem('pendencias_offline') || '[]'
@@ -117,6 +126,7 @@ export const LeituraService = {
       if (Array.isArray(pendencias)) {
         const item = pendencias.find(
           f =>
+            String(f.condominio_id || f.condominioId || '').trim() === condIdStr &&
             String(f.unidade_id || f.unidadeId || '').trim().toLowerCase() === unidadeStr.toLowerCase() &&
             String(f.servico || f.tipoServico || '').trim().toLowerCase() === servicoKey
         );
@@ -126,7 +136,8 @@ export const LeituraService = {
       }
     } catch (_) {}
 
-    return 0;
+    // Dado ausente: retorna null (não inventa zero para leitura não preenchida)
+    return null;
   },
 
   /**
@@ -224,54 +235,100 @@ export const LeituraService = {
         return false;
       }
 
-      const wb = XLSX.utils.book_new();
+      // Validação Canônica de Leitura Atual < Leitura Anterior antes de exportar
+      const falhasValidacao = [];
 
-      // 2. Mapeamento das unidades com Cruzamento de Dados (Join)
-      if (servicoFiltro !== 'todos') {
-        const servico = String(servicoFiltro).toUpperCase();
-        const dadosExcel = unidades.map(unidade => {
-          const nomeOriginal = typeof unidade === 'object' 
+      const validarServico = (srv) => {
+        const srvUpper = srv.toUpperCase();
+
+        unidades.forEach(unidade => {
+          const nomeOriginal = typeof unidade === 'object'
             ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
             : String(unidade || '').trim();
 
-          const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servico, valoresParam);
-          const valorFormatado = this.formatarValorLeitura(valorBruto);
+          const valorBrutoAtual = this.obterValorLeitura(condId, nomeOriginal, srv, valoresParam);
+          const atualNum = parseLeituraNumerica(valorBrutoAtual);
 
-          return {
-            'Unidade *': nomeOriginal,
-            'Leitura atual *': valorFormatado,
-          };
+          // Se a leitura atual for ausente (pendente / não lida neste lote), não valida regressão
+          if (atualNum === null) return;
+
+          const antNum = obterLeituraAnterior(condId, nomeOriginal, srvUpper);
+          if (antNum !== null) {
+            // Normaliza para 4 casas decimais para evitar falso menor por representação float
+            const atualFixed = Math.round(atualNum * 10000);
+            const antFixed = Math.round(antNum * 10000);
+
+            if (atualFixed < antFixed) {
+              falhasValidacao.push({
+                unidade: nomeOriginal,
+                servico: srvUpper,
+                anterior: antNum,
+                atual: atualNum,
+              });
+            }
+          }
         });
+      };
 
-        // Validação Explícita por Console
-
-        const ws = XLSX.utils.json_to_sheet(dadosExcel);
-        XLSX.utils.book_append_sheet(wb, ws, 'Consumos');
+      if (servicoFiltro !== 'todos') {
+        validarServico(String(servicoFiltro));
       } else {
-        // Se 'todos', gera abas separadas por serviço (Água / Gás) preservando os dados
-        const servicos = ['AGUA', 'GAS'];
-        servicos.forEach(servico => {
-          const dadosExcel = unidades.map(unidade => {
-            const nomeOriginal = typeof unidade === 'object' 
-              ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
-              : String(unidade || '').trim();
-
-            const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servico, valoresParam);
-            const valorFormatado = this.formatarValorLeitura(valorBruto);
-
-            return {
-              'Unidade *': nomeOriginal,
-              'Leitura atual *': valorFormatado,
-            };
-          });
-
-          // Validação Explícita por Console
-
-          const ws = XLSX.utils.json_to_sheet(dadosExcel);
-          const abaNome = servico === 'AGUA' ? 'Água' : 'Gás';
-          XLSX.utils.book_append_sheet(wb, ws, abaNome);
-        });
+        validarServico('AGUA');
+        validarServico('GAS');
       }
+
+      if (falhasValidacao.length > 0) {
+        const listaMsg = falhasValidacao
+          .map(f => `- ${f.unidade} (${f.servico}): Atual ${String(f.atual).replace('.', ',')} < Anterior ${String(f.anterior).replace('.', ',')}`)
+          .join('\n');
+        await customAlert(
+          `Existem leituras atuais menores que as leituras anteriores.\n\nVerifique as seguintes unidades:\n${listaMsg}\n\nConfira os valores antes de exportar.`,
+          'Leitura Regressiva Detectada'
+        );
+        return false;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // 2. Mapeamento das unidades com Cruzamento de Dados (Join)
+      if (servicoFiltro === 'todos') {
+        await customAlert('Por exigência do uCondo, a planilha de exportação deve conter apenas uma aba "Consumos". Por favor, exporte cada serviço (Água ou Gás) separadamente.', 'Atenção');
+        return false;
+      }
+
+      // 2. Mapeamento das unidades com Cruzamento de Dados (Join)
+      const servico = String(servicoFiltro).toUpperCase();
+      const dadosExcel = unidades.map(unidade => {
+        const nomeOriginal = typeof unidade === 'object'
+          ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
+          : String(unidade || '').trim();
+
+        const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servico, valoresParam);
+        const valorFormatado = this.formatarValorLeitura(valorBruto);
+
+        return {
+          'Unidade *': nomeOriginal,
+          'Leitura atual *': valorFormatado,
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(dadosExcel);
+
+      // Aplica o tipo texto 's' e formato '@' na coluna B (Leitura atual *)
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        const addrA = XLSX.utils.encode_cell({c: 0, r: R});
+        const addrB = XLSX.utils.encode_cell({c: 1, r: R});
+        if(ws[addrA]) {
+          ws[addrA].t = 's';
+        }
+        if(ws[addrB]) {
+          ws[addrB].t = 's';
+          ws[addrB].z = '@';
+        }
+      }
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Consumos');
 
       // 3. Criação do arquivo Excel (.xlsx)
       const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

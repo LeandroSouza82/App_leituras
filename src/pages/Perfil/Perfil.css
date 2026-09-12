@@ -30,7 +30,16 @@
   font-size: 1.3rem;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(7, 54, 102, 0.2);
+  overflow: hidden;
 }
+
+.perfil-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
 
 .perfil-heading {
   min-width: 0;

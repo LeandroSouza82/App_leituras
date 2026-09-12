@@ -335,21 +335,23 @@ body.camera-active #root {
 
 .reading-input {
   width: 100%;
-  padding: 14px 16px;
-  font-size: 1.5rem;
-  font-weight: 700;
+  height: 40px;
+  padding: 4px 10px;
+  font-size: 1.15rem;
+  font-weight: 600;
   color: #0f172a;
   background: #f8fafc;
-  border: 2px solid #cbd5e1;
-  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s;
   text-align: center;
+  letter-spacing: 0.02em;
 }
 
 .reading-input:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .overlay-footer {

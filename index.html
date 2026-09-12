@@ -6,7 +6,40 @@
     <title>Fast Leituras</title>
   </head>
   <body>
+    <script>
+      (function() {
+        var path = window.location.pathname;
+
+        if (path === '/confirmacao-email') {
+          var query = new URLSearchParams(window.location.search);
+          var hashStr = window.location.hash;
+          var hash = new URLSearchParams(hashStr.startsWith('#') ? hashStr.slice(1) : hashStr);
+          var errorDescription = query.get('error_description') || hash.get('error_description');
+          if (errorDescription) {
+            sessionStorage.setItem('fast_leituras_confirmacao_erro', 'true');
+          }
+          window.history.replaceState({}, document.title, '/confirmacao-email');
+        }
+      })();
+    </script>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module">
+      var path = window.location.pathname;
+      if (path === '/confirmacao-email') {
+        import('/src/confirmacaoEmailMain.jsx');
+      }
+    </script>
+    <script type="module">
+      var path = window.location.pathname;
+      if (path === '/redefinir-senha') {
+        import('/src/redefinirSenhaMain.jsx');
+      }
+    </script>
+    <script type="module">
+      var path = window.location.pathname;
+      if (path !== '/confirmacao-email' && path !== '/redefinir-senha') {
+        import('/src/main.jsx');
+      }
+    </script>
   </body>
 </html>

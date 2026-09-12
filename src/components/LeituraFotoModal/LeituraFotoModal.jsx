@@ -14,13 +14,14 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
-import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal } from '../../services/leiturasAnterioresService';
+import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
 import { enfileirarLeiturasAnteriores } from '../../services/syncOfflineService';
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { FilePickerService } from '../../services/filePickerService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
+import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -67,21 +68,12 @@ const obterLeituraAtualLocal = (leiturasValores, unidadeId, servico) => {
 
 
 
-const formatarLeituraLocal = (valor) => {
-  if (
-    valor === undefined ||
-    valor === null ||
-    valor === ''
-  ) return '';
+const formatarLeituraLocal = (valor) => formatarLeitura4Casas(valor);
 
-  const num = parseFloat(
-    String(valor).replace(',', '.')
-  );
-
-  if (Number.isNaN(num)) return '';
-
-  return num.toFixed(4).replace('.', ',');
-};
+/**
+ * Helper canônico de normalização numérica para leituras.
+ */
+const parseLeituraNum = (valor) => parseLeituraNumerica(valor);
 
 /**
  * Lê o valor atual de uma leitura DIRETAMENTE do localStorage (fonte persistida).
@@ -121,16 +113,16 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
 
   const startLongPress = (e) => {
     if (!concluido) return;
-    
-    pointerStartPos.current = { 
-      x: e.clientX ?? (e.touches?.[0]?.clientX || 0), 
-      y: e.clientY ?? (e.touches?.[0]?.clientY || 0) 
+
+    pointerStartPos.current = {
+      x: e.clientX ?? (e.touches?.[0]?.clientX || 0),
+      y: e.clientY ?? (e.touches?.[0]?.clientY || 0)
     };
     hasFiredRef.current = false;
     setIsPressed(true);
-    
+
     if (navigator.vibrate) navigator.vibrate(50);
-    
+
     pressTimer.current = setTimeout(() => {
       hasFiredRef.current = true;
       setIsPressed(false);
@@ -147,7 +139,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
     const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
     const diffX = Math.abs(clientX - pointerStartPos.current.x);
     const diffY = Math.abs(clientY - pointerStartPos.current.y);
-    
+
     if (diffY > 10 || diffX > 10) {
       clearLongPressTimer();
       pointerStartPos.current = null;
@@ -200,10 +192,10 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
       {concluido ? (
         <div className="concluido-container">
           {thumbnail ? (
-            <img 
-              src={thumbnail} 
-              alt="Preview" 
-              className="unit-miniature" 
+            <img
+              src={thumbnail}
+              alt="Preview"
+              className="unit-miniature"
               style={{ opacity: isPressed ? 0.5 : 1, transition: 'opacity 0.2s' }}
               onClick={handleImageClick}
             />
@@ -221,9 +213,9 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
         <div className="camera-placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <CameraIcon size={20} />
           <span>Fotografar</span>
-          {leituraAnterior !== undefined && (
+          {leituraAnterior !== undefined && leituraAnterior !== null && (
             <span style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
-              Ant: {leituraAnterior}
+              Ant: {typeof leituraAnterior === 'number' ? leituraAnterior.toFixed(4).replace('.', ',') : leituraAnterior}
             </span>
           )}
         </div>
@@ -271,12 +263,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   // Listener para hidratar a tela caso a sincronização de background aconteça enquanto o modal está aberto
   useEffect(() => {
-    const handleHydration = () => {
-      setHydrationCounter(prev => prev + 1);
+    const condId = leitura?.id || leitura?.condominio_id;
+    const handleHydration = (event) => {
+      if (String(event?.detail?.condId) === String(condId)) {
+        setHydrationCounter(prev => prev + 1);
+      }
     };
     window.addEventListener('offline_cache_hydrated', handleHydration);
     return () => window.removeEventListener('offline_cache_hydrated', handleHydration);
-  }, []);
+  }, [leitura]);
 
   // Busca a leitura anterior APENAS do apartamento selecionado (offline-first fallback)
   useEffect(() => {
@@ -291,7 +286,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const status = await Network.getStatus();
           if (status.connected && supabase && condId) {
             const colunaAlvo = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || 'leitura_anterior';
-            
+
             const { data: undData, error: undErr } = await supabase
               .from('unidades')
               .select(colunaAlvo)
@@ -299,7 +294,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               .eq('nome', apString)
               .limit(1)
               .single();
-              
+
             if (!undErr && undData && undData[colunaAlvo] !== null && undData[colunaAlvo] !== undefined) {
                valueEncontrado = undData[colunaAlvo];
             }
@@ -329,7 +324,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
 
       };
-      
+
       fetchLeituraAnterior();
     } else {
     }
@@ -339,22 +334,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   useEffect(() => {
     if (isOpen && leitura) {
       const condId = leitura?.id || leitura?.condominio_id;
-      const chaveStorage = `leituras_anteriores_${condId}`;
       try {
-        const str = localStorage.getItem(chaveStorage);
-        if (str) {
-          const arr = JSON.parse(str);
-          const mapeado = {};
-          arr.forEach(l => {
-            const propCorreta = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || 'leitura_anterior';
-            if (l[propCorreta] !== undefined && l[propCorreta] !== null) {
-               mapeado[String(l.unidade).trim()] = l[propCorreta];
-            }
-          });
-          setTodasLeiturasAnteriores(mapeado);
-        } else {
-          setTodasLeiturasAnteriores({});
-        }
+        const mapeado = obterMapaLeiturasAnteriores(condId, tipoMedicaoAtivo);
+        setTodasLeiturasAnteriores(mapeado);
       } catch (e) {
         setTodasLeiturasAnteriores({});
       }
@@ -381,28 +363,33 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const condId = leitura?.id || leitura?.condominio_id;
       const buffer = await file.arrayBuffer();
 
-      const novasUnidades = await UCondoImportService.atualizarUnidadesCondominio(
+      const resultado = await UCondoImportService.atualizarUnidadesCondominio(
         condId,
         buffer,
         unidadesCarregadas,
         leitura?.nome || ''
       );
 
-      if (novasUnidades && novasUnidades.length > 0) {
-        setUnidadesAtualizadas(novasUnidades);
-        
-        // Salvar permanentemente no cache
-        localStorage.setItem(`unidades_${condId}`, JSON.stringify(novasUnidades));
-        try {
-          await Filesystem.writeFile({
-            path: `unidades_${condId}.json`,
-            data: JSON.stringify(novasUnidades),
-            directory: Directory.Data,
-            encoding: Encoding.UTF8
-          });
-        } catch (e) {}
+      if (resultado) {
+        const novasUnidades = Array.isArray(resultado) ? resultado : (resultado.unidades || []);
+        if (novasUnidades.length > 0) {
+          setUnidadesAtualizadas(novasUnidades);
 
-        await customAlert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso a partir da planilha!`);
+          // Salvar permanentemente no cache
+          localStorage.setItem(`unidades_${condId}`, JSON.stringify(novasUnidades));
+          try {
+            await Filesystem.writeFile({
+              path: `unidades_${condId}.json`,
+              data: JSON.stringify(novasUnidades),
+              directory: Directory.Data,
+              encoding: Encoding.UTF8
+            });
+          } catch (e) {}
+
+          const servicoMsg = resultado.servico ? ` (${resultado.servico})` : '';
+          const leiturasMsg = resultado.totalLeituras ? ` com ${resultado.totalLeituras} leituras anteriores importadas` : '';
+          await customAlert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso${servicoMsg}${leiturasMsg}!`);
+        }
       }
     } catch (err) {
       await customAlert('Erro ao processar a planilha: ' + err.message);
@@ -480,22 +467,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
           if (unidadesParaCarregar.length > 0) {
             setUnidadesAtualizadas(unidadesParaCarregar);
-            
-            // NOVO: Hidrata os dados oficiais do Supabase (leituras_detalhes) para as leituras_anteriores
-            try {
-              const { sincronizarLeiturasDoSupabase } = await import('../../services/leiturasAnterioresService');
-              const unidadesHidratadas = await sincronizarLeiturasDoSupabase(leitura?.nome || condId, unidadesParaCarregar);
-              
-              const hidratadasValidas = unidadesHidratadas.filter(u => typeof u === 'object' && u.unidade);
-              if (hidratadasValidas.length > 0) {
-                localStorage.setItem(`leituras_anteriores_${condId}`, JSON.stringify(hidratadasValidas));
-                // Dispara o evento para atualizar o grid (todasLeiturasAnteriores) instantaneamente
-                window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId } }));
-              }
-            } catch (err) {
-              console.error("Falha ao hidratar histórico na inicialização:", err);
-            }
-            
+
             // Garantir que a lista esteja cacheada localmente
             localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesParaCarregar));
             Filesystem.writeFile({
@@ -513,7 +485,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const tipoLeituraStr = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // limpa acentos
-          
+
           let abaInicial = 'agua';
 
           if (tipoLeituraStr === 'somente gas' || tipoLeituraStr === 'gas') {
@@ -546,7 +518,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               abaInicial = 'energia';
             }
           }
-          
+
           setTipoMedicaoAtivo(abaInicial);
         } catch (error) {
         }
@@ -614,7 +586,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   // Contador de conclusões (considera arquivo físico OU registro de conclusão persistente)
   const unidadesConcluidasCount = useMemo(() => {
-    return unidadesExibidas.filter(apto => 
+    return unidadesExibidas.filter(apto =>
       Boolean(fotosCapturadas[apto]?.[tipoMedicaoAtivo] || concluidosMemoria[apto]?.[tipoMedicaoAtivo])
     ).length;
   }, [unidadesExibidas, fotosCapturadas, concluidosMemoria, tipoMedicaoAtivo]);
@@ -623,7 +595,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const verificarFotosSalvas = async () => {
     if (!leitura?.id) return;
     try {
-      
+
       const safeCondName = sanitizeName(leitura.nome);
       const pastaCondominio = `FastLeituras/${safeCondName}`;
 
@@ -645,7 +617,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               const unidade = match[1];
               const servico = match[2].toLowerCase();
               const fullPath = `${pastaCondominio}/${fileName}`;
-              
+
               const fileUriResult = await Filesystem.getUri({
                 path: fullPath,
                 directory: Directory.Cache
@@ -654,13 +626,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
               if (!capturadas[unidade]) capturadas[unidade] = {};
               capturadas[unidade][servico] = webUrl;
-              
+
               const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
               if (chaveLocal) {
                 const localVal = localStorage.getItem(`valor_${chaveLocal}`);
                 if (localVal) {
                   if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
                   valoresSalvos[unidade][servico] = formatarLeituraLocal(localVal);
+                  valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(localVal);
                 }
               }
             }
@@ -696,6 +669,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               if (localVal) {
                 if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
                 valoresSalvos[unidade][servico] = formatarLeituraLocal(localVal);
+                valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(localVal);
               }
             }
           } catch (readErr) {
@@ -718,6 +692,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               if (val) {
                 if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
                 valoresSalvos[unidade][servico] = formatarLeituraLocal(val);
+                valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(val);
               }
             }
           }
@@ -757,11 +732,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
   const handleUnitClick = (apto, concluido) => {
     setActiveApto(apto);
-    // Decisão baseada no 'concluido' calculado no render, que já consolida
-    // fotosCapturadas + concluidosMemoria — fonte da verdade mais confiável.
-    if (concluido) {
+    // Verifica se realmente existe a foto no estado local
+    const temFoto = fotosCapturadas[apto] && fotosCapturadas[apto][tipoMedicaoAtivo];
+
+    if (concluido && temFoto) {
       setIsPreviewOpen(true);
     } else {
+      // Se não tem foto (mesmo se 'concluido' constar no render/storage),
+      // força a reabertura da câmera
       handleDispararCamera(apto);
     }
   };
@@ -773,76 +751,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     try {
       const unidadeId = String(overrideApto || activeApto).trim();
-      // 1. CORREÇÃO CRÍTICA: Forçar maiúsculo para bater EXATAMENTE com o arquivo salvo no Android
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
-
-      const safeCondName = sanitizeName(leitura.nome);
-      const pastaCondominio = `FastLeituras/${safeCondName}`;
-      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
-      const fullNewPath = `${pastaCondominio}/${newFileName}`;
-
-      try {
-        await Filesystem.deleteFile({
-          path: fullNewPath,
-          directory: Directory.Cache
-        });
-      } catch (e) {
-        // Ignora se não existir
-      }
-
-      // 2. BUSCA ABRANGENTE NO FORMATO ANTIGO (Fallback)
-      const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
-      for (const file of filesAntigos) {
-        if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
-          await StorageService.deleteFile(file);
-        }
-      }
-
-      // 3. Remove entradas órfãs do array localStorage['fila_sync_auto'] e ['leituras_pendentes']
-      try {
-        ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const filaAtual = JSON.parse(raw);
-            if (Array.isArray(filaAtual) && filaAtual.length > 0) {
-              const filaFiltrada = filaAtual.filter((item) => {
-                const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
-                const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
-                return !(mesmaUnidade && mesmoServico);
-              });
-              localStorage.setItem(key, JSON.stringify(filaFiltrada));
-            }
-          }
-        });
-      } catch (storageErr) {
-      }
-
-      // 4. Tenta remover do Supabase (falha não bloqueia)
-      if (supabase) {
-        try {
-          await supabase.from('leituras_detalhes').delete().match({
-            unidade_id: unidadeId,
-            servico: tipoServico,
-          });
-        } catch (supaErr) {
-        }
-      }
-
-      // 5. Limpa variáveis de valor digitado e marcação de conclusão
       const servicoKey = tipoMedicaoAtivo.toLowerCase();
+
+      // 1. LIMPEZA IMEDIATA (LOCAL-FIRST) PARA NÃO BLOQUEAR A UI
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
 
-      // 6. Atualiza a Tela (UI)
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
@@ -852,9 +774,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (novo[unidadeId]) {
           delete novo[unidadeId][servicoKey];
           delete novo[unidadeId][tipoServico];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
@@ -863,15 +783,62 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const novo = { ...prev };
         if (novo[unidadeId]) {
           delete novo[unidadeId][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeId]).length === 0) {
-            delete novo[unidadeId];
-          }
+          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
         }
         return novo;
       });
 
       setIsPreviewOpen(false);
       setActiveApto(null);
+
+      // 2. EXCLUSÃO FÍSICA DO ARQUIVO (Ainda no fluxo local, sem depender de internet)
+      const safeCondName = sanitizeName(leitura.nome);
+      const pastaCondominio = `FastLeituras/${safeCondName}`;
+      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
+      const fullNewPath = `${pastaCondominio}/${newFileName}`;
+
+      try {
+        await Filesystem.deleteFile({ path: fullNewPath, directory: Directory.Cache });
+      } catch (e) {
+        // Ignora se não existir, não deve reverter a UI
+      }
+
+      // 3. SINCRONIZAÇÃO EM BACKGROUND (Arquivos Antigos, Fila e Supabase)
+      (async () => {
+        try {
+          const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_${unidadeId}_`);
+          for (const file of filesAntigos) {
+            if (file.toLowerCase().includes(tipoServico.toLowerCase())) {
+              await StorageService.deleteFile(file);
+            }
+          }
+
+          ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const filaAtual = JSON.parse(raw);
+              if (Array.isArray(filaAtual) && filaAtual.length > 0) {
+                const filaFiltrada = filaAtual.filter((item) => {
+                  const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
+                  const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
+                  return !(mesmaUnidade && mesmoServico);
+                });
+                localStorage.setItem(key, JSON.stringify(filaFiltrada));
+              }
+            }
+          });
+
+          if (supabase) {
+            await supabase.from('leituras_detalhes').delete().match({
+              unidade_id: unidadeId,
+              servico: tipoServico,
+            });
+          }
+        } catch (bgErr) {
+          console.error('Erro em background ao limpar dados remotos/sync da foto:', bgErr);
+        }
+      })();
+
     } catch (err) {
       console.error('Erro ao excluir foto:', err);
       await customAlert('Ocorreu um erro ao excluir a foto. Tente novamente.');
@@ -968,7 +935,33 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       const condId = leitura?.id || leitura?.condominio_id;
-      const valorNumerico = parseFloat(String(valor).replace(',', '.'));
+      const valorNumerico = parseLeituraNum(valor);
+
+      if (valorNumerico === null) {
+        throw new Error('Valor da leitura ausente ou inválido.');
+      }
+
+      // ── FASE 2: Validação leitura atual < anterior ──────────────────────
+      // Resolve a leitura anterior canônica pela mesma fonte unificada que alimenta a UI
+      (() => {
+        try {
+          const leitAnt = obterLeituraAnterior(condId, unidadeId, tipoMedicaoAtivo);
+          if (leitAnt === null) return; // sem baseline: primeira leitura, permitir
+          // Validação: bloquear somente se estritamente menor
+          if (valorNumerico < leitAnt) {
+            // Usa IIFE async para aguardar e depois retornar sinalizando bloqueio
+            // Não é possível retornar de dentro de IIFE, então lança exceção especial
+            throw Object.assign(new Error('LEITURA_MENOR_QUE_ANTERIOR'), {
+              leituraAnterior: leitAnt,
+              leituraAtual: valorNumerico,
+            });
+          }
+        } catch (e) {
+          if (e.message === 'LEITURA_MENOR_QUE_ANTERIOR') throw e;
+          // Outros erros (parse, localStorage): não bloquear
+        }
+      })();
+      // ────────────────────────────────────────────────────────────────────
 
       // O salvamento diário não deve rotacionar a leitura anterior. A leitura anterior fica INTACTA.
 
@@ -1028,21 +1021,28 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const chaveStorage = `leituras_anteriores_${condId}`;
         const str = localStorage.getItem(chaveStorage);
         if (str) {
-          const arr = JSON.parse(str);
-          const idx = arr.findIndex(l => String(l.unidade).trim() === String(unidadeId));
-          if (idx !== -1) {
-             // ESTRITAMENTE salvar na chave leitura_atual, preservando a leitura_anterior
-             arr[idx] = {
-               ...arr[idx],
-               leitura_atual: valorNumerico
-             };
-             localStorage.setItem(chaveStorage, JSON.stringify(arr));
+          let arr = JSON.parse(str);
+          if (Array.isArray(arr)) {
+            arr = deduplicarGavetaAnteriores(arr);
+            const idx = arr.findIndex(l => String(l.unidade).trim() === String(unidadeId));
+            if (idx !== -1) {
+              arr[idx] = {
+                ...arr[idx],
+                leitura_atual: valorNumerico
+              };
+            } else {
+              arr.push({
+                unidade: String(unidadeId).trim(),
+                leitura_atual: valorNumerico
+              });
+            }
+            localStorage.setItem(chaveStorage, JSON.stringify(arr));
           }
         }
       } catch(e) {
         console.error("Erro ao atualizar localStorage", e);
       }
-      
+
       const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidadeId, tipoMedicaoAtivo);
 
       if (!chaveLocal) {
@@ -1075,6 +1075,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       setActiveApto(null);
 
     } catch (error) {
+      if (error.message === 'LEITURA_MENOR_QUE_ANTERIOR') {
+        const fmtAnt = String(error.leituraAnterior).replace('.', ',');
+        const fmtAt  = String(error.leituraAtual).replace('.', ',');
+        await customAlert(
+          `A leitura atual não pode ser menor que a leitura anterior.\n\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
+          'Leitura inválida'
+        );
+        // NÃO salva, NÃO persiste, NÃO fecha — mantém usuário no fluxo
+        return;
+      }
       await customAlert('❌ Erro inesperado ao salvar: ' + error.message);
       throw error;
     }
@@ -1085,16 +1095,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     const apto = aptoAlvo || activeApto;
     if (!apto || isProcessing) return;
     setActiveApto(apto);
-    
+
     try {
       const photo = await Camera.getPhoto({
         quality: 30, // Compressão máxima para otimizar disco e banda (reduz a foto severamente)
-        allowEditing: false, 
+        allowEditing: false,
         resultType: CameraResultType.DataUrl, // <-- GARANTE BASE64 NO CAPACITOR
         source: CameraSource.Camera, // <-- FORÇA ABRIR O APLICATIVO NATIVO DE CÂMERA
         correctOrientation: true
       });
-      
+
       // Passa a foto nativa convertida para a função de carimbar
       await handleCaptureAndSave(photo.dataUrl, null, apto);
     } catch (error) {
@@ -1113,7 +1123,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
       const servicoKey  = tipoMedicaoAtivo.toLowerCase();
-      
+
       const safeCondName = sanitizeName(leitura.nome);
       const pastaCondominio = `FastLeituras/${safeCondName}`;
       const fileName = `Apto${unidadeId}_${tipoServico}.jpg`;
@@ -1124,7 +1134,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         tipoLeitura: tipoServico,
         condominioNome: leitura.nome || 'Desconhecido'
       };
-      
+
       const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
 
       // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
@@ -1146,7 +1156,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Abre automaticamente o modal de preview/digitação para a unidade capturada
       setIsPreviewOpen(true);
 
-      // NÃO salva a leitura automaticamente nem a marca como concluída, 
+      // NÃO salva a leitura automaticamente nem a marca como concluída,
       // para evitar o erro de "Valor da leitura ausente."
 
     } catch (error) {
@@ -1286,7 +1296,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       try {
         const safeCondName = sanitizeName(leitura.nome);
         const pastaCondominio = `FastLeituras/${safeCondName}`;
-        
+
         await Filesystem.rmdir({
           path: pastaCondominio,
           directory: Directory.Cache,
@@ -1338,6 +1348,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       servicosParaValidar = [scopeParam];
     }
 
+    const condId = leitura?.id || leitura?.condominio_id;
+    // Lê gaveta de leituras anteriores UMA vez para todo o lote
+    let gavetaAnteriores = [];
+    try {
+      const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
+      if (rawGav) gavetaAnteriores = JSON.parse(rawGav) || [];
+      if (!Array.isArray(gavetaAnteriores)) gavetaAnteriores = [];
+    } catch { gavetaAnteriores = []; }
+
     for (const uni of unidadesList) {
       const apStr = String(uni.unidade || uni.nome || uni).trim();
       for (const srv of servicosParaValidar) {
@@ -1350,17 +1369,31 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // Se não mexeu no apartamento, pula a validação dele (permite lote parcial)
         if (!hasInteraction) continue;
 
-        // Se interagiu, verifica se a leitura é válida e maior que zero
-        const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv];
-        let numVal = NaN;
-        if (val !== undefined && val !== null && val !== '') {
-          const valLimpo = String(val).replace(/\./g, '').replace(',', '.').trim();
-          numVal = Number(valLimpo);
-        }
+        // Se interagiu, verifica se a leitura é válida
+        const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv] ?? obterLeituraAtualPersistida(condId, apStr, srv);
+        const numVal = parseLeituraNum(val);
 
-        if (val === undefined || val === null || val === '' || numVal === 0 || Number.isNaN(numVal)) {
+        if (val === undefined || val === null || val === '' || numVal === null || Number.isNaN(numVal)) {
           return { isValid: false, unidade: apStr, servico: srv };
         }
+
+        // ── FASE 2: barreira atual < anterior ─────────────────────────────
+        const leitAnt = obterLeituraAnterior(condId, apStr, srv);
+        if (leitAnt !== null) {
+          const atFixed = Math.round(numVal * 10000);
+          const antFixed = Math.round(leitAnt * 10000);
+          if (atFixed < antFixed) {
+            return {
+              isValid: false,
+              motivo: 'MENOR_QUE_ANTERIOR',
+              unidade: apStr,
+              servico: srv,
+              leituraAtual: numVal,
+              leituraAnterior: leitAnt,
+            };
+          }
+        }
+        // ──────────────────────────────────────────────────────────────────
       }
     }
     return { isValid: true };
@@ -1390,8 +1423,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       concluidosMemoria
     );
     if (!validacao.isValid) {
-      const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
-      await customAlert(msg, 'Leitura Pendente');
+      if (validacao.motivo === 'MENOR_QUE_ANTERIOR') {
+        const fmtAnt = String(validacao.leituraAnterior).replace('.', ',');
+        const fmtAt  = String(validacao.leituraAtual).replace('.', ',');
+        await customAlert(
+          `A leitura atual não pode ser menor que a leitura anterior.\n\nUnidade: ${validacao.unidade} (${validacao.servico.toUpperCase()})\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
+          'Leitura inválida'
+        );
+      } else {
+        const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
+        await customAlert(msg, 'Leitura Pendente');
+      }
       setTimeout(() => {
         const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
         if (cardErro) {
@@ -1419,76 +1461,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     setExportando(true);
 
     try {
-      // -------------------------------------------------
-      // SINCRONIZAÇÃO HISTÓRICO (Supabase)
-      // -------------------------------------------------
-      etapaAtual = 'SINCRONIZAR_HIST';
       const condId = leitura?.id || leitura?.condominio_id;
 
-      // listaDeUnidades declarada no escopo externo para ser acessível pelo loop
-      // de payloads abaixo. Fonte canônica: unidadesCarregadas.
-      // O cache do localStorage (leituras_anteriores) apenas sobrescreve quando existir.
+      // listaDeUnidades: fonte canônica de unidades para o loop de processarServico.
+      // Exportar NÃO rotaciona leitura anterior — isso é responsabilidade da lixeira (Fase 3B).
       const storageAnteriorExterno = localStorage.getItem(`leituras_anteriores_${condId}`);
       let listaDeUnidades = storageAnteriorExterno
         ? JSON.parse(storageAnteriorExterno)
         : unidadesCarregadas.map(u => ({
             unidade: String(u.unidade || u.nome || u).trim(),
-            leitura_anterior: 0,
-            leitura_anterior_gas: 0,
           }));
-
-      if (condId && supabase) {
-        try {
-          const payloadLote = [];
-          const cacheAtualizado = [];
-
-          listaDeUnidades.forEach(unidade => {
-            const apString = String(unidade.unidade).trim();
-            const valAtualAgua = leiturasValores[`${apString}_agua`];
-            const valAtualGas = leiturasValores[`${apString}_gas`];
-
-            const parseValorLeituraLocal = (val) => {
-              if (val === null || val === undefined || val === '') return null;
-              const limpo = String(val).replace(/\./g, '').replace(',', '.').trim();
-              const num = parseFloat(limpo);
-              return isNaN(num) ? null : num;
-            };
-
-            const pAgua = parseValorLeituraLocal(valAtualAgua);
-            const novaLeituraAnterior = pAgua !== null ? pAgua : unidade.leitura_anterior;
-
-            const pGas = parseValorLeituraLocal(valAtualGas);
-            const novaLeituraAnteriorGas = pGas !== null ? pGas : unidade.leitura_anterior_gas;
-
-            payloadLote.push({
-              condominio_id: condId,
-              unidade: apString,
-              leitura_anterior: novaLeituraAnterior,
-              leitura_anterior_gas: novaLeituraAnteriorGas,
-              updated_at: new Date().toISOString(),
-            });
-
-            cacheAtualizado.push({
-              ...unidade,
-              leitura_anterior: novaLeituraAnterior,
-              leitura_anterior_gas: novaLeituraAnteriorGas,
-            });
-          });
-
-          if (payloadLote.length > 0) {
-            const { error: upsertErr } = await supabase
-              .from('unidades_leituras')
-              .upsert(payloadLote, { onConflict: 'condominio_id,unidade' });
-            if (upsertErr) {
-              console.error('Erro ao sincronizar leituras com o Supabase:', upsertErr);
-            } else {
-              localStorage.setItem(`leituras_anteriores_${condId}`, JSON.stringify(cacheAtualizado));
-            }
-          }
-        } catch (errSyncHist) {
-          console.error('Falha ao salvar histórico no Supabase:', errSyncHist);
-        }
-      }
 
       // -------------------------------------------------
       // PREPARA DADOS PARA LEITURAS_DETALHES
@@ -1501,19 +1483,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const mes = leitura?.mes_referencia || (new Date().getMonth() + 1);
 
       // -------------------------------------------------
-      // RASTREAMENTO CIRÚRGICO PAYLOAD
-      // -------------------------------------------------
-      const rastreamentoPayload = [];
-      let totalProcessadas = 0;
-      const filaAntesSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-
-      // -------------------------------------------------
       // PROCESSA CADA SERVIÇO
       // -------------------------------------------------
       const processarServico = async (apString, servicoAtual) => {
-        const isAlvo = (apString === 'A-101' || apString === 'A-201') && normalizarServicoLocal(servicoAtual) === 'agua';
-        let motivoParada = '';
-        
         const valorPersistido = obterLeituraAtualPersistida(leitura.id, apString, servicoAtual);
 
         const servicoKey = normalizarServicoLocal(servicoAtual);
@@ -1525,24 +1497,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const valStr = valorPersistido ?? valorState;
 
         if (valStr === null || valStr === undefined || valStr === '') {
-          motivoParada = 'VALOR VAZIO OU NULO NO LOCALSTORAGE/STATE';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
         const valNumerico = parseFloat(String(valStr).replace(',', '.'));
 
         if (isNaN(valNumerico)) {
-          motivoParada = 'VALOR NÃO É NÚMERO VÁLIDO (NaN)';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: NaN\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1553,12 +1513,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const photoPathReal = chaveLocal ? localStorage.getItem(`foto_path_${chaveLocal}`) : null;
 
         if (!photoPathReal) {
-          motivoParada = 'FOTO_PATH NÃO ENCONTRADO';
-          if (isAlvo) {
-            rastreamentoPayload.push(
-              `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nchegou_salvarLeituraOffline: NÃO\nmotivo_se_nao: ${motivoParada}`
-            );
-          }
           return;
         }
 
@@ -1617,15 +1571,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // ENFILEIRAR
         // -----------------------
         etapaAtual = 'ENFILEIRAR';
-        
-        if (isAlvo) {
-          rastreamentoPayload.push(
-            `Unidade: ${apString}\nServiço: AGUA\nvalorPersistido: ${valorPersistido ?? 'null'}\nvalStr: ${valStr ?? 'null'}\nvalorNumerico: ${valNumerico}\nfileName: ${localFileName}\nphotoPath: ${photoPathReal}\ndirectory: DATA\ndb_id: ${dbIdExistente}\nchegou_salvarLeituraOffline: SIM\nmotivo_se_nao: N/A`
-          );
-        }
 
         await salvarLeituraOffline(payload, null, localFileName);
-        totalProcessadas++;
       };
 
 
@@ -1637,9 +1584,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         throw new Error('Nenhuma unidade disponível para montar o payload');
       }
 
-      // Removemos os alertas anteriores de auditoria para focar no rastreamento de payload
-
-
       // Loop real por unidades
       for (const unidadeObj of listaDeUnidades) {
         const apString = String(unidadeObj.unidade).trim();
@@ -1649,18 +1593,54 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
 
       const filaDepoisSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
-      
-      const msgFinalRastreamento = [
-        '[RASTREAMENTO PAYLOAD]',
-        '',
-        ...rastreamentoPayload,
-        '',
-        `Processadas: ${totalProcessadas}`,
-        `Fila antes: ${filaAntesSync}`,
-        `Fila depois: ${filaDepoisSync}`
-      ].join('\n\n');
 
-      await customAlert(msgFinalRastreamento, 'RESULTADO PAYLOAD');
+      // -------------------------------------------------
+      // VALIDAÇÃO MATEMÁTICA: Atual < Anterior
+      // -------------------------------------------------
+      etapaAtual = 'VALIDAR_ANTERIORES';
+      const falhas = [];
+
+      for (const unidadeObj of listaDeUnidades) {
+        const apString = String(unidadeObj.unidade).trim();
+
+        const validarServico = (srv) => {
+           if (servico !== srv && servico !== 'todos') return;
+           const srvUpper = srv.toUpperCase();
+           const servicoKey = normalizarServicoLocal(srv);
+           const valAtualStr = leiturasValores[`${apString}_${servicoKey}`]
+             ?? leiturasValores[apString]?.[srvUpper]
+             ?? leiturasValores[apString]?.[servicoKey]
+             ?? obterLeituraAtualPersistida(condId, apString, srv);
+
+           if (valAtualStr === undefined || valAtualStr === null || String(valAtualStr).trim() === '') return;
+
+           const valAtual = parseLeituraNum(valAtualStr);
+           if (valAtual === null || isNaN(valAtual)) return;
+
+           const valAnterior = obterLeituraAnterior(condId, apString, srvUpper);
+
+           if (valAnterior !== null && !isNaN(valAnterior)) {
+             const atFixed = Math.round(valAtual * 10000);
+             const antFixed = Math.round(valAnterior * 10000);
+             if (atFixed < antFixed) {
+               falhas.push(`- ${apString} (${srvUpper}): Atual ${String(valAtual).replace('.', ',')} < Anterior ${String(valAnterior).replace('.', ',')}`);
+             }
+           }
+        };
+
+        validarServico('agua');
+        validarServico('gas');
+        validarServico('energia');
+      }
+
+      if (falhas.length > 0) {
+        setLoading(false);
+        await customAlert(
+          `Não é possível exportar planilhas com medição atual menor que a anterior.\n\nVerifique as seguintes unidades:\n\n${falhas.join('\n')}`,
+          'Leitura Regressiva Detectada'
+        );
+        return;
+      }
 
       // -------------------------------------------------
       // EXPORTAR PARA WHATSAPP
@@ -1678,7 +1658,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // FINALIZADO COM SUCESSO
         etapaAtual = 'FINALIZACAO';
         exibirToastSucesso();
-        
+
         // DIAGNÓSTICO: Verifica se o sync iniciou
         const syncDebugRAW = localStorage.getItem('sync_debug');
         if (!syncDebugRAW) {
@@ -1704,139 +1684,91 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const handleLimparMes = async () => {
     setIsExportModalOpen(false);
 
+    if (isProcessing) return;
+
     const isConfirmed = await customConfirmDestrutivo(
-      'Deseja realmente finalizar o mês e LIMPAR todas as leituras da tela deste condomínio? Esta ação o preparará para o próximo ciclo.',
-      'Limpar Condomínio',
-      'Limpar Tudo'
+      'Finalizar este ciclo?\n\nAs leituras atuais serão usadas como leitura anterior do próximo ciclo e as fotos/leitura atual serão limpas da tela.',
+      'Finalizar Ciclo',
+      'Finalizar'
     );
 
     if (!isConfirmed) return;
 
+    setIsProcessing(true);
+
     const condId = leitura?.id || leitura?.condominio_id;
     try {
+      const servicosAtivos = [];
+      const t = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (t.includes('agua') || t === '') servicosAtivos.push('agua');
+      if (t.includes('gas') || t === '') servicosAtivos.push('gas');
+      if (t.includes('energia')) servicosAtivos.push('energia');
+
+      let gavetaAnteriores = [];
+      try {
+        const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
+        if (rawGav) gavetaAnteriores = JSON.parse(rawGav) || [];
+        if (!Array.isArray(gavetaAnteriores)) gavetaAnteriores = [];
+      } catch {}
+
+      const promocoes = [];
+
+      for (const apStr of listaCompleta) {
+        for (const srv of servicosAtivos) {
+          const valPersistido = obterLeituraAtualPersistida(condId, apStr, srv);
+          const servicoKey = normalizarServicoLocal(srv);
+          const valState = leiturasValores[`${apStr}_${servicoKey}`] ?? leiturasValores[apStr]?.[servicoKey];
+          const valStr = valPersistido ?? valState;
+
+          const numVal = parseLeituraNum(valStr);
+          if (numVal !== null) {
+            const leitAnt = obterLeituraAnterior(condId, apStr, srv);
+            if (leitAnt !== null) {
+              const atFixed = Math.round(numVal * 10000);
+              const antFixed = Math.round(leitAnt * 10000);
+              if (atFixed < antFixed) {
+                 const fmtAnt = String(leitAnt).replace('.', ',');
+                 const fmtAt  = String(numVal).replace('.', ',');
+                 await customAlert(
+                   `Não é possível finalizar o ciclo.\n\nA unidade ${apStr} (${srv.toUpperCase()}) possui leitura atual (${fmtAt}) menor que a anterior (${fmtAnt}).\n\nCorrija o valor antes de continuar.`,
+                   'Leitura inválida'
+                 );
+                 return;
+              }
+            }
+            promocoes.push({ unidade: apStr, servico: srv, valor: numVal });
+          }
+        }
+      }
+
+      let algumaFalha = false;
+      for (const promo of promocoes) {
+        const result = rotacionarLeituraAnteriorLocal(condId, promo.unidade, promo.servico, promo.valor);
+        if (!result || !result.ok) {
+          algumaFalha = true;
+          break;
+        }
+      }
+
+      if (algumaFalha) {
+         await customAlert('Falha ao promover algumas leituras localmente. A limpeza foi cancelada para evitar perda de dados.', 'Erro de Persistência');
+         return;
+      }
+
       await resetarEstadoLeiturasAtivas(condId);
-      await customAlert('Condomínio limpo e finalizado com sucesso! Pronto para o próximo mês.');
+
+      setFotosCapturadas({});
+      setConcluidosMemoria({});
+      setLeiturasValores({});
+
+      await customAlert(`${promocoes.length} leituras promovidas!\nCondomínio limpo e finalizado com sucesso. Pronto para o próximo mês.`);
       onClose();
     } catch (err) {
-      await customAlert('Erro ao limpar condomínio: ' + err.message);
+      await customAlert('Erro inesperado ao finalizar condomínio: ' + err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
-
-  const executarLimpezaFotosUI = async () => {
-    const condId = leitura?.id || leitura?.condominio_id;
-    
-    if (condId) {
-      // 1. Atualiza o histórico (Virada de Mês)
-      try {
-        const storageAnterior = localStorage.getItem(`leituras_anteriores_${condId}`);
-        let listaDeUnidades = [];
-        if (storageAnterior) {
-          listaDeUnidades = JSON.parse(storageAnterior);
-        } else {
-          // Fallback: se não tiver histórico, cria baseado nas unidades renderizadas
-          listaDeUnidades = unidadesCarregadas.map(u => ({
-            unidade: String(u.unidade || u.nome || u).trim(),
-            leitura_anterior: 0,
-            leitura_anterior_gas: 0
-          }));
-        }
-
-        const unidadesAtualizadas = listaDeUnidades.map(unidade => {
-          const apString = String(unidade.unidade).trim();
-          
-          // Extrai o valor atual do estado correto do React (garantindo que o consumo seja calculado via nova leitura anterior)
-          const valAtualAgua = leiturasValores[apString]?.agua;
-          const valAtualGas = leiturasValores[apString]?.gas;
-          
-          const parseValorLeituraLocal = (val) => {
-            if (val === null || val === undefined || val === '') return null;
-            const limpo = String(val).replace(/\./g, '').replace(',', '.').trim();
-            const num = parseFloat(limpo);
-            return isNaN(num) ? null : num;
-          };
-          
-          // 1. O valor atual digitado embaixo vira a nova leitura anterior em cima
-          const pAgua = parseValorLeituraLocal(valAtualAgua);
-          const novaLeituraAnterior = (pAgua !== null) 
-            ? pAgua 
-            : unidade.leitura_anterior;
-
-          const pGas = parseValorLeituraLocal(valAtualGas);
-          const novaLeituraAnteriorGas = (pGas !== null) 
-            ? pGas 
-            : unidade.leitura_anterior_gas;
-
-          return {
-            ...unidade,
-            // Limpa as fotos da tela
-            foto: null, 
-            foto_gas: null, 
-            
-            // Passa o bastão: o atual vira o anterior oficial do ciclo
-            leitura_anterior: novaLeituraAnterior,
-            leitura_anterior_gas: novaLeituraAnteriorGas,
-            
-            // Zera os inputs atuais para a nova coleta do mês seguinte
-            leitura: '',
-            leitura_gas: ''
-          };
-        });
-
-        // O cache local recebe as unidadesAtualizadas com o histórico renovado
-        localStorage.setItem(`leituras_anteriores_${condId}`, JSON.stringify(unidadesAtualizadas));
-        
-        // Sincronização Obrigatória (Supabase): Envia payload de UPDATE para a fila do syncOfflineService
-        const payloadAgua = unidadesAtualizadas.map(u => ({
-          unidade: u.unidade,
-          leitura_anterior: u.leitura_anterior
-        }));
-        const payloadGas = unidadesAtualizadas.map(u => ({
-          unidade: u.unidade,
-          leitura_anterior: u.leitura_anterior_gas
-        }));
-        
-        enfileirarLeiturasAnteriores(condId, payloadAgua, 'AGUA');
-        enfileirarLeiturasAnteriores(condId, payloadGas, 'GAS');
-        
-        // Dispara evento global para forçar re-render nas camadas do App que observam esse cache offline
-        window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId } }));
-      } catch (e) {
-        console.error('Erro ao atualizar histórico de leituras:', e);
-      }
-
-      // 2. Remove as chaves de conclusão locais para a tela permanecer limpa no próximo load
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(`concluido_${condId}_`)) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(k => localStorage.removeItem(k));
-
-      // 3. "Arquiva" a pasta física renomeando-a para preservar as fotos no celular sem exibi-las na UI
-      try {
-        const safeCondName = sanitizeName(leitura.nome);
-        const pastaCondominio = `FastLeituras/${safeCondName}`;
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        await Filesystem.rename({
-          from: pastaCondominio,
-          to: `${pastaCondominio}_archived_${timestamp}`,
-          directory: Directory.Cache
-        });
-      } catch (e) {
-        // Se a pasta não existir ou não puder ser renomeada, ignoramos silenciosamente
-      }
-    }
-
-    // 4. Limpa apenas as referências de foto e zera os inputs no estado visual atual
-    setFotosCapturadas({});
-    setConcluidosMemoria({});
-    setLeiturasValores({}); // IMPORTANTE: zera os inputs atuais na interface!
-    
-    setShowModalLimpeza(false); // Fecha o modal após o sucesso
-  };
-
 
   // 3. TRAVA DE SEGURANÇA (APÓS TODOS OS HOOKS)
   if (!isOpen || !leitura) return null;
@@ -1877,10 +1809,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                     <Settings size={18} />
                   </button>
                   <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowModalLimpeza(true);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); handleLimparMes(); }}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', marginLeft: '8px', cursor: 'pointer' }}
                   >
                     <Trash2 size={26} color="#ef4444" />
@@ -1953,8 +1882,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 <div className="no-units-notice">
                   <p>Nenhuma unidade cadastrada para este condomínio.</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '280px', margin: '0 auto' }}>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={dispararSeletorPlanilha}
                       style={{
                         background: '#0284c7',
@@ -1969,8 +1898,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       <FileSpreadsheet size={18} />
                       Importar Planilha uCondo
                     </button>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={() => setIsManageModalOpen(true)}
                       style={{
                         background: '#f1f5f9',
@@ -2057,7 +1986,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
-        initialValue={formatarLeituraLocal(leiturasValores[activeApto]?.[tipoMedicaoAtivo])}
+        initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
         leituras={todasLeiturasAnteriores}
         unidadeAtiva={activeApto}
       />
@@ -2075,9 +2004,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         <CustomCamera
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
-          initialValue={formatarLeituraLocal(leiturasValores[activeApto]?.[tipoMedicaoAtivo])}
-        leituras={todasLeiturasAnteriores}
-        unidadeAtiva={activeApto}
+          initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
+          leituras={todasLeiturasAnteriores}
+          unidadeAtiva={activeApto}
         />
       )}
 
@@ -2094,26 +2023,26 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             <div className="export-modal-body">
               <p>Escolha o formato que deseja exportar:</p>
               <div className="export-modal-actions" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button 
-                  className="btn-export-primary" 
+                <button
+                  className="btn-export-primary"
                   onClick={() => executeExport('agua')}
                 >
                   Enviar Apenas Água
                 </button>
-                <button 
-                  className="btn-export-primary" 
+                <button
+                  className="btn-export-primary"
                   onClick={() => executeExport('gas')}
                 >
                   Enviar Apenas Gás
                 </button>
-                <button 
-                  className="btn-export-primary" 
+                <button
+                  className="btn-export-primary"
                   onClick={() => executeExport('energia')}
                 >
                   Enviar Apenas Energia
                 </button>
-                <button 
-                  className="btn-export-secondary" 
+                <button
+                  className="btn-export-secondary"
                   style={{ backgroundColor: '#0284c7', color: 'white', borderColor: '#0284c7' }}
                   onClick={() => executeExport('todos')}
                 >
@@ -2122,16 +2051,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
                 <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '6px 0' }}></div>
 
-                <button 
-                  className="btn-export-secondary" 
+                <button
+                  className="btn-export-secondary"
                   style={{ backgroundColor: '#ef4444', color: 'white', borderColor: '#ef4444' }}
                   onClick={handleLimparMes}
                 >
                   Limpar / Iniciar Próximo Mês
                 </button>
 
-                <button 
-                  className="btn-export-cancel" 
+                <button
+                  className="btn-export-cancel"
                   onClick={() => setIsExportModalOpen(false)}
                 >
                   Cancelar
@@ -2141,40 +2070,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           </div>
         </div>
       )}
-      {showModalLimpeza && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '24px', padding: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
-            
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px', color: '#1f2937' }}>
-              Limpar Prancheta
-            </h3>
-            
-            <p style={{ color: '#4b5563', marginBottom: '24px', fontSize: '14px', lineHeight: '1.5' }}>
-              Deseja realmente limpar todas as fotos da tela para iniciar uma nova coleta?
-              <br/><br/>
-              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                (Isso NÃO apagará as fotos do celular nem do banco).
-              </span>
-            </p>
-            
-            <button 
-              onClick={executarLimpezaFotosUI} 
-              style={{ width: '100%', backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold', padding: '14px', borderRadius: '12px', marginBottom: '12px', border: 'none' }}
-            >
-              Sim, limpar tela
-            </button>
-            
-            <button 
-              onClick={() => setShowModalLimpeza(false)} 
-              style={{ width: '100%', backgroundColor: '#f3f4f6', color: '#374151', fontWeight: 'bold', padding: '14px', borderRadius: '12px', border: 'none' }}
-            >
-              Cancelar
-            </button>
-
-          </div>
-        </div>
-      )}
-    </>
+      </>
   );
 };
 

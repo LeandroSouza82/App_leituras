@@ -1,0 +1,102 @@
+.conf-email-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  background-color: #e0f2fe; /* azul muito claro */
+  padding: 16px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
+}
+
+.conf-email-card {
+  width: 100%;
+  max-width: 420px;
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.conf-email-header {
+  background-color: #1e40af; /* azul principal parecido com o app */
+  color: #ffffff;
+  padding: 20px;
+  text-align: center;
+}
+
+.conf-email-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.conf-email-body {
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.conf-email-icon {
+  margin-bottom: 20px;
+}
+
+.conf-email-icon-success {
+  color: #22c55e;
+}
+
+.conf-email-icon-error {
+  color: #ef4444;
+}
+
+.conf-email-title {
+  margin: 0 0 12px 0;
+  font-size: 1.5rem;
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.conf-email-text {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.conf-email-subtext {
+  margin: 0 0 24px 0;
+  font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.conf-email-button {
+  background-color: #3b82f6;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 100%;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.conf-email-button:hover {
+  background-color: #2563eb;
+}
+
+.conf-email-footer {
+  text-align: center;
+  padding: 16px;
+  background-color: #f8fafc;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  border-top: 1px solid #e2e8f0;
+}
