@@ -358,7 +358,10 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
                   <div className="dashboard-acao-icon dashboard-acao-icon--blue">
                     <Building2 size={20} />
                   </div>
-                  <span className="dashboard-acao-label">Informações do condomínio</span>
+                  <div className="dashboard-acao-info">
+                    <span className="dashboard-acao-label">Informações do condomínio</span>
+                    <span className="dashboard-acao-desc">Consulte dados, unidades e configurações.</span>
+                  </div>
                   <span className="dashboard-acao-chevron">›</span>
                 </button>
 
@@ -370,7 +373,10 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
                   <div className="dashboard-acao-icon dashboard-acao-icon--purple">
                     <FolderSync size={20} />
                   </div>
-                  <span className="dashboard-acao-label">Gerenciar fotos e backups</span>
+                  <div className="dashboard-acao-info">
+                    <span className="dashboard-acao-label">Gerenciar fotos e backups</span>
+                    <span className="dashboard-acao-desc">Organize, sincronize e recupere suas fotos.</span>
+                  </div>
                   <span className="dashboard-acao-chevron">›</span>
                 </button>
               </div>
