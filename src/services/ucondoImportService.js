@@ -16,6 +16,54 @@ import {
 
 export { normalizarNome, calcularDistanciaLevenstein };
 
+const sincronizarUnidadesNoSupabase = async (condominioId, nomesUnidades) => {
+  if (!supabase || !condominioId || !Array.isArray(nomesUnidades)) return;
+
+  const { data: unidadesExistentes, error: erroConsulta } = await supabase
+    .from('unidades')
+    .select('id, nome')
+    .eq('condominio_id', condominioId);
+
+  if (erroConsulta) throw erroConsulta;
+
+  const existentesPorNome = new Map(
+    (unidadesExistentes || []).map((unidade) => [normalizarNome(unidade.nome), unidade])
+  );
+
+  const unidadesParaInserir = nomesUnidades
+    .filter((nome) => !existentesPorNome.has(normalizarNome(nome)))
+    .map((nome) => ({
+      condominio_id: condominioId,
+      nome,
+      numero: nome,
+      identificador: nome,
+      status: 'pendente',
+    }));
+
+  if (unidadesParaInserir.length > 0) {
+    const { error: erroInsercao } = await supabase
+      .from('unidades')
+      .insert(unidadesParaInserir);
+
+    if (erroInsercao) throw erroInsercao;
+  }
+
+  const nomesMantidos = new Set(nomesUnidades.map(normalizarNome));
+  const idsObsoletos = (unidadesExistentes || [])
+    .filter((unidade) => !nomesMantidos.has(normalizarNome(unidade.nome)))
+    .map((unidade) => unidade.id)
+    .filter(Boolean);
+
+  if (idsObsoletos.length > 0) {
+    const { error: erroExclusao } = await supabase
+      .from('unidades')
+      .delete()
+      .in('id', idsObsoletos);
+
+    if (erroExclusao) throw erroExclusao;
+  }
+};
+
 /**
  * Serviço Sênior Modular para Importação de planilhas do uCondo.
  * Orquestra leitura de arquivos, diálogos de confirmação e persistência local/remota.
@@ -168,15 +216,6 @@ export const UCondoImportService = {
   },
 
   /**
-   * Extrai estritamente a lista de nomes de Unidades (compatibilidade retroativa).
-   * @param {ArrayBuffer|Uint8Array|string} fileData
-   * @returns {Array<string>}
-   */
-  extrairUnidades(fileData) {
-    return this.extrairUnidadesELeituras(fileData).map(p => p.unidade);
-  },
-
-  /**
    * Salva a lista de unidades e leituras anteriores no LocalStorage e Filesystem (Offline-First).
    * As leituras anteriores são gravadas na gaveta canônica já consumida pelo LeituraFotoModal:
    *   `leituras_anteriores_${condominioId}`  — array [{unidade, leitura_anterior, leitura_anterior_gas, leitura_anterior_energia}]
@@ -269,23 +308,11 @@ export const UCondoImportService = {
       window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId: String(condominioId) } }));
     }
 
-    // 5. Supabase — insert de unidades em background (fire-and-forget)
+    // 5. Supabase — preserva IDs existentes e só remove obsoletas após salvar a nova lista.
     if (supabase) {
-      try {
-        const unidadesParaInserir = nomesUnidades.map(nome => ({
-          condominio_id: condominioId,
-          nome,
-          numero: nome,
-          identificador: nome,
-          status: 'pendente',
-        }));
-        supabase
-          .from('unidades')
-          .delete()
-          .eq('condominio_id', condominioId)
-          .then(() => supabase.from('unidades').insert(unidadesParaInserir))
-          .catch(() => {});
-      } catch { /* Silencioso */ }
+      sincronizarUnidadesNoSupabase(condominioId, nomesUnidades).catch((error) => {
+        console.warn('[uCondoImportService] Falha ao sincronizar unidades:', error);
+      });
     }
   },
 
@@ -544,4 +571,3 @@ export const UCondoImportService = {
 };
 
 export default UCondoImportService;
-

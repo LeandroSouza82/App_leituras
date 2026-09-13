@@ -16,7 +16,6 @@ import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondo
 import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
-import { hidratarCacheLeiturasOffline } from './services/leiturasAnterioresService';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
@@ -103,10 +102,6 @@ const MainApp = ({ onLogout }) => {
     // Inicializa o observador de conectividade para sincronização automática
     iniciarObservadorRede();
 
-    // Rotina de Hidratação Global de Descida (Sync Down)
-    // Substitui o cache sujo/incompleto pelo espelho real da nuvem (Unidades e Leituras Anteriores)
-    hidratarCacheLeiturasOffline();
-
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
 
@@ -169,8 +164,9 @@ const MainApp = ({ onLogout }) => {
         // Cobre condomínios ainda não operados pelo app ou recém-cadastrados.
         const { data: planilhas, error: errPlanilhas } = await supabase
           .from('unidades_leituras')
-          .select('condominio_nome, unidade, leitura_anterior, servico')
-          .eq('leiturista_id', user.id);
+          .select('condominio_nome, unidade, leitura_anterior, servico, atualizado_em')
+          .eq('leiturista_id', user.id)
+          .order('atualizado_em', { ascending: true });
 
         const gruposPlanilha = {};
         if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
@@ -251,7 +247,15 @@ const MainApp = ({ onLogout }) => {
         await customAlert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
         showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
       }
+    }).catch((error) => {
+      console.warn('[App] Falha ao iniciar recebimento de planilhas:', error);
     });
+
+    return () => {
+      ShareIntentService.stop().catch((error) => {
+        console.warn('[App] Falha ao remover listener de planilhas:', error);
+      });
+    };
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,8 @@
-import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
 import { App } from '@capacitor/app';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Filesystem } from '@capacitor/filesystem';
+
+let listenerHandle = null;
+let listenerGeneration = 0;
 
 /**
  * Serviço Sênior para interceptar arquivos compartilhados via Intent do Android.
@@ -11,9 +13,16 @@ export const ShareIntentService = {
    * Inicializa o listener para capturar arquivos quando o app é aberto por um Intent externo.
    * @param {Function} onFileReceived - Callback executado quando um arquivo é processado.
    */
-  init(onFileReceived) {
+  async init(onFileReceived) {
+    const generation = ++listenerGeneration;
+
+    if (listenerHandle) {
+      await listenerHandle.remove();
+      listenerHandle = null;
+    }
+
     // Listener para o evento de abertura via URL/File URI
-    App.addListener('appUrlOpen', async (data) => {
+    const handle = await App.addListener('appUrlOpen', async (data) => {
 
       try {
         const fileUri = data.url;
@@ -50,5 +59,20 @@ export const ShareIntentService = {
       } catch (error) {
       }
     });
+
+    if (generation !== listenerGeneration) {
+      await handle.remove();
+      return null;
+    }
+
+    listenerHandle = handle;
+    return handle;
+  },
+
+  async stop() {
+    listenerGeneration += 1;
+    const handle = listenerHandle;
+    listenerHandle = null;
+    if (handle) await handle.remove();
   },
 };

@@ -12,7 +12,6 @@ import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
 import { StorageService } from '../../services/storageService';
 import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
-import { Network } from '@capacitor/network';
 import { salvarLeituraOffline } from '../../services/syncService';
 import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
 import { enfileirarLeiturasAnteriores } from '../../services/syncOfflineService';
@@ -89,12 +88,6 @@ const obterLeituraAtualPersistida = (condominioId, unidadeId, servico) => {
   const valor = localStorage.getItem(`valor_${chaveLocal}`);
   if (valor === null || valor === undefined || valor === '') return null;
   return valor;
-};
-
-const PROP_LEITURA_ANTERIOR = {
-  agua: 'leitura_anterior',
-  gas: 'leitura_anterior_gas',
-  energia: 'leitura_anterior_energia',
 };
 
 const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress, onClick }) => {
@@ -272,63 +265,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     window.addEventListener('offline_cache_hydrated', handleHydration);
     return () => window.removeEventListener('offline_cache_hydrated', handleHydration);
   }, [leitura]);
-
-  // Busca a leitura anterior APENAS do apartamento selecionado (offline-first fallback)
-  useEffect(() => {
-    if (isOpen && activeApto && leitura) {
-      const fetchLeituraAnterior = async () => {
-        let valueEncontrado = null;
-        const apString = String(activeApto).trim();
-        const condId = leitura?.id || leitura?.condominio_id;
-
-        // 1. Tentar puxar do banco de dados (Supabase) se houver conexão
-        try {
-          const status = await Network.getStatus();
-          if (status.connected && supabase && condId) {
-            const colunaAlvo = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || 'leitura_anterior';
-
-            const { data: undData, error: undErr } = await supabase
-              .from('unidades')
-              .select(colunaAlvo)
-              .eq('condominio_id', condId)
-              .eq('nome', apString)
-              .limit(1)
-              .single();
-
-            if (!undErr && undData && undData[colunaAlvo] !== null && undData[colunaAlvo] !== undefined) {
-               valueEncontrado = undData[colunaAlvo];
-            }
-          }
-        } catch (e) {
-          console.error("Erro ao buscar leitura_anterior no Supabase", e);
-        }
-
-        // 2. Fallback para o celular (localStorage)
-        if (valueEncontrado === null) {
-          try {
-            const chaveStorage = `leituras_anteriores_${condId}`;
-            const str = localStorage.getItem(chaveStorage);
-            if (str) {
-              const arr = JSON.parse(str);
-              const obj = arr.find(l => String(l.unidade).trim() === apString);
-              if (obj) {
-                 const propCorreta = PROP_LEITURA_ANTERIOR[tipoMedicaoAtivo] || 'leitura_anterior';
-                 if (obj[propCorreta] !== undefined && obj[propCorreta] !== null) {
-                    valueEncontrado = obj[propCorreta];
-                 }
-              }
-            }
-          } catch(e) {
-            console.error("Erro fallback local", e);
-          }
-        }
-
-      };
-
-      fetchLeituraAnterior();
-    } else {
-    }
-  }, [isOpen, activeApto, leitura, tipoMedicaoAtivo]);
 
   // Busca TODAS as leituras anteriores para exibir no grid
   useEffect(() => {

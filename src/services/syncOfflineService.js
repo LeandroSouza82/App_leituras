@@ -134,6 +134,8 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
       activeUserId = user?.id || null;
     } catch { /* Mantém null */ }
 
+    if (!activeUserId) return;
+
     for (const item of [...fila]) {
       try {
         // 1. Busca as unidades cadastradas para este condomínio
@@ -175,7 +177,20 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
           continue;
         }
 
-        // 3. Insere em lote
+        // 3. Guarda os registros anteriores para removê-los somente após o novo lote existir.
+        const { data: registrosAnteriores, error: erroConsultaAnteriores } = await supabase
+          .from('unidades_leituras')
+          .select('id')
+          .eq('condominio_nome', item.condominioId)
+          .eq('leiturista_id', activeUserId)
+          .eq('servico', item.servico);
+
+        if (erroConsultaAnteriores) {
+          console.warn(`[syncOfflineService] Falha ao consultar lote anterior de ${item.condominioId}:`, erroConsultaAnteriores);
+          continue;
+        }
+
+        // 4. Insere o novo lote antes de excluir o anterior, evitando janela de perda.
         const { error: insertError } = await supabase
           .from('unidades_leituras')
           .insert(loteParaEnvio);
@@ -186,7 +201,19 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
           continue; // Mantém na fila, tenta novamente na próxima janela de rede
         }
 
-        // 4. Sucesso — remove apenas este item da fila
+        const idsAnteriores = (registrosAnteriores || []).map((row) => row.id).filter(Boolean);
+        if (idsAnteriores.length > 0) {
+          const { error: erroExclusaoAnteriores } = await supabase
+            .from('unidades_leituras')
+            .delete()
+            .in('id', idsAnteriores);
+
+          if (erroExclusaoAnteriores) {
+            console.warn(`[syncOfflineService] Novo lote salvo, mas o lote anterior não pôde ser removido:`, erroExclusaoAnteriores);
+          }
+        }
+
+        // 5. Sucesso — remove apenas este item da fila
         const filaAtualizada = lerFila().filter((f) => f.id !== item.id);
         gravarFila(filaAtualizada);
 
@@ -213,7 +240,8 @@ export const sincronizarCondominiosOffline = async () => {
     isSyncCondsRunning = true;
     let activeUserId = null;
     try {
-      const { data: { user } } = await supabase.auth.getSession();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
       activeUserId = user?.id || null;
     } catch {}
 
@@ -238,15 +266,35 @@ export const sincronizarCondominiosOffline = async () => {
         const { error: insertErr } = await supabase.from('condominios').insert(dbCond);
         
         if (!insertErr || insertErr.code === '23505') { // 23505 = unique_violation (já existe)
-           // Cria também a leitura do mês (mesma lógica do condominioService)
+           // Cria a leitura do mês no formato canônico, somente se ainda não existir.
            const hoje = new Date();
-           const mesReferencia = `${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
-           await supabase.from('leituras').insert({
-             condominio_id: cond.id,
-             user_id: activeUserId,
-             mes_referencia: mesReferencia,
-             concluido: false,
-           });
+           const mesReferencia = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+           const { data: leituraExistente, error: leituraConsultaError } = await supabase
+             .from('leituras')
+             .select('id')
+             .eq('condominio_id', cond.id)
+             .eq('user_id', activeUserId)
+             .eq('mes_referencia', mesReferencia)
+             .limit(1);
+
+           if (leituraConsultaError) {
+             console.warn(`[syncOffline] Falha ao verificar leitura mensal de ${cond.nome}:`, leituraConsultaError);
+             continue;
+           }
+
+           if (!leituraExistente || leituraExistente.length === 0) {
+             const { error: leituraInsertError } = await supabase.from('leituras').insert({
+               condominio_id: cond.id,
+               user_id: activeUserId,
+               mes_referencia: mesReferencia,
+               concluido: false,
+             });
+
+             if (leituraInsertError) {
+               console.warn(`[syncOffline] Falha ao criar leitura mensal de ${cond.nome}:`, leituraInsertError);
+               continue;
+             }
+           }
 
            // Remove da fila
            const filaAtualizada = lerFilaCondominios().filter((c) => c.id !== cond.id);
