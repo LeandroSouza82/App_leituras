@@ -27,9 +27,14 @@ const formatCurrency = (value) =>
     currency: 'BRL',
   });
 
-const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
-  const diaAtual = new Date().getDate();
+const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo = 'atrasadas' }) => {
+  const now = new Date();
+  const diaAtual = now.getDate();
+  const ultimoDiaDoMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const diaLeitura = extrairNumeroDia(leitura.diaLeitura);
+  const isAtrasado = !leitura.completo && diaLeitura !== null && diaLeitura < diaAtual;
+  const isHoje = !leitura.completo && diaLeitura !== null && diaLeitura === diaAtual;
+  const isAmanha = !leitura.completo && diaLeitura !== null && diaAtual < ultimoDiaDoMes && diaLeitura === diaAtual + 1;
   const [mostrarModalEdicao, setMostrarModalEdicao] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
@@ -42,16 +47,20 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
 
   const { statusLabel, statusClass } = leitura.completo
     ? { statusLabel: 'Concluído', statusClass: 'status-success' }
-    : diaLeitura !== null && diaAtual > diaLeitura
+    : isAtrasado
     ? { statusLabel: 'Atrasado', statusClass: 'status-danger' }
-    : diaLeitura !== null && diaLeitura - diaAtual <= 2
-    ? { statusLabel: 'Fazer Hoje/Breve', statusClass: 'status-warning' }
-    : { statusLabel: `Aguardando`, statusClass: 'status-pending' };
+    : isHoje
+    ? { statusLabel: 'Fazer Hoje', statusClass: 'status-danger' }
+    : isAmanha
+    ? { statusLabel: 'A vencer', statusClass: 'status-warning' }
+    : { statusLabel: 'Aguardando', statusClass: 'status-pending' };
 
   const badgeDayClass = leitura.completo
     ? 'badge-dia-success'
-    : diaLeitura !== null && diaLeitura < diaAtual
+    : isAtrasado || isHoje
     ? 'badge-dia-danger'
+    : isAmanha
+    ? 'badge-dia-warning'
     : 'badge-dia-awaiting';
 
   const tituloModal = leitura.completo ? 'Desmarcar Leitura?' : 'Concluir Leitura?';
@@ -138,9 +147,25 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused }) => {
     leitura.instrucoesAcesso || null,
   ].filter(Boolean).join(' · ');
 
+  const cardStatusClass = !leitura.completo
+    ? isAtrasado
+      ? 'item-card--atrasado'
+      : isHoje
+      ? 'item-card--hoje'
+      : isAmanha
+      ? 'item-card--a-vencer'
+      : ''
+    : '';
+
+  const focoClass = !leitura.completo && isFocused
+    ? (focoTipo === 'amanha' || (isAmanha && focoTipo !== 'atrasadas' && focoTipo !== 'hoje'))
+      ? 'focado-a-vencer'
+      : 'focado-atrasado'
+    : '';
+
   return (
     <>
-      <article className={`item-card ${leitura.completo ? 'completed' : ''} ${isFocused ? 'focado-atrasado' : ''}`}>
+      <article className={`item-card ${leitura.completo ? 'completed' : ''} ${cardStatusClass} ${focoClass}`}>
 
         {/* ── LINHA 1: Ícone + Nome + Badge Dia ── */}
         <div className="item-row-top">

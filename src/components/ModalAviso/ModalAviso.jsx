@@ -1,23 +1,36 @@
 import './ModalAviso.css';
 
-const ModalAviso = ({ isOpen, onClose, leiturasHoje = [], leiturasAtrasadas = [], onNavigateToLeituras }) => {
+const ModalAviso = ({
+  isOpen,
+  onClose,
+  leiturasHoje = [],
+  leiturasAmanha = [],
+  leiturasAtrasadas = [],
+  onNavigateToLeituras,
+}) => {
   if (!isOpen) {
     return null;
   }
 
   const totalHoje = leiturasHoje.length;
+  const totalAmanha = leiturasAmanha.length;
   const totalAtrasadas = leiturasAtrasadas.length;
-  const totalPendentes = totalHoje + totalAtrasadas;
+  const totalPendentes = totalHoje + totalAmanha + totalAtrasadas;
 
   const mensagem =
     totalPendentes === 0
       ? 'Nenhuma leitura pendente no momento.'
-      : `${totalHoje} leitura(s) para HOJE e ${totalAtrasadas} ATRASADA(S)!`;
+      : `${totalAtrasadas} atrasada(s), ${totalHoje} para HOJE e ${totalAmanha} a vencer amanhã.`;
 
   const handleEntendido = () => {
     onClose();
     if (onNavigateToLeituras && totalPendentes > 0) {
-      onNavigateToLeituras();
+      const focoTipo = totalAtrasadas > 0
+        ? 'atrasadas'
+        : totalHoje > 0
+        ? 'hoje'
+        : 'amanha';
+      onNavigateToLeituras(focoTipo);
     }
   };
 

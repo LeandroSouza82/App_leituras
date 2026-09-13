@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './LeituraList.css';
 import LeituraItem from '../LeituraItem/LeituraItem';
 import AlertaBanner from '../AlertaBanner/AlertaBanner';
@@ -22,16 +22,26 @@ const normalizarTexto = (texto) => {
 const LeituraList = ({
   leituras,
   leiturasHoje,
+  leiturasAmanha,
   leiturasAtrasadas,
   onToggle,
   onDelete,
   onEdit,
   focarAtrasadoAuto,
+  focoLeituraTipo = 'atrasadas',
+  focoEspecifico = null,
+  onResetFocoEspecifico,
   onResetFocarAtrasadoAuto,
 }) => {
   const diaAtual = new Date().getDate();
-  const [indiceAtualDoFoco, setIndiceAtualDoFoco] = useState(0);
+  const ultimoDiaDoMes = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(), []);
+  const [indicesAtuaisDoFoco, setIndicesAtuaisDoFoco] = useState({
+    atrasadas: 0,
+    amanha: 0,
+    hoje: 0,
+  });
   const [itemFocadoId, setItemFocadoId] = useState(null);
+  const [tipoFocoAtivo, setTipoFocoAtivo] = useState('atrasadas');
   const [filtroCondominio, setFiltroCondominio] = useState('');
   const itemRefs = useRef({});
 
@@ -77,9 +87,37 @@ const LeituraList = ({
     return indices;
   }, [leiturasFiltradas, diaAtual]);
 
-  // 4. Lógica de Scroll e Destaque
-  const handleFocarAtrasado = () => {
-    let indicesAlvo = indicesAtrasados;
+  const indicesAmanha = useMemo(() => {
+    const indices = [];
+    leiturasFiltradas.forEach((item, index) => {
+      const dia = extrairNumeroDia(item.diaLeitura);
+      if (!item.completo && dia !== null && diaAtual < ultimoDiaDoMes && dia === diaAtual + 1) {
+        indices.push(index);
+      }
+    });
+    return indices;
+  }, [leiturasFiltradas, diaAtual, ultimoDiaDoMes]);
+
+  const indicesHoje = useMemo(() => {
+    const indices = [];
+    leiturasFiltradas.forEach((item, index) => {
+      const dia = extrairNumeroDia(item.diaLeitura);
+      if (!item.completo && dia !== null && dia === diaAtual) {
+        indices.push(index);
+      }
+    });
+    return indices;
+  }, [leiturasFiltradas, diaAtual]);
+
+  // 4. Lógica de Scroll e Destaque cíclico por categoria
+  const handleFocarAtrasado = useCallback((tipo = 'atrasadas') => {
+    const indicesPorTipo = {
+      atrasadas: indicesAtrasados,
+      amanha: indicesAmanha,
+      hoje: indicesHoje,
+    };
+    const tipoNormalizado = indicesPorTipo[tipo] ? tipo : 'atrasadas';
+    let indicesAlvo = indicesPorTipo[tipoNormalizado] || indicesAtrasados;
     if (!indicesAlvo || indicesAlvo.length === 0) {
       indicesAlvo = leiturasFiltradas
         .map((item, index) => (!item.completo ? index : null))
@@ -90,7 +128,8 @@ const LeituraList = ({
       return;
     }
 
-    const idx = indiceAtualDoFoco % indicesAlvo.length;
+    const indiceAtual = indicesAtuaisDoFoco[tipoNormalizado] || 0;
+    const idx = indiceAtual % indicesAlvo.length;
     const targetIndex = indicesAlvo[idx];
     const targetItem = leiturasFiltradas[targetIndex];
 
@@ -102,25 +141,71 @@ const LeituraList = ({
       });
 
       setItemFocadoId(targetItem.id);
+      setTipoFocoAtivo(tipoNormalizado);
       setTimeout(() => {
         setItemFocadoId(null);
+        setTipoFocoAtivo(null);
       }, 2500);
     }
 
-    setIndiceAtualDoFoco((prev) => (prev + 1) % indicesAlvo.length);
-  };
+    setIndicesAtuaisDoFoco((prev) => ({
+      ...prev,
+      [tipoNormalizado]: (indiceAtual + 1) % indicesAlvo.length,
+    }));
+  }, [indicesAmanha, indicesAtrasados, indicesHoje, indicesAtuaisDoFoco, leiturasFiltradas]);
 
   useEffect(() => {
     if (focarAtrasadoAuto) {
       const timer = setTimeout(() => {
-        handleFocarAtrasado();
+        // Se houver um condomínio específico apontado por notificação
+        if (focoEspecifico?.id) {
+          const targetIndex = leiturasFiltradas.findIndex(
+            (item) => item.id === focoEspecifico.id || String(item.id) === String(focoEspecifico.id)
+          );
+
+          if (targetIndex !== -1) {
+            const targetItem = leiturasFiltradas[targetIndex];
+            if (itemRefs.current[targetItem.id]) {
+              itemRefs.current[targetItem.id].scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+              });
+            }
+
+            const diaTarget = extrairNumeroDia(targetItem.diaLeitura);
+            const isAtrasadoTarget = !targetItem.completo && diaTarget !== null && diaTarget < diaAtual;
+            const isHojeTarget = !targetItem.completo && diaTarget !== null && diaTarget === diaAtual;
+            const tipoFocoCalculado = isAtrasadoTarget
+              ? 'atrasadas'
+              : isHojeTarget
+              ? 'hoje'
+              : (focoEspecifico.tipo || 'amanha');
+
+            setItemFocadoId(targetItem.id);
+            setTipoFocoAtivo(tipoFocoCalculado);
+            setTimeout(() => {
+              setItemFocadoId(null);
+              setTipoFocoAtivo(null);
+            }, 2500);
+
+            onResetFocoEspecifico?.();
+            if (onResetFocarAtrasadoAuto) {
+              onResetFocarAtrasadoAuto();
+            }
+            return;
+          }
+        }
+
+        // Fallback: ciclo por categoria
+        handleFocarAtrasado(focoEspecifico?.tipo || focoLeituraTipo);
+        onResetFocoEspecifico?.();
         if (onResetFocarAtrasadoAuto) {
           onResetFocarAtrasadoAuto();
         }
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [focarAtrasadoAuto, indicesAtrasados]);
+  }, [focarAtrasadoAuto, focoEspecifico, focoLeituraTipo, handleFocarAtrasado, leiturasFiltradas, diaAtual, onResetFocoEspecifico, onResetFocarAtrasadoAuto]);
 
   return (
     <section className="list-card">
@@ -148,6 +233,7 @@ const LeituraList = ({
 
         <AlertaBanner
           leiturasHoje={leiturasHoje}
+          leiturasAmanha={leiturasAmanha}
           leiturasAtrasadas={leiturasAtrasadas}
           onFocarAtrasado={handleFocarAtrasado}
         />
@@ -173,6 +259,7 @@ const LeituraList = ({
                     onDelete={onDelete}
                     onEdit={onEdit}
                     isFocused={itemFocadoId === item.id}
+                    focoTipo={tipoFocoAtivo}
                   />
                 </div>
               ))}

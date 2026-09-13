@@ -1,61 +1,97 @@
-const AlertaBanner = ({ leiturasHoje = [], leiturasAtrasadas = [], onFocarAtrasado }) => {
-  const temHoje = leiturasHoje.length > 0;
-  const temAtrasadas = leiturasAtrasadas.length > 0;
+import { useState } from 'react';
+import './AlertaBanner.css';
 
-  if (!temHoje && !temAtrasadas) {
+const AlertaBanner = ({
+  leiturasHoje = [],
+  leiturasAmanha = [],
+  leiturasAtrasadas = [],
+  onFocarAtrasado,
+  className = '',
+}) => {
+  const [isRecolhido, setIsRecolhido] = useState(false);
+
+  const temHoje = leiturasHoje.length > 0;
+  const temAmanha = leiturasAmanha.length > 0;
+  const temAtrasadas = leiturasAtrasadas.length > 0;
+  const totalAlertas = leiturasHoje.length + leiturasAmanha.length + leiturasAtrasadas.length;
+
+  if (!temHoje && !temAmanha && !temAtrasadas) {
     return null;
   }
 
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        marginBottom: '12px',
-      }}
-    >
-      {temHoje && (
-        <div
-          onClick={onFocarAtrasado}
-          style={{
-            background: '#fef3c7',
-            color: '#92400e',
-            border: '1px solid #fde68a',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            fontSize: '0.95rem',
-            fontWeight: 600,
-            cursor: onFocarAtrasado ? 'pointer' : 'default',
-            userSelect: 'none',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-          }}
-          title="Clique para focar na leitura de hoje"
+  if (isRecolhido) {
+    return (
+      <div className={`alerta-banner alerta-banner--recolhido ${className}`.trim()} aria-live="polite">
+        <button
+          type="button"
+          className={`alerta-banner__recolhido-btn ${temAtrasadas || temHoje ? 'alerta-banner__recolhido-btn--vermelho' : 'alerta-banner__recolhido-btn--amarelo'}`}
+          onClick={() => setIsRecolhido(false)}
+          title="Mostrar alertas de leitura"
+          aria-label={`Mostrar ${totalAlertas} ${totalAlertas === 1 ? 'alerta de leitura' : 'alertas de leitura'}`}
         >
-          ⚠️ <strong>Atenção:</strong> Você tem {leiturasHoje.length} leitura(s) agendada(s) para HOJE!
-        </div>
+          <span className="alerta-banner__recolhido-icone" aria-hidden="true">🔔</span>
+          <span className="alerta-banner__recolhido-contagem">{totalAlertas}</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`alerta-banner ${className}`.trim()} aria-live="polite">
+      {temHoje && (
+        <button
+          type="button"
+          className="alerta-banner__item alerta-banner__item--hoje"
+          onClick={() => onFocarAtrasado?.('hoje')}
+          disabled={!onFocarAtrasado}
+          title="Clique para focar nas leituras de hoje"
+          aria-label={`${leiturasHoje.length} ${leiturasHoje.length === 1 ? 'leitura para hoje' : 'leituras para hoje'}`}
+        >
+          <span className="alerta-banner__label">
+            {`🚨 ${leiturasHoje.length} hoje`}
+          </span>
+        </button>
+      )}
+
+      {temAmanha && (
+        <button
+          type="button"
+          className="alerta-banner__item alerta-banner__item--amanha"
+          onClick={() => onFocarAtrasado?.('amanha')}
+          disabled={!onFocarAtrasado}
+          title="Clique para focar nas leituras que vencem amanhã"
+          aria-label={`${leiturasAmanha.length} ${leiturasAmanha.length === 1 ? 'leitura para amanhã' : 'leituras para amanhã'}`}
+        >
+          <span className="alerta-banner__label">
+            {`⏰ ${leiturasAmanha.length} amanhã`}
+          </span>
+        </button>
       )}
 
       {temAtrasadas && (
-        <div
-          onClick={onFocarAtrasado}
-          style={{
-            background: '#fee2e2',
-            color: '#991b1b',
-            border: '1px solid #fecaca',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            fontSize: '0.95rem',
-            fontWeight: 600,
-            cursor: onFocarAtrasado ? 'pointer' : 'default',
-            userSelect: 'none',
-            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-          }}
-          title="Clique para focar na leitura atrasada"
+        <button
+          type="button"
+          className="alerta-banner__item alerta-banner__item--atrasadas"
+          onClick={() => onFocarAtrasado?.('atrasadas')}
+          disabled={!onFocarAtrasado}
+          title="Clique para focar nas leituras atrasadas"
+          aria-label={`${leiturasAtrasadas.length} ${leiturasAtrasadas.length === 1 ? 'leitura atrasada' : 'leituras atrasadas'}`}
         >
-          🚨 <strong>Pendente:</strong> Você tem {leiturasAtrasadas.length} leitura(s) ATRASADA(S)!
-        </div>
+          <span className="alerta-banner__label">
+            {`🚨 ${leiturasAtrasadas.length} ${leiturasAtrasadas.length === 1 ? 'atrasada' : 'atrasadas'}`}
+          </span>
+        </button>
       )}
+
+      <button
+        type="button"
+        className="alerta-banner__close"
+        onClick={() => setIsRecolhido(true)}
+        aria-label="Ocultar alertas temporariamente"
+        title="Ocultar alertas temporariamente"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
     </div>
   );
 };

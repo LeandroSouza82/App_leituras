@@ -6,6 +6,7 @@ import {
   deletarCondominio,
   salvarCondominio,
 } from '../services/condominioService';
+import { NotificationService } from '../services/notificationService';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -23,6 +24,7 @@ const getCurrentMonthKey = () => {
 
 export const useLeituras = (onFeedback = () => {}) => {
   const diaAtual = new Date().getDate();
+  const ultimoDiaDoMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const [leituras, setLeituras] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -81,6 +83,10 @@ export const useLeituras = (onFeedback = () => {}) => {
 
     const novoCompleto = !leituraAnterior.completo;
 
+    if (novoCompleto) {
+      await NotificationService.cancelForLeitura(id);
+    }
+
     setLeituras((previous) =>
       previous.map((item) =>
         item.id === id ? { ...item, completo: novoCompleto } : item
@@ -118,6 +124,7 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const deletarLeitura = async (id) => {
+    await NotificationService.cancelForLeitura(id);
     const leituraAnterior = leituras.find((item) => item.id === id);
     setLeituras((previous) => previous.filter((item) => item.id !== id));
 
@@ -132,6 +139,7 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const editarLeitura = async (idTarget, novosDados) => {
+    await NotificationService.cancelForLeitura(idTarget);
     try {
       // 1. Sincronização direta com o Supabase (garantia de salvamento)
       const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
@@ -165,6 +173,15 @@ export const useLeituras = (onFeedback = () => {}) => {
       return dia === diaAtual;
     }),
     [leituras, diaAtual]
+  );
+
+  const leiturasAmanha = useMemo(
+    () => leituras.filter((item) => {
+      if (item.completo) return false;
+      const dia = extrairNumeroDia(item.diaLeitura);
+      return dia !== null && diaAtual < ultimoDiaDoMes && dia === diaAtual + 1;
+    }),
+    [leituras, diaAtual, ultimoDiaDoMes]
   );
 
   const leiturasAtrasadas = useMemo(
@@ -214,6 +231,7 @@ export const useLeituras = (onFeedback = () => {}) => {
     totalConcluidos,
     percentualConcluido,
     leiturasHoje,
+    leiturasAmanha,
     leiturasAtrasadas,
     adicionarLeitura,
     toggleCompleto,
