@@ -17,6 +17,7 @@ import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
+import OnboardingApresentacao from './components/OnboardingApresentacao/OnboardingApresentacao';
 import LegalConsentGate from './components/LegalConsentGate/LegalConsentGate';
 import NotificationPermissionGate from './components/NotificationPermissionGate/NotificationPermissionGate';
 import { supabase } from './services/supabase';
@@ -706,7 +707,11 @@ const App = () => {
   }
 
   if (!session) {
-    return <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} />;
+    return (
+      <OnboardingApresentacao>
+        <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} />
+      </OnboardingApresentacao>
+    );
   }
 
   if (!legalConsentStatus.checked || legalConsentStatus.userId !== session.user.id) {

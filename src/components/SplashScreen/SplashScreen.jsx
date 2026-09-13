@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './SplashScreen.css';
-import iconImg from '../../assets/icon.png';
+import splashEmblem from './splash-emblem.svg';
 
 const SplashScreen = ({ onFinish }) => {
   const [fadeOut, setFadeOut] = useState(false);
@@ -21,18 +21,16 @@ const SplashScreen = ({ onFinish }) => {
   }, [onFinish]);
 
   return (
-    <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
-      <div className="splash-content">
-        <img
-          src={iconImg}
-          alt="Fast Leitura Icon"
-          className="splash-logo-img"
-        />
-        <div className="splash-title-container">
-          <span className="title-fast">Fast</span>
-          <span className="title-leitura">Leitura</span>
+    <div className={`fl-splash${fadeOut ? ' fl-splash--leaving' : ''}`} role="status" aria-label="Abrindo Fast Leituras">
+      <div className="fl-splash__content">
+        <div className="fl-splash__emblem">
+          <img src={splashEmblem} alt="Escudo com chama, raio, gota de água e medidor" width="240" height="264" />
         </div>
-        <p className="slogan">
+        <div className="fl-splash__brand" aria-label="Fast Leituras">
+          <span className="fl-splash__fast">FAST</span>
+          <span className="fl-splash__leituras">LEITURAS</span>
+        </div>
+        <p className="fl-splash__tagline">
           Agilidade e precisão na medição do seu condomínio
         </p>
       </div>
