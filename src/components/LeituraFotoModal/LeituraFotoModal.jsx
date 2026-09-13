@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -32,6 +32,20 @@ const normalizarServicoLocal = (servico) => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+};
+
+const obterAbaExclusivaDoCondominio = (leitura) => {
+  const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  if (tipo === 'somente gas' || tipo === 'gas') return 'gas';
+  if (tipo === 'somente agua' || tipo === 'agua') return 'agua';
+
+  const somenteEnergia = tipo.includes('energia') && !tipo.includes('agua') && !tipo.includes('gas');
+  return somenteEnergia ? 'energia' : null;
 };
 
 const gerarChaveLeituraLocal = (condominioId, unidadeId, servico) => {
@@ -221,7 +235,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [leiturasValores, setLeiturasValores] = useState({});
   const [exportando, setExportando] = useState(false);
   const [torreAtiva, setTorreAtiva] = useState(null);
-  const [tipoMedicaoAtivo, setTipoMedicaoAtivo] = useState('agua');
+  const [tipoMedicaoAtivo, setTipoMedicaoAtivo] = useState(
+    () => obterAbaExclusivaDoCondominio(leitura) || 'agua'
+  );
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activeApto, setActiveApto] = useState(null);
@@ -236,8 +252,26 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // NOVO: Estado e busca da leitura anterior (Offline-first)
-  const [todasLeiturasAnteriores, setTodasLeiturasAnteriores] = useState({});
+  // Fonte única da leitura anterior exibida: recalcula imediatamente para o
+  // serviço ativo e nunca reaproveita o mapa de outra aba.
+  const todasLeiturasAnteriores = useMemo(() => {
+    if (!isOpen || !leitura) return {};
+
+    const condId = leitura?.id || leitura?.condominio_id;
+    try {
+      return obterMapaLeiturasAnteriores(condId, tipoMedicaoAtivo);
+    } catch (_) {
+      return {};
+    }
+  }, [isOpen, leitura, tipoMedicaoAtivo, hydrationCounter]);
+
+  // Evita que a tela pinte a aba Água durante a leitura assíncrona dos dados
+  // quando o condomínio já está configurado exclusivamente para Energia/Gás.
+  useLayoutEffect(() => {
+    if (!isOpen || !leitura) return;
+    const abaExclusiva = obterAbaExclusivaDoCondominio(leitura);
+    if (abaExclusiva) setTipoMedicaoAtivo(abaExclusiva);
+  }, [isOpen, leitura]);
 
   useEffect(() => {
     if (isOpen && activeApto) {
@@ -262,19 +296,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     window.addEventListener('offline_cache_hydrated', handleHydration);
     return () => window.removeEventListener('offline_cache_hydrated', handleHydration);
   }, [leitura]);
-
-  // Busca TODAS as leituras anteriores para exibir no grid
-  useEffect(() => {
-    if (isOpen && leitura) {
-      const condId = leitura?.id || leitura?.condominio_id;
-      try {
-        const mapeado = obterMapaLeiturasAnteriores(condId, tipoMedicaoAtivo);
-        setTodasLeiturasAnteriores(mapeado);
-      } catch (e) {
-        setTodasLeiturasAnteriores({});
-      }
-    }
-  }, [isOpen, leitura, tipoMedicaoAtivo, isPreviewOpen, hydrationCounter]);
 
   const exibirToastSucesso = () => {
     if (toastTimeoutRef.current) {
@@ -443,7 +464,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             const temGasPlanilha = parseCheck(`leituras_anteriores_${condId}_GAS`);
             const temEnergiaPlanilha = parseCheck(`leituras_anteriores_${condId}_ENERGIA`);
 
-            if (temAguaDb || temAguaPlanilha) {
+            // O tipo explícito do condomínio tem prioridade sobre gavetas
+            // antigas de outro serviço. Ex.: Energia configurada não pode
+            // voltar para Água só porque existe uma planilha de Água salva.
+            if (temEnergiaDb && !temAguaDb && !temGasDb) {
+              abaInicial = 'energia';
+            } else if (temAguaDb || temAguaPlanilha) {
               abaInicial = 'agua';
             } else if (temGasDb || temGasPlanilha) {
               abaInicial = 'gas';
@@ -857,20 +883,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         [`${unidadeId}_${tipoMedicaoAtivo}`]: valor // INJEÇÃO CRÍTICA PARA O VALIDADOR DE EXPORTAÇÃO
       }));
       // Mantém o preview da foto até o salvamento global das leituras.
-
-      // NOVO: Atualiza a Leitura Atual imediatamente (UI State)
-      setTodasLeiturasAnteriores(prev => {
-        const oldValue = prev[unidadeId];
-        const ant = (typeof oldValue === 'object' && oldValue !== null) ? oldValue.leitura_anterior : oldValue;
-        return {
-          ...prev,
-          [unidadeId]: {
-            ...(typeof oldValue === 'object' ? oldValue : {}),
-            leitura_anterior: ant,
-            leitura_atual: valorNumerico
-          }
-        };
-      });
 
       // NOVO: Persiste no LocalStorage (Garantia de Sobrevivência)
       try {
@@ -1786,7 +1798,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                       apto={apto}
                       concluido={concluido}
                       thumbnail={thumbnail}
-                      leituraAnterior={(typeof todasLeiturasAnteriores[apto] === 'object' && todasLeiturasAnteriores[apto] !== null) ? todasLeiturasAnteriores[apto].leitura_anterior : todasLeiturasAnteriores[apto]}
+                      leituraAnterior={todasLeiturasAnteriores[apto] ?? null}
                       onClick={handleUnitClick}
                       onLongPress={async (aptoAlvo) => {
                         const isConfirmed = await customConfirmDestrutivo(
@@ -1842,8 +1854,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
-        leituras={todasLeiturasAnteriores}
-        unidadeAtiva={activeApto}
+        leituraAnterior={todasLeiturasAnteriores[activeApto] ?? null}
       />
 
       {/* 4. Feedback Toast */}
@@ -1860,8 +1871,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
           initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
-          leituras={todasLeiturasAnteriores}
-          unidadeAtiva={activeApto}
+          leituraAnterior={todasLeiturasAnteriores[activeApto] ?? null}
         />
       )}
 
