@@ -71,9 +71,7 @@ const gerarFotoMockBase64 = () => {
   return dataUrl.split(",")[1];
 };
 
-const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituras = {}, unidadeAtiva = '' }) => {
-  const objOuVal = leituras?.[unidadeAtiva];
-  const leituraAnterior = (typeof objOuVal === 'object' && objOuVal !== null) ? (objOuVal.leitura_anterior ?? null) : (objOuVal ?? null);
+const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnterior = null }) => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [leituraValue, setLeituraValue] = useState('');
