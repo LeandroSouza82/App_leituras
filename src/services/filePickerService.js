@@ -1,5 +1,4 @@
 import { FilePicker } from '@capawesome/capacitor-file-picker';
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import { salvarArquivoBinarioSeguro } from './filesystemService';
 
 /**
@@ -30,12 +29,6 @@ export const FilePickerService = {
 
       await salvarArquivoBinarioSeguro(targetPath, file.data);
 
-      const uriResult = await Filesystem.getUri({
-        path: targetPath,
-        directory: Directory.Data
-      });
-
-
       return {
         name: file.name,
         localName: safeName,
@@ -48,35 +41,6 @@ export const FilePickerService = {
         return null;
       }
       throw error;
-    }
-  },
-
-  /**
-   * Lista todas as planilhas já salvas na pasta interna.
-   */
-  async getLocalSpreadsheets() {
-    try {
-      const targetDir = 'planilhas_recebidas';
-
-      // Garante a existência antes de ler
-      await Filesystem.mkdir({
-        path: targetDir,
-        directory: Directory.Data,
-        recursive: true,
-      }).catch(() => {});
-
-      const { files } = await Filesystem.readdir({
-        path: targetDir,
-        directory: Directory.Data,
-      });
-
-
-      return files.map(file => ({
-        name: typeof file === 'string' ? file : file.name,
-        path: `${targetDir}/${typeof file === 'string' ? file : file.name}`
-      }));
-    } catch (error) {
-      return [];
     }
   }
 };

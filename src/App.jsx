@@ -1,6 +1,6 @@
-import { customAlert, customConfirm } from './components/CustomPrompt/CustomPrompt';
+import { customAlert } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
+import { Building2, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -22,7 +22,6 @@ import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
 import { UCondoImportService } from './services/ucondoImportService';
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
@@ -49,7 +48,6 @@ const MainApp = ({ onLogout }) => {
     leiturasHoje,
     leiturasAtrasadas,
     adicionarLeitura,
-    adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
     editarLeitura,
@@ -383,7 +381,6 @@ const MainApp = ({ onLogout }) => {
           <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#eff6ff' }}>
             <LeituraForm
               adicionarLeitura={handleAdicionarLeitura}
-              adicionarEmLote={adicionarEmLote}
               onImportSuccess={handleImportSuccess}
               onRecarregarCondominios={recarregarCondominios}
             />
@@ -443,7 +440,6 @@ const MainApp = ({ onLogout }) => {
 
 const App = () => {
   const [session, setSession] = useState(null);
-  const [loadingSession, setLoadingSession] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [retornoConfirmacao, setRetornoConfirmacao] = useState(0);
 
@@ -500,7 +496,6 @@ const App = () => {
     });
 
     if (!supabase) {
-      setLoadingSession(false);
       return () => { urlOpenListener.then((h) => h.remove()); };
     }
 
@@ -534,10 +529,6 @@ const App = () => {
         if (isMounted) {
           setSession(null);
         }
-      } finally {
-        if (isMounted) {
-          setLoadingSession(false);
-        }
       }
     };
 
@@ -553,7 +544,6 @@ const App = () => {
         } else if (!navigator.onLine) {
           // Mantém a sessão local em caso de oscilação ou reconexão de rede
         }
-        setLoadingSession(false);
       }
     });
 

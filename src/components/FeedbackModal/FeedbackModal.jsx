@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquare, X, Image as ImageIcon, Send, Loader2 } from 'lucide-react';

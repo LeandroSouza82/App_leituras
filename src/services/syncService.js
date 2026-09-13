@@ -1,7 +1,10 @@
 import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
-import { sincronizarLeiturasAnterioresOffline } from './syncOfflineService';
+import {
+  sincronizarLeiturasAnterioresOffline,
+  sincronizarCondominiosOffline,
+} from './syncOfflineService';
 
 /**
  * syncService - Arquitetura Offline-First com Sincronização Automática em Background e Auditoria Visual.
@@ -381,6 +384,7 @@ export function iniciarObservadorRede() {
         setTimeout(() => {
           sincronizarFilaEmBackground();
           sincronizarLeiturasAnterioresOffline();
+          sincronizarCondominiosOffline();
         }, 1500);
       }
     });
@@ -389,6 +393,7 @@ export function iniciarObservadorRede() {
       if (status.connected) {
         sincronizarFilaEmBackground();
         sincronizarLeiturasAnterioresOffline();
+        sincronizarCondominiosOffline();
       }
     }).catch(() => {});
 
@@ -398,6 +403,7 @@ export function iniciarObservadorRede() {
         if (status.connected) {
           sincronizarFilaEmBackground();
           sincronizarLeiturasAnterioresOffline();
+          sincronizarCondominiosOffline();
         }
       }).catch(() => {});
     }, 120000);

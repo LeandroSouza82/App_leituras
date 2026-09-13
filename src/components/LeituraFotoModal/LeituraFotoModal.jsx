@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Camera as CameraIcon, X, CheckCircle, Share2, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
-import { Share } from '@capacitor/share';
+import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
@@ -14,10 +13,8 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { salvarLeituraOffline } from '../../services/syncService';
 import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
-import { enfileirarLeiturasAnteriores } from '../../services/syncOfflineService';
 import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
-import { FilePickerService } from '../../services/filePickerService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
@@ -781,61 +778,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  const limparCardUnidadeAposSalvar = async (unidadeId) => {
-    const tipoServico = tipoMedicaoAtivo.toUpperCase();
-    const servicoKey = tipoMedicaoAtivo.toLowerCase();
-
-    localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
-    localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
-    localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
-    localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
-
-    try {
-      const safeCondName = sanitizeName(leitura.nome);
-      const pastaCondominio = `FastLeituras/${safeCondName}`;
-      const fileName = `Apto${unidadeId}_${tipoServico}.jpg`;
-      await Filesystem.deleteFile({
-        path: `${pastaCondominio}/${fileName}`,
-        directory: Directory.Cache,
-      });
-    } catch {
-      // Foto de preview pode já ter sido removida
-    }
-
-    // Zera URI/base64 da foto e valor do ciclo atual em memória
-    setFotosCapturadas((prev) => {
-      const novo = { ...prev };
-      if (novo[unidadeId]) {
-        novo[unidadeId] = { ...novo[unidadeId], [tipoMedicaoAtivo]: null };
-        const temFotoRestante = Object.values(novo[unidadeId]).some((v) => v != null && v !== '');
-        if (!temFotoRestante) delete novo[unidadeId];
-      }
-      return novo;
-    });
-
-    setConcluidosMemoria((prev) => {
-      const novo = { ...prev };
-      if (novo[unidadeId]) {
-        delete novo[unidadeId][servicoKey];
-        delete novo[unidadeId][tipoServico];
-        if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
-      }
-      return novo;
-    });
-
-    setLeiturasValores((prev) => {
-      const novo = { ...prev };
-      if (novo[unidadeId]) {
-        novo[unidadeId] = { ...novo[unidadeId], [tipoMedicaoAtivo]: null };
-        const temValorRestante = Object.values(novo[unidadeId]).some((v) => v != null && v !== '');
-        if (!temValorRestante) delete novo[unidadeId];
-      }
-      return novo;
-    });
-
-    setPreviewSessionKey((k) => k + 1);
-  };
-
   const handleSaveReading = async (valor, fotoUrlOverride = null, fileNameOverride = null) => {
     try {
       const unidadeId = String(activeApto).trim();
@@ -901,28 +843,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // O salvamento diário não deve rotacionar a leitura anterior. A leitura anterior fica INTACTA.
 
-      // Obtém usuário autenticado
-      let activeUserId = 'cf720ead-721b-4aa5-b505-9a90ce9202d7';
-      if (supabase) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user?.id) activeUserId = user.id;
-        } catch {
-          // Mantém fallback seguro
-        }
-      }
-
-      const payload = {
-        condominio_id: condId,
-        condominio_nome: leitura.nome,
-        unidade_id: unidadeId,
-        servico: tipoMedicaoAtivo.toUpperCase(),
-        leitura_atual: valorNumerico,
-        leiturista_id: activeUserId,
-        data_leitura: new Date().toISOString(),
-        fileName: localFileName
-      };
-
       // OFFLINE-FIRST DESACOPLADO: O salvamento no modal unitário guarda apenas no estado local.
       // O enfileiramento oficial para sync (salvarLeituraOffline) ocorrerá APENAS no Salvar Leituras (Global).
 
@@ -936,7 +856,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor },
         [`${unidadeId}_${tipoMedicaoAtivo}`]: valor // INJEÇÃO CRÍTICA PARA O VALIDADOR DE EXPORTAÇÃO
       }));
-      // NOTA: 'limparCardUnidadeAposSalvar' removido intencionalmente para não perder o preview da foto.
+      // Mantém o preview da foto até o salvamento global das leituras.
 
       // NOVO: Atualiza a Leitura Atual imediatamente (UI State)
       setTodasLeiturasAnteriores(prev => {
@@ -1058,7 +978,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const unidadeId = String(apto).trim();
       const tipoServico = tipoMedicaoAtivo.toUpperCase();
-      const servicoKey  = tipoMedicaoAtivo.toLowerCase();
 
       const safeCondName = sanitizeName(leitura.nome);
       const pastaCondominio = `FastLeituras/${safeCondName}`;
@@ -1074,7 +993,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
 
       // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
-      const savedFile = await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
+      await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
 
       // 3. Limpeza de RAM imediata
       // (Variáveis de base64 agora saem de escopo naturalmente ao fechar a função)

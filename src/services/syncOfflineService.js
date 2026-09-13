@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { Network } from '@capacitor/network';
 import { supabase } from './supabase';
 import { normalizarNome } from './ucondoImportService';
@@ -26,7 +26,6 @@ const FILA_KEY = 'fila_sync_leituras_anteriores';
 const FILA_COND_KEY = 'fila_sync_condominios';
 let isSyncLeiturasRunning = false;
 let isSyncCondsRunning = false;
-let listenerInicializado = false;
 
 // ─── Helpers de Fila ────────────────────────────────────────────────────────
 
@@ -310,53 +309,5 @@ export const sincronizarCondominiosOffline = async () => {
     console.warn('[syncOffline] Erro global condominios:', err);
   } finally {
     isSyncCondsRunning = false;
-  }
-};
-
-// ─── 3. Inicializar Observador de Rede (chumbado na conta) ──────────────────
-
-/**
- * Registra o listener de reconexão para disparar o sync automaticamente.
- * Deve ser chamado UMA VEZ na inicialização do app (ex: main.jsx ou App.jsx).
- * É idempotente — chamadas repetidas são ignoradas.
- */
-export const iniciarSyncLeiturasAnteriores = () => {
-  if (listenerInicializado) return;
-  listenerInicializado = true;
-
-  try {
-    Network.addListener('networkStatusChange', (status) => {
-      if (status.connected) {
-        // Pequeno delay para garantir estabilidade da conexão antes de sincronizar
-        setTimeout(() => {
-          sincronizarLeiturasAnterioresOffline();
-        }, 2000);
-      }
-    });
-
-    // Tenta na inicialização caso já haja itens pendentes e rede disponível
-    Network.getStatus()
-      .then((status) => {
-        if (status.connected) {
-          sincronizarCondominiosOffline();
-          sincronizarLeiturasAnterioresOffline();
-        }
-      })
-      .catch(() => {});
-
-    // Retry periódico a cada 3 minutos
-    setInterval(() => {
-      Network.getStatus()
-        .then((status) => {
-          if (status.connected) {
-            sincronizarCondominiosOffline();
-            sincronizarLeiturasAnterioresOffline();
-          }
-        })
-        .catch(() => {});
-    }, 180_000);
-
-  } catch (err) {
-    console.warn('[syncOfflineService] Erro ao iniciar observador de rede:', err);
   }
 };

@@ -153,7 +153,6 @@ export const gerarRelatorioLeiturasExcel = async (dadosCondominios = [], mesAno 
   });
 
   // 5. Linha Final (TOTAL A RECEBER)
-  const linhaFinalIndex = rowMoto.number + 1;
   const linhaAnterior = rowMoto.number;
 
   const rowTotal = worksheet.addRow([

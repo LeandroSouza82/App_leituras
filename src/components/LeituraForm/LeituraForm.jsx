@@ -1,13 +1,8 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
-import { useRef, useState } from 'react';
-import { FileSpreadsheet, Plus } from 'lucide-react';
-import { processarPlanilhaExcel } from '../../utils/importExcel';
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
 import ImportadorPlanilha from '../ImportadorPlanilha';
 import './LeituraForm.css';
-
-import { UCondoImportService } from '../../services/ucondoImportService';
-import { supabase } from '../../services/supabase';
 
 const initialState = {
   nome: '',
@@ -54,86 +49,9 @@ const stripCurrencyFormatting = (value) =>
     .replace(/\./g, '')
     .replace(/,/g, ',');
 
-const LeituraForm = ({ adicionarLeitura, adicionarEmLote, onImportSuccess, onRecarregarCondominios }) => {
+const LeituraForm = ({ adicionarLeitura, onImportSuccess, onRecarregarCondominios }) => {
   const [form, setForm] = useState(initialState);
-  const fileInputRef = useRef(null);
   const { toast, showToast, dismissToast } = useToast();
-
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    try {
-      const buffer = await file.arrayBuffer();
-
-      // 1. Obter condomínios existentes no Supabase para verificação de duplicidade
-      let condominiosExistentes = [];
-      if (supabase) {
-        try {
-          const { data: dbData } = await supabase.from('condominios').select('id, nome');
-          condominiosExistentes = dbData || [];
-        } catch (_) {}
-      }
-
-      // 2. Processamento inteligente uCondo
-      try {
-        const resultado = await UCondoImportService.processarPlanilhaCadastro(
-          file.name,
-          buffer,
-          condominiosExistentes
-        );
-
-        if (resultado?.cancelado) {
-          return;
-        }
-
-        if (resultado?.tipo === 'atualizado') {
-          await customAlert(`✅ Sucesso! ${resultado.totalUnidades} unidades atualizadas no condomínio "${resultado.condominio.nome}".`);
-          showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas com sucesso!`, 'success');
-          if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
-          if (typeof onImportSuccess === 'function') onImportSuccess(1);
-          setForm(initialState);
-          return;
-        }
-
-        if (resultado?.tipo === 'criado') {
-          await customAlert(`✅ Sucesso! Condomínio "${resultado.condominio.nome}" criado com ${resultado.totalUnidades} unidades importadas.`);
-          showToast(`Condomínio "${resultado.condominio.nome}" criado com sucesso!`, 'success');
-          if (typeof onRecarregarCondominios === 'function') onRecarregarCondominios();
-          if (typeof onImportSuccess === 'function') onImportSuccess(1);
-          setForm(initialState);
-          return;
-        }
-      } catch (uCondoErr) {
-      }
-
-      // 3. Fallback: Lista geral de condomínios
-      const registros = await processarPlanilhaExcel(file);
-      if (!registros.length) {
-        await customAlert('Erro na importação: Nenhum condomínio ou unidade válida encontrada na planilha.');
-        showToast('Nenhum condomínio válido encontrado na planilha.', 'error');
-        return;
-      }
-
-      adicionarEmLote(registros);
-      setForm(initialState);
-      await customAlert(`✅ Sucesso! ${registros.length} condomínios importados da planilha.`);
-      if (typeof onImportSuccess === 'function') {
-        onImportSuccess(registros.length);
-      }
-    } catch (err) {
-      await customAlert('Erro na importação: ' + (err?.message || 'Arquivo incompatível'));
-      showToast('Erro ao importar planilha: ' + (err?.message || 'Arquivo incompatível'), 'error');
-    } finally {
-      if (event.target) event.target.value = '';
-    }
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
 
   const handleImportSuccess = (total) => {
     showToast(`${total} condomínios importados e sincronizados com sucesso!`, 'success');
