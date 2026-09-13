@@ -18,7 +18,9 @@ import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
+import LegalConsentGate from './components/LegalConsentGate/LegalConsentGate';
 import { supabase } from './services/supabase';
+import { hasLegalTermsAcceptance } from './services/legalConsentService';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
 import { UCondoImportService } from './services/ucondoImportService';
@@ -442,6 +444,11 @@ const App = () => {
   const [session, setSession] = useState(null);
   const [showSplash, setShowSplash] = useState(true);
   const [retornoConfirmacao, setRetornoConfirmacao] = useState(0);
+  const [legalConsentStatus, setLegalConsentStatus] = useState({
+    userId: null,
+    accepted: false,
+    checked: false,
+  });
 
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
@@ -450,6 +457,32 @@ const App = () => {
   const handleLoginSuccess = useCallback((nextSession) => {
     setSession(nextSession);
   }, []);
+  useEffect(() => {
+    const userId = session?.user?.id || null;
+
+    if (!userId) {
+      setLegalConsentStatus({
+        userId: null,
+        accepted: false,
+        checked: false,
+      });
+      return;
+    }
+
+    setLegalConsentStatus({
+      userId,
+      accepted: hasLegalTermsAcceptance(session),
+      checked: true,
+    });
+  }, [session]);
+
+  const handleLegalConsentAccepted = useCallback(() => {
+    setLegalConsentStatus({
+      userId: session?.user?.id || null,
+      accepted: true,
+      checked: true,
+    });
+  }, [session?.user?.id]);
 
   const handleLogout = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
@@ -564,6 +597,23 @@ const App = () => {
     return <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} />;
   }
 
+  if (!legalConsentStatus.checked || legalConsentStatus.userId !== session.user.id) {
+    return (
+      <div className="legal-consent-loading" role="status">
+        Verificando os termos de uso...
+      </div>
+    );
+  }
+
+  if (!legalConsentStatus.accepted) {
+    return (
+      <LegalConsentGate
+        session={session}
+        onAccepted={handleLegalConsentAccepted}
+        onReject={handleLogout}
+      />
+    );
+  }
   return <MainApp onLogout={handleLogout} />;
 };
 
