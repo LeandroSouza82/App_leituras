@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CloudUpload, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import './AutoSyncIndicator.css';
 
 /**

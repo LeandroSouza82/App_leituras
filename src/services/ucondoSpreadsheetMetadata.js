@@ -107,7 +107,8 @@ export const extrairServicoDeTexto = (tipoBruto) => {
  * @param {string} [nomeArquivo='']
  * @returns {{ nome: string, tipoMedicao: string, servico: 'AGUA'|'GAS'|'ENERGIA'|null }}
  */
-export const extrairMetadadosPlanilha = (rawData, nomeArquivo = '') => {
+// O segundo argumento permanece aceito para compatibilidade com integrações antigas.
+export const extrairMetadadosPlanilha = (rawData, _nomeArquivo = '') => {
   let nomeExtraido = '';
   let tipoMedicaoBruto = '';
 

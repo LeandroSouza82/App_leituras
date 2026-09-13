@@ -259,8 +259,9 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
     if (!status.connected) return;
 
     // Confirma sessão ativa — respeita RLS do Supabase
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) return;
+    const userId = user?.id;
     if (!userId) return;
 
     // Busca as leituras anteriores do condomínio na nuvem.
@@ -268,37 +269,46 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
     // O campo `condominio_nome` armazena o condominio_id conforme ucondoImportService.
     const { data, error } = await supabase
       .from('unidades_leituras')
-      .select('unidade, leitura_anterior')
-      .eq('condominio_nome', condominioId);
+      .select('unidade, leitura_anterior, servico, atualizado_em')
+      .eq('condominio_nome', condominioId)
+      .eq('leiturista_id', userId)
+      .order('atualizado_em', { ascending: true });
 
     if (error || !data || data.length === 0) return;
 
-    // Remonta o array no formato esperado pelo app: { unidade, leitura_anterior }
-    const leiturasRemontadas = data
-      .filter((row) => row.unidade && row.leitura_anterior !== null && row.leitura_anterior !== undefined)
-      .map((row) => ({
-        unidade: String(row.unidade).trim(),
-        leitura_anterior: parseFloat(row.leitura_anterior),
-      }));
+    const unificadaPorUnidade = new Map();
+    const leiturasPorServico = { AGUA: new Map(), GAS: new Map(), ENERGIA: new Map() };
 
-    if (leiturasRemontadas.length === 0) return;
+    for (const row of data) {
+      const unidade = String(row?.unidade || '').trim();
+      const valor = parseLeituraNumerica(row?.leitura_anterior);
+      const servico = String(row?.servico || 'AGUA').toUpperCase();
+      const propriedade = PROPRIEDADE_POR_SERVICO[servico];
+      if (!unidade || valor === null || !propriedade) continue;
 
-    // Reconstrói a gaveta local silenciosamente
-    localStorage.setItem(chaveLocal, JSON.stringify(leiturasRemontadas));
+      const entrada = unificadaPorUnidade.get(unidade) || { unidade };
+      entrada[propriedade] = valor;
+      unificadaPorUnidade.set(unidade, entrada);
+      leiturasPorServico[servico].set(unidade, { unidade, leitura_anterior: valor });
+    }
+
+    const leiturasUnificadas = Array.from(unificadaPorUnidade.values());
+    if (leiturasUnificadas.length === 0) return;
+
+    localStorage.setItem(chaveLocal, JSON.stringify(leiturasUnificadas));
+    for (const [servico, mapa] of Object.entries(leiturasPorServico)) {
+      if (mapa.size > 0) {
+        localStorage.setItem(
+          `leituras_anteriores_${condominioId}_${servico}`,
+          JSON.stringify(Array.from(mapa.values()))
+        );
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent('offline_cache_hydrated', {
+      detail: { condId: String(condominioId) },
+    }));
   } catch {
     // Falha silenciosa — o app continua funcionando normalmente
   }
-};
-
-/**
- * Hidratação Global (Sync Down): Corrige o cache "sujo" dos dispositivos legados.
- * Busca as unidades completas (com as colunas leitura_anterior e leitura_anterior_gas)
- * e sobrepõe o cache local do app para água e gás.
- * É executado silenciosamente na inicialização da sessão.
- */
-export const hidratarCacheLeiturasOffline = async () => {
-  // Desativado: A coluna 'leitura_anterior' pertence exclusivamente à tabela 'unidades_leituras'.
-  // A busca global não é mais necessária, pois o modal (LeituraFotoModal.jsx) 
-  // agora busca dinamicamente sob demanda a última leitura inserida no histórico.
-  return;
 };

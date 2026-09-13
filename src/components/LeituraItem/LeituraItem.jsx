@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Browser } from '@capacitor/browser';
-import { AppLauncher } from '@capacitor/app-launcher';
 import { Geolocation } from '@capacitor/geolocation';
 import {
-  Check, Gauge, KeyRound, Navigation, Pencil, Phone, Trash2,
+  Check, Gauge, Navigation, Pencil, Phone, Trash2,
   LocateFixed, Camera as CameraIcon, MoreHorizontal, Building2
 } from 'lucide-react';
 import './LeituraItem.css';
@@ -12,7 +11,6 @@ import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfi
 import EditarCondominioModal from '../EditarCondominioModal/EditarCondominioModal';
 import LeituraFotoModal from '../LeituraFotoModal/LeituraFotoModal';
 import ContactActionModal from '../ContactActionModal/ContactActionModal';
-import { supabase } from '../../services/supabaseClient';
 import { customAlert } from '../CustomPrompt/CustomPrompt';
 import Toast, { useToast } from '../Toast/Toast';
 

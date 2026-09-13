@@ -1,6 +1,6 @@
-import { customAlert, customConfirm } from './components/CustomPrompt/CustomPrompt';
+import { customAlert } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Building2, FileSpreadsheet, PlusCircle, FolderSync } from 'lucide-react';
+import { Building2, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -16,14 +16,12 @@ import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondo
 import ProgressoModal from './components/ProgressoModal/ProgressoModal';
 import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
-import { hidratarCacheLeiturasOffline } from './services/leiturasAnterioresService';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import { supabase } from './services/supabase';
 import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
 import { UCondoImportService } from './services/ucondoImportService';
-import { Filesystem, Directory } from '@capacitor/filesystem';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
@@ -50,7 +48,6 @@ const MainApp = ({ onLogout }) => {
     leiturasHoje,
     leiturasAtrasadas,
     adicionarLeitura,
-    adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
     editarLeitura,
@@ -102,10 +99,6 @@ const MainApp = ({ onLogout }) => {
   useEffect(() => {
     // Inicializa o observador de conectividade para sincronização automática
     iniciarObservadorRede();
-
-    // Rotina de Hidratação Global de Descida (Sync Down)
-    // Substitui o cache sujo/incompleto pelo espelho real da nuvem (Unidades e Leituras Anteriores)
-    hidratarCacheLeiturasOffline();
 
     // Solicita permissão ao iniciar o app
     NotificationService.requestPermissions();
@@ -169,8 +162,9 @@ const MainApp = ({ onLogout }) => {
         // Cobre condomínios ainda não operados pelo app ou recém-cadastrados.
         const { data: planilhas, error: errPlanilhas } = await supabase
           .from('unidades_leituras')
-          .select('condominio_nome, unidade, leitura_anterior, servico')
-          .eq('leiturista_id', user.id);
+          .select('condominio_nome, unidade, leitura_anterior, servico, atualizado_em')
+          .eq('leiturista_id', user.id)
+          .order('atualizado_em', { ascending: true });
 
         const gruposPlanilha = {};
         if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
@@ -251,7 +245,15 @@ const MainApp = ({ onLogout }) => {
         await customAlert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
         showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
       }
+    }).catch((error) => {
+      console.warn('[App] Falha ao iniciar recebimento de planilhas:', error);
     });
+
+    return () => {
+      ShareIntentService.stop().catch((error) => {
+        console.warn('[App] Falha ao remover listener de planilhas:', error);
+      });
+    };
   }, []);
 
   useEffect(() => {
@@ -379,7 +381,6 @@ const MainApp = ({ onLogout }) => {
           <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', backgroundColor: '#eff6ff' }}>
             <LeituraForm
               adicionarLeitura={handleAdicionarLeitura}
-              adicionarEmLote={adicionarEmLote}
               onImportSuccess={handleImportSuccess}
               onRecarregarCondominios={recarregarCondominios}
             />
@@ -439,7 +440,6 @@ const MainApp = ({ onLogout }) => {
 
 const App = () => {
   const [session, setSession] = useState(null);
-  const [loadingSession, setLoadingSession] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [retornoConfirmacao, setRetornoConfirmacao] = useState(0);
 
@@ -496,7 +496,6 @@ const App = () => {
     });
 
     if (!supabase) {
-      setLoadingSession(false);
       return () => { urlOpenListener.then((h) => h.remove()); };
     }
 
@@ -530,10 +529,6 @@ const App = () => {
         if (isMounted) {
           setSession(null);
         }
-      } finally {
-        if (isMounted) {
-          setLoadingSession(false);
-        }
       }
     };
 
@@ -549,7 +544,6 @@ const App = () => {
         } else if (!navigator.onLine) {
           // Mantém a sessão local em caso de oscilação ou reconexão de rede
         }
-        setLoadingSession(false);
       }
     });
 

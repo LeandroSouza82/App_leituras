@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import { useState, useEffect } from 'react';
 import { Building2, Calendar, Gauge, KeyRound, MapPin, Navigation, Phone, X, LocateFixed } from 'lucide-react';
 import { Browser } from '@capacitor/browser';

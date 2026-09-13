@@ -1,21 +1,15 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
-import ModalConfirmacao from '../ModalConfirmacao/ModalConfirmacao';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
 import React, { useState, useEffect } from 'react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { X, Folder, Image as ImageIcon, Share2, ChevronDown, ChevronRight, Loader2, RefreshCw, Trash2, Search, Cloud, CheckCircle, Clock, CloudUpload } from 'lucide-react';
+import { X, Folder, Image as ImageIcon, Share2, ChevronDown, ChevronRight, Loader2, RefreshCw, Trash2, Search, Cloud, Clock, CloudUpload } from 'lucide-react';
 import { buscarCondominios } from '../../services/condominioService';
 import { supabase } from '../../services/supabase';
 import { filesystemService } from '../../services/filesystemService';
 import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
 import './BackupFotosMenu.css';
-
-const sanitizeName = (name) => {
-  if (!name) return 'Desconhecido';
-  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '_');
-};
 
 const extractStoragePath = (urlOrPath) => {
   if (!urlOrPath || typeof urlOrPath !== 'string') return null;
@@ -215,12 +209,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       };
     }
   }, [searchQuery, activeTab]);
-
-  const toggleFotoSelecao = (id) => {
-    setFotosSelecionadas(prev => 
-      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
-    );
-  };
 
   useEffect(() => {
     if (isOpen && activeTab === 'offline') {

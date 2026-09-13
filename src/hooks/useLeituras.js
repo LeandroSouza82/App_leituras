@@ -158,17 +158,6 @@ export const useLeituras = (onFeedback = () => {}) => {
     }
   };
 
-  const adicionarEmLote = async (novosCondominios) => {
-    try {
-      const leiturasSalvas = await Promise.all(novosCondominios.map((item) => salvarCondominio(item)));
-      setLeituras((previous) => [...leiturasSalvas, ...previous]);
-      return leiturasSalvas;
-    } catch (error) {
-      onFeedback(error.message, 'error');
-      return [];
-    }
-  };
-
   const leiturasHoje = useMemo(
     () => leituras.filter((item) => {
       if (item.completo) return false;
@@ -227,7 +216,6 @@ export const useLeituras = (onFeedback = () => {}) => {
     leiturasHoje,
     leiturasAtrasadas,
     adicionarLeitura,
-    adicionarEmLote,
     toggleCompleto,
     deletarLeitura,
     editarLeitura,

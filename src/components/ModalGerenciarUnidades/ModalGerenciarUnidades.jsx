@@ -1,10 +1,9 @@
-import { customAlert, customConfirm, customConfirmDestrutivo } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert, customConfirmDestrutivo } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { FilePickerService } from '../../services/filePickerService';
-import * as XLSX from 'xlsx';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import './ModalGerenciarUnidades.css';
 
@@ -28,8 +27,6 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
 
   if (!isOpen) return null;
 
-  const storageKey = `unidades_${condominioId}`;
-
   const processarFileData = async (fileData) => {
     try {
       const result = UCondoImportService.analisarPlanilhaCompleta(fileData);
@@ -46,7 +43,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       setServicoExtraido(servicoDetectado);
 
       const unicas = pares.map(p => p.unidade);
-      setUnidadesTemp(prev => [...new Set([...prev, ...unicas])]);
+      setUnidadesTemp([...new Set(unicas)]);
       const servicoMsg = servicoDetectado ? `\nServiço detectado: ${servicoDetectado}` : '';
       await customAlert(`✅ ${unicas.length} unidades identificadas com sucesso!${servicoMsg}`);
     } catch (err) {

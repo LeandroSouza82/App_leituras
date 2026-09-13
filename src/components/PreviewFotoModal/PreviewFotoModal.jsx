@@ -1,6 +1,6 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useEffect, useRef } from 'react';
-import { X, RefreshCw, Save, RotateCcw } from 'lucide-react';
+import { X, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, X, Image, Save } from 'lucide-react';
+import { Camera, X } from 'lucide-react';
 import '../CondominioDetalheModal/CondominioDetalheModal.css';
 import './CameraSettingsModal.css';
 

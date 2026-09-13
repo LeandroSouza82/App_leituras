@@ -1,6 +1,6 @@
-import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
-import { useState, useEffect } from 'react';
-import { CheckCircle2, Loader2, Upload, FileSpreadsheet, History } from 'lucide-react';
+import { customAlert } from '../components/CustomPrompt/CustomPrompt';
+import { useState } from 'react';
+import { CheckCircle2, Loader2, Upload, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../services/supabase';
 import { FilePickerService } from '../services/filePickerService';
@@ -147,19 +147,7 @@ const syncCondominios = async (listaCondominios) => {
     .filter((c) => !nomesNovos.has(c.nome))
     .map((c) => c.id);
 
-  // Deletar condomínios obsoletos
-  if (idsParaDeletar.length > 0) {
-    const { error: deleteError } = await supabase
-      .from('condominios')
-      .delete()
-      .in('id', idsParaDeletar);
-
-    if (deleteError) {
-      throw new Error(`Não foi possível remover condomínios obsoletos: ${deleteError.message}`);
-    }
-  }
-
-  // Fazer upsert dos condomínios da planilha
+  // Salva a nova lista antes de remover os condomínios obsoletos.
   const { error: upsertError } = await supabase
     .from('condominios')
     .upsert(listaCondominios, { onConflict: 'nome' });
@@ -168,30 +156,23 @@ const syncCondominios = async (listaCondominios) => {
     throw new Error(`Não foi possível sincronizar os condomínios: ${upsertError.message}`);
   }
 
+  if (idsParaDeletar.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('condominios')
+      .delete()
+      .in('id', idsParaDeletar);
+
+    if (deleteError) {
+      throw new Error(`A nova lista foi salva, mas não foi possível remover condomínios obsoletos: ${deleteError.message}`);
+    }
+  }
+
   return listaCondominios.length;
 };
 
 const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
-  const [localFiles, setLocalFiles] = useState([]);
-
-  // Varredura automática na inicialização para persistência visual
-  useEffect(() => {
-    carregarArquivosLocais();
-  }, []);
-
-  const carregarArquivosLocais = async () => {
-    try {
-
-      // Debug: Ver o que tem na raiz do Directory.Data
-      const rootDir = await Filesystem.readdir({ path: '', directory: Directory.Data });
-
-      const files = await FilePickerService.getLocalSpreadsheets();
-      setLocalFiles(files);
-    } catch (error) {
-    }
-  };
 
   const emitStatus = (message) => {
     setStatus(message);
@@ -233,7 +214,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
           await customAlert(msg);
           emitStatus(msg);
           if (onImportComplete) onImportComplete(1);
-          carregarArquivosLocais();
           return;
         }
 
@@ -242,7 +222,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
           await customAlert(msg);
           emitStatus(msg);
           if (onImportComplete) onImportComplete(1);
-          carregarArquivosLocais();
           return;
         }
       } catch (uCondoErr) {
@@ -292,8 +271,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
         onImportComplete(totalImportado);
       }
 
-      // Atualiza a lista após nova importação
-      carregarArquivosLocais();
     } catch (error) {
       const errMsg = 'Erro na importação: ' + (error?.message || 'Arquivo incompatível');
       await customAlert(errMsg);
@@ -322,18 +299,6 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
     } catch (error) {
       await customAlert('Erro na seleção do arquivo: ' + (error?.message || ''));
       emitStatus('Falha na seleção do arquivo.');
-    }
-  };
-
-  const handleProcessLocalFile = async (file) => {
-    try {
-      const fileContents = await Filesystem.readFile({
-        path: file.path,
-        directory: Directory.Data
-      });
-      await processarBufferExcel(fileContents.data, file.name);
-    } catch (error) {
-      emitStatus('Erro ao ler arquivo local.');
     }
   };
 

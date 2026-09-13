@@ -1,7 +1,6 @@
-import { customAlert, customConfirm } from '../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { StorageService } from './storageService.js';
 import { supabase } from './supabase.js';
 import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
@@ -366,7 +365,4 @@ export const LeituraService = {
   },
 };
 
-export const ExcelExportService = LeituraService;
 export default LeituraService;
-
-

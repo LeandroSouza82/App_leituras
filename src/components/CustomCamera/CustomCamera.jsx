@@ -1,4 +1,4 @@
-import { customAlert, customConfirm } from '../../components/CustomPrompt/CustomPrompt';
+import { customAlert } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";

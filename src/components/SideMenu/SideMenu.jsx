@@ -5,7 +5,6 @@ import {
   LogOut, 
   Camera, 
   User, 
-  Settings, 
   ShieldCheck, 
   Headset, 
   Star, 
@@ -14,7 +13,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { sincronizarFilaEmBackground } from '../../services/syncService';
-import { supabase } from '../../services/supabase';
 import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
