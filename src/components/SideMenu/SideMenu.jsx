@@ -5,7 +5,7 @@ import {
   LogOut, 
   Camera, 
   User, 
-  ShieldCheck, 
+  ShieldCheck,
   Headset, 
   Star, 
   MessageSquare,
@@ -16,6 +16,7 @@ import { sincronizarFilaEmBackground } from '../../services/syncService';
 import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
+import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
 
@@ -207,37 +208,10 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
         </div>
       )}
 
-      {showPrivacyModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setShowPrivacyModal(false)}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '400px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }} onClick={(e) => e.stopPropagation()}>
-            
-            <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Política e Termos</h3>
-              <button onClick={() => setShowPrivacyModal(false)} style={{ background: 'none', border: 'none', fontSize: '24px', color: '#64748b', cursor: 'pointer', padding: 0 }}>&times;</button>
-            </div>
-            
-            <div style={{ padding: '20px', overflowY: 'auto', fontSize: '14px', color: '#475569', lineHeight: '1.6', textAlign: 'left' }}>
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>1. Termos de Uso</h4>
-              <p style={{ marginBottom: '16px' }}>Bem-vindo ao Fast Leituras. Ao utilizar o nosso aplicativo, concorda com a recolha e processamento dos dados estritamente necessários para a gestão de leituras de condomínios.</p>
-              
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>2. Privacidade e Dados</h4>
-              <p style={{ marginBottom: '16px' }}>Os dados capturados, incluindo fotografias e localização GPS, são guardados localmente no seu dispositivo e sincronizados com segurança. Não partilhamos as suas informações com terceiros.</p>
-              
-              <h4 style={{ color: '#0f172a', marginBottom: '8px' }}>3. Funcionamento Offline</h4>
-              <p style={{ marginBottom: '16px' }}>O aplicativo guarda dados em cache (memória local) para garantir o funcionamento sem internet. Ao desinstalar o app ou limpar os dados, as leituras não sincronizadas poderão ser perdidas.</p>
-              
-              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '24px', textAlign: 'center' }}>Última atualização: Agosto de 2026</p>
-            </div>
-            
-            <div style={{ padding: '16px', borderTop: '1px solid #e2e8f0' }}>
-              <button onClick={() => setShowPrivacyModal(false)} style={{ width: '100%', backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>
-                Entendi e Concordo
-              </button>
-            </div>
-            
-          </div>
-        </div>
-      )}
+      <PrivacyTermsModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+      />
     </>
   );
 };
