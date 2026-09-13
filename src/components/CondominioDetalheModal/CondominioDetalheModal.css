@@ -70,8 +70,11 @@
 }
 
 .condominio-detalhe-body {
-  padding: 20px 24px;
+  padding: 20px 24px calc(96px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -242,6 +245,6 @@
   }
 
   .condominio-detalhe-body {
-    padding: 16px 18px;
+    padding: 16px 18px calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }
