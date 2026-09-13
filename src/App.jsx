@@ -5,7 +5,6 @@ import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
 import LeituraList from './components/LeituraList/LeituraList';
-import AlertaBanner from './components/AlertaBanner/AlertaBanner';
 import BottomNavbar from './components/BottomNavbar/BottomNavbar';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import AReceberModal from './components/AReceberModal/AReceberModal';
@@ -19,6 +18,7 @@ import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import LegalConsentGate from './components/LegalConsentGate/LegalConsentGate';
+import NotificationPermissionGate from './components/NotificationPermissionGate/NotificationPermissionGate';
 import { supabase } from './services/supabase';
 import { hasLegalTermsAcceptance } from './services/legalConsentService';
 import { useOfflineSync } from './hooks/useOfflineSync';
@@ -32,7 +32,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { logoutGoogleNativo } from './services/googleAuthService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-const MainApp = ({ onLogout }) => {
+const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHandled }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
@@ -40,6 +40,9 @@ const MainApp = ({ onLogout }) => {
   const [showAReceberModal, setShowAReceberModal] = useState(false);
   const [showBackupFotosModal, setShowBackupFotosModal] = useState(false);
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
+  const [focoLeituraTipo, setFocoLeituraTipo] = useState('atrasadas');
+  const [focoEspecifico, setFocoEspecifico] = useState(null);
+  const lastScheduledSignatureRef = useRef('');
   const { toast, showToast, dismissToast } = useToast();
   const {
     leituras,
@@ -48,6 +51,7 @@ const MainApp = ({ onLogout }) => {
     totalConcluidos,
     percentualConcluido,
     leiturasHoje,
+    leiturasAmanha,
     leiturasAtrasadas,
     adicionarLeitura,
     toggleCompleto,
@@ -56,8 +60,17 @@ const MainApp = ({ onLogout }) => {
     recarregarCondominios,
   } = useLeituras(showToast);
   const { isOnline, pendentesCount, salvarLeituraOffline } = useOfflineSync();
-  const notificacaoEnviadaRef = useRef(false);
-  const totalPendentes = useMemo(() => leiturasHoje.length + leiturasAtrasadas.length, [leiturasHoje, leiturasAtrasadas]);
+  const totalPendentes = useMemo(
+    () => leiturasHoje.length + leiturasAmanha.length + leiturasAtrasadas.length,
+    [leiturasHoje, leiturasAmanha, leiturasAtrasadas]
+  );
+  const leiturasSignature = useMemo(() => {
+    if (!Array.isArray(leituras) || leituras.length === 0) return '';
+    return [...leituras]
+      .sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')))
+      .map((l) => `${l.id}:${l.completo ? 1 : 0}:${l.diaLeitura ?? ''}`)
+      .join('|');
+  }, [leituras]);
 
   const handleAdicionarLeitura = async (dados) => {
     if (!isOnline) {
@@ -101,9 +114,6 @@ const MainApp = ({ onLogout }) => {
   useEffect(() => {
     // Inicializa o observador de conectividade para sincronização automática
     iniciarObservadorRede();
-
-    // Solicita permissão ao iniciar o app
-    NotificationService.requestPermissions();
 
     // Restauração silenciosa das leituras anteriores do Supabase -> localStorage
     // CICLO CONTÍNUO: Prioriza leituras_detalhes (coletadas pelo app) para o próximo mês.
@@ -259,22 +269,15 @@ const MainApp = ({ onLogout }) => {
   }, []);
 
   useEffect(() => {
-    const temPendencias = leiturasHoje.length > 0 || leiturasAtrasadas.length > 0;
-
-    if (!temPendencias) {
-      notificacaoEnviadaRef.current = false;
-      atualizarBadgeIcone(0);
-      return;
+    // Apenas reagenda se a lista real de leituras (IDs, dias ou status) tiver sido alterada
+    if (lastScheduledSignatureRef.current !== leiturasSignature) {
+      lastScheduledSignatureRef.current = leiturasSignature;
+      NotificationService.scheduleReadings(leituras);
     }
 
-    if (!notificacaoEnviadaRef.current) {
-      notificacaoEnviadaRef.current = true;
-      // Agenda os alarmes/notificações para as leituras pendentes
-      NotificationService.scheduleReadings([...leiturasHoje, ...leiturasAtrasadas]);
-    }
-
-    atualizarBadgeIcone(totalPendentes);
-  }, [leiturasHoje, leiturasAtrasadas, totalPendentes]);
+    const temPendencias = totalPendentes > 0;
+    atualizarBadgeIcone(temPendencias ? totalPendentes : 0);
+  }, [leituras, leiturasSignature, totalPendentes]);
 
   useEffect(() => {
     const chave = sessionStorage.getItem('leituras-alerta-aberto');
@@ -293,10 +296,28 @@ const MainApp = ({ onLogout }) => {
     sessionStorage.setItem('leituras-alerta-aberto', 'true');
   };
 
-  const handleNavegarParaAtrasados = () => {
+  const handleNavegarParaAtrasados = (tipo = 'atrasadas') => {
     setAbaAtiva('leituras');
+    setFocoEspecifico(null);
+    setFocoLeituraTipo(tipo);
     setFocarAtrasadoAuto(true);
   };
+
+  useEffect(() => {
+    if (!pendingNotificationAction || leituras.length === 0) return;
+    setAbaAtiva('leituras');
+    if (pendingNotificationAction.id) {
+      setFocoEspecifico({
+        id: pendingNotificationAction.id,
+        tipo: pendingNotificationAction.focusType,
+      });
+    } else {
+      setFocoEspecifico(null);
+      setFocoLeituraTipo(pendingNotificationAction.focusType || 'atrasadas');
+    }
+    setFocarAtrasadoAuto(true);
+    onNotificationActionHandled?.();
+  }, [pendingNotificationAction, leituras.length, onNotificationActionHandled]);
 
   return (
     <>
@@ -326,12 +347,6 @@ const MainApp = ({ onLogout }) => {
               onNavigate={setAbaAtiva}
             />
             <div className="dashboard-body">
-              <AlertaBanner
-                leiturasHoje={leiturasHoje}
-                leiturasAtrasadas={leiturasAtrasadas}
-                onFocarAtrasado={handleNavegarParaAtrasados}
-              />
-
               <p className="dashboard-section-label">Ações</p>
 
               <div className="dashboard-acoes">
@@ -369,11 +384,15 @@ const MainApp = ({ onLogout }) => {
             <LeituraList
               leituras={leituras}
               leiturasHoje={leiturasHoje}
+              leiturasAmanha={leiturasAmanha}
               leiturasAtrasadas={leiturasAtrasadas}
               onToggle={toggleCompleto}
               onDelete={deletarLeitura}
               onEdit={editarLeitura}
               focarAtrasadoAuto={focarAtrasadoAuto}
+              focoLeituraTipo={focoLeituraTipo}
+              focoEspecifico={focoEspecifico}
+              onResetFocoEspecifico={() => setFocoEspecifico(null)}
               onResetFocarAtrasadoAuto={() => setFocarAtrasadoAuto(false)}
             />
           </div>
@@ -404,6 +423,7 @@ const MainApp = ({ onLogout }) => {
           isOpen={isModalOpen}
           onClose={handleCloseAlerts}
           leiturasHoje={leiturasHoje}
+          leiturasAmanha={leiturasAmanha}
           leiturasAtrasadas={leiturasAtrasadas}
           onNavigateToLeituras={handleNavegarParaAtrasados}
         />
@@ -449,6 +469,14 @@ const App = () => {
     accepted: false,
     checked: false,
   });
+  const [notificationPermissionStatus, setNotificationPermissionStatus] = useState({
+    userId: null,
+    checked: false,
+    granted: false,
+    canRequest: true,
+    status: 'prompt',
+  });
+  const [pendingNotificationAction, setPendingNotificationAction] = useState(null);
 
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
@@ -457,6 +485,19 @@ const App = () => {
   const handleLoginSuccess = useCallback((nextSession) => {
     setSession(nextSession);
   }, []);
+
+  const revalidarPermissaoNotificacao = useCallback(async () => {
+    const res = await NotificationService.checkPermissionStatus();
+    setNotificationPermissionStatus({
+      userId: session?.user?.id || null,
+      checked: true,
+      granted: res.granted,
+      canRequest: res.canRequest,
+      status: res.status,
+    });
+    return res;
+  }, [session?.user?.id]);
+
   useEffect(() => {
     const userId = session?.user?.id || null;
 
@@ -465,6 +506,13 @@ const App = () => {
         userId: null,
         accepted: false,
         checked: false,
+      });
+      setNotificationPermissionStatus({
+        userId: null,
+        checked: false,
+        granted: false,
+        canRequest: true,
+        status: 'prompt',
       });
       return;
     }
@@ -476,6 +524,28 @@ const App = () => {
     });
   }, [session]);
 
+  useEffect(() => {
+    if (legalConsentStatus.accepted && session?.user?.id) {
+      revalidarPermissaoNotificacao();
+    }
+  }, [legalConsentStatus.accepted, session?.user?.id, revalidarPermissaoNotificacao]);
+
+  useEffect(() => {
+    if (!legalConsentStatus.accepted) return;
+
+    let active = true;
+    const appStatePromise = CapacitorApp.addListener('appStateChange', (state) => {
+      if (active && state.isActive) {
+        revalidarPermissaoNotificacao();
+      }
+    });
+
+    return () => {
+      active = false;
+      appStatePromise.then((handle) => handle?.remove?.());
+    };
+  }, [legalConsentStatus.accepted, revalidarPermissaoNotificacao]);
+
   const handleLegalConsentAccepted = useCallback(() => {
     setLegalConsentStatus({
       userId: session?.user?.id || null,
@@ -483,6 +553,34 @@ const App = () => {
       checked: true,
     });
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    let listenerHandle = null;
+
+    NotificationService.addActionListener((extra) => {
+      if (!active) return;
+      if (extra?.id || extra?.focusType) {
+        setPendingNotificationAction({
+          id: extra.id || null,
+          focusType: extra.focusType || 'atrasadas',
+        });
+      }
+    }).then((handle) => {
+      if (!active) {
+        handle?.remove?.();
+      } else {
+        listenerHandle = handle;
+      }
+    }).catch((error) => {
+      console.warn('Não foi possível registrar o toque das notificações:', error);
+    });
+
+    return () => {
+      active = false;
+      listenerHandle?.remove?.();
+    };
+  }, []);
 
   const handleLogout = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
@@ -514,6 +612,14 @@ const App = () => {
     sessionStorage.clear();
     localStorage.clear();
     setSession(null);
+    setPendingNotificationAction(null);
+    setNotificationPermissionStatus({
+      userId: null,
+      checked: false,
+      granted: false,
+      canRequest: true,
+      status: 'prompt',
+    });
     setShowSplash(true);
     return true;
   }, []);
@@ -614,7 +720,49 @@ const App = () => {
       />
     );
   }
-  return <MainApp onLogout={handleLogout} />;
+
+  if (!notificationPermissionStatus.checked || notificationPermissionStatus.userId !== session.user.id) {
+    return (
+      <div className="legal-consent-loading" role="status">
+        Verificando permissões de notificações...
+      </div>
+    );
+  }
+
+  if (!notificationPermissionStatus.granted) {
+    return (
+      <NotificationPermissionGate
+        permissionStatus={notificationPermissionStatus}
+        onPermissionUpdated={(res) => {
+          setNotificationPermissionStatus({
+            userId: session.user.id,
+            checked: true,
+            granted: res.granted,
+            canRequest: res.canRequest,
+            status: res.status,
+          });
+        }}
+        onPermissionGranted={() => {
+          setNotificationPermissionStatus({
+            userId: session.user.id,
+            checked: true,
+            granted: true,
+            canRequest: false,
+            status: 'granted',
+          });
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  return (
+    <MainApp
+      onLogout={handleLogout}
+      pendingNotificationAction={pendingNotificationAction}
+      onNotificationActionHandled={() => setPendingNotificationAction(null)}
+    />
+  );
 };
 
 export default App;

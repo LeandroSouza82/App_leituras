@@ -1,0 +1,186 @@
+.alerta-banner {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 120;
+  max-width: 520px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.alerta-banner--recolhido {
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.alerta-banner__item {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.alerta-banner__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alerta-banner__item:hover,
+.alerta-banner__item:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.alerta-banner__item:active {
+  transform: translateY(0);
+}
+
+.alerta-banner__item:disabled {
+  cursor: default;
+}
+
+.alerta-banner__item--amanha {
+  color: #78350f;
+  background: #fef3c7;
+  border-color: #f59e0b;
+  animation: alertaSuaveAmarela 2s ease-in-out infinite;
+}
+
+.alerta-banner__item--hoje,
+.alerta-banner__item--atrasadas {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border-color: #dc2626;
+  animation: alertaSuaveVermelha 1.8s ease-in-out infinite;
+}
+
+.alerta-banner__close {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #ffffff;
+  color: #475569;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.alerta-banner__close:hover,
+.alerta-banner__close:focus-visible {
+  transform: scale(1.08);
+  background: #f8fafc;
+  color: #0f172a;
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+}
+
+.alerta-banner__close:active {
+  transform: scale(0.95);
+}
+
+.alerta-banner__recolhido-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.alerta-banner__recolhido-btn:hover,
+.alerta-banner__recolhido-btn:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.32);
+}
+
+.alerta-banner__recolhido-btn:active {
+  transform: translateY(0);
+}
+
+.alerta-banner__recolhido-btn--vermelho {
+  background: #dc2626;
+  color: #ffffff;
+  animation: alertaSuaveVermelha 1.8s ease-in-out infinite;
+}
+
+.alerta-banner__recolhido-btn--amarelo {
+  background: #f59e0b;
+  color: #ffffff;
+  animation: alertaSuaveAmarela 2s ease-in-out infinite;
+}
+
+.alerta-banner__recolhido-icone {
+  font-size: 1rem;
+}
+
+.alerta-banner__recolhido-contagem {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes alertaSuaveAmarela {
+  0%, 100% {
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.22);
+  }
+  50% {
+    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.42);
+  }
+}
+
+@keyframes alertaSuaveVermelha {
+  0%, 100% {
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.22);
+  }
+  50% {
+    box-shadow: 0 4px 18px rgba(220, 38, 38, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alerta-banner__item,
+  .alerta-banner__recolhido-btn {
+    animation: none;
+  }
+}
