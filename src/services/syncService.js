@@ -113,9 +113,12 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
 
     const filaAtual = readFilaSync();
     
-    // Evita duplicatas na fila para o mesmo item
+    // Evita duplicatas apenas dentro do mesmo condomínio + unidade + serviço.
+    // Apartamentos com o mesmo número em condomínios diferentes nunca podem colidir.
     const indexExistente = filaAtual.findIndex(
-      f => f.unidade_id === itemFila.unidade_id && f.servico === itemFila.servico
+      f => String(f.condominio_id || '') === String(itemFila.condominio_id || '') &&
+           f.unidade_id === itemFila.unidade_id &&
+           f.servico === itemFila.servico
     );
 
     if (indexExistente >= 0) {
@@ -154,7 +157,12 @@ export async function sincronizarFilaEmBackground() {
     return;
   }
 
+  // Trava adquirida ANTES de qualquer await. Isso impede que vários disparos
+  // simultâneos passem pela checagem e façam upload da mesma foto em paralelo.
+  isSyncRunning = true;
+
   let etapaSync = 'INICIO';
+  let idsFilaNoInicio = null;
 
   try {
     localStorage.setItem('sync_debug', JSON.stringify({
@@ -176,7 +184,8 @@ export async function sincronizarFilaEmBackground() {
       return;
     }
 
-    isSyncRunning = true;
+    // Snapshot usado apenas para detectar itens que entraram enquanto este ciclo rodava.
+    idsFilaNoInicio = new Set(fila.map(item => item.id));
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -261,7 +270,12 @@ export async function sincronizarFilaEmBackground() {
             
             let remotePath = item.remotePath;
             if (!remotePath) {
-              remotePath = `leituras/${Date.now()}_${nomeStorage}`;
+              // Caminho determinístico: novas tentativas sobrescrevem o mesmo objeto
+              // em vez de criar cópias com Date.now().
+              const identificadorRemoto = sanitizarNomeStorage(
+                item.db_id || item.id || `${item.condominio_id}_${item.unidade_id}_${item.servico}`
+              );
+              remotePath = `leituras/${identificadorRemoto}_${nomeStorage}`;
               item.remotePath = remotePath;
               const filaAtual = readFilaSync();
               const idx = filaAtual.findIndex(f => f.id === item.id);
@@ -364,8 +378,19 @@ export async function sincronizarFilaEmBackground() {
   } catch (globalErr) {
     console.error('Erro global na sincronização:', globalErr);
   } finally {
+    const filaRestante = readFilaSync();
+    const existemItensNovos = idsFilaNoInicio instanceof Set &&
+      filaRestante.some(item => !idsFilaNoInicio.has(item.id));
+
     isSyncRunning = false;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
+
+    // Se novas leituras foram enfileiradas enquanto o snapshot atual estava em
+    // processamento, executa um novo ciclo. Itens que falharam neste ciclo não
+    // entram em retry apertado; continuam seguros na fila para a próxima tentativa.
+    if (existemItensNovos) {
+      setTimeout(() => sincronizarFilaEmBackground(), 300);
+    }
   }
 }
 
