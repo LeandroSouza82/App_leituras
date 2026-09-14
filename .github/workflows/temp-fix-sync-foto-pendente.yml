@@ -1,0 +1,76 @@
+name: Temporary Sync Pending Photo Fix
+
+on:
+  push:
+    branches:
+      - fix/sync-foto-pendente-duplicada
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply surgical sync fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/services/syncService.js')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+            (
+              """    // Evita duplicatas na fila para o mesmo item\n    const indexExistente = filaAtual.findIndex(\n      f => f.unidade_id === itemFila.unidade_id && f.servico === itemFila.servico\n    );\n""",
+              """    // Evita duplicatas apenas dentro do mesmo condomínio + unidade + serviço.\n    // Apartamentos com o mesmo número em condomínios diferentes nunca podem colidir.\n    const indexExistente = filaAtual.findIndex(\n      f => String(f.condominio_id || '') === String(itemFila.condominio_id || '') &&\n           f.unidade_id === itemFila.unidade_id &&\n           f.servico === itemFila.servico\n    );\n"""
+            ),
+            (
+              """export async function sincronizarFilaEmBackground() {\n  if (isSyncRunning) {\n    return;\n  }\n\n  let etapaSync = 'INICIO';\n\n  try {\n""",
+              """export async function sincronizarFilaEmBackground() {\n  if (isSyncRunning) {\n    return;\n  }\n\n  // Trava adquirida ANTES de qualquer await. Isso impede que vários disparos\n  // simultâneos passem pela checagem e façam upload da mesma foto em paralelo.\n  isSyncRunning = true;\n\n  let etapaSync = 'INICIO';\n  let idsFilaNoInicio = null;\n\n  try {\n"""
+            ),
+            (
+              """    const fila = readFilaSync();\n    if (fila.length === 0) {\n      return;\n    }\n\n    isSyncRunning = true;\n    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));\n""",
+              """    const fila = readFilaSync();\n    if (fila.length === 0) {\n      return;\n    }\n\n    // Snapshot usado apenas para detectar itens que entraram enquanto este ciclo rodava.\n    idsFilaNoInicio = new Set(fila.map(item => item.id));\n    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));\n"""
+            ),
+            (
+              """            let remotePath = item.remotePath;\n            if (!remotePath) {\n              remotePath = `leituras/${Date.now()}_${nomeStorage}`;\n              item.remotePath = remotePath;\n""",
+              """            let remotePath = item.remotePath;\n            if (!remotePath) {\n              // Caminho determinístico: novas tentativas sobrescrevem o mesmo objeto\n              // em vez de criar cópias com Date.now().\n              const identificadorRemoto = sanitizarNomeStorage(\n                item.db_id || item.id || `${item.condominio_id}_${item.unidade_id}_${item.servico}`\n              );\n              remotePath = `leituras/${identificadorRemoto}_${nomeStorage}`;\n              item.remotePath = remotePath;\n"""
+            ),
+            (
+              """  } finally {\n    isSyncRunning = false;\n    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));\n  }\n}\n""",
+              """  } finally {\n    const filaRestante = readFilaSync();\n    const existemItensNovos = idsFilaNoInicio instanceof Set &&\n      filaRestante.some(item => !idsFilaNoInicio.has(item.id));\n\n    isSyncRunning = false;\n    window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));\n\n    // Se novas leituras foram enfileiradas enquanto o snapshot atual estava em\n    // processamento, executa um novo ciclo. Itens que falharam neste ciclo não\n    // entram em retry apertado; continuam seguros na fila para a próxima tentativa.\n    if (existemItensNovos) {\n      setTimeout(() => sincronizarFilaEmBackground(), 300);\n    }\n  }\n}\n"""
+            ),
+          ]
+
+          for old, new in replacements:
+            if old not in text:
+              raise SystemExit('Bloco esperado não encontrado; alteração abortada sem tocar no arquivo.')
+            text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify source change
+        run: |
+          git diff --check
+          node --check src/services/syncService.js
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "src/services/syncService.js"
+          grep -q "Trava adquirida ANTES de qualquer await" src/services/syncService.js
+          grep -q "identificadorRemoto" src/services/syncService.js
+          grep -q "condominio_id || ''" src/services/syncService.js
+
+      - name: Commit and push source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/syncService.js
+          git commit -m "fix: evita foto pendente e uploads duplicados [skip ci]"
+          git push origin HEAD:fix/sync-foto-pendente-duplicada
