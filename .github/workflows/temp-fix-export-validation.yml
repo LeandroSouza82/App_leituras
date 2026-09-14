@@ -1,0 +1,65 @@
+name: Temporary Export Validation Fix
+
+on:
+  push:
+    branches:
+      - fix/bloqueio-exportacao-unidade-intocada
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply surgical validation fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/LeituraFotoModal/LeituraFotoModal.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          old = """        // Checa se o usuário tirou foto ou interagiu com este apartamento
+        const statusFoto = fotosCapturadas[apStr] || {};
+        const statusConcluido = concluidosMemoria[apStr] || {};
+        const hasInteraction = statusFoto[srv] || statusConcluido[srv] || leiturasVal[apStr]?.[srv] !== undefined;
+
+        // Se não mexeu no apartamento, pula a validação dele (permite lote parcial)
+        if (!hasInteraction) continue;
+
+        // Se interagiu, verifica se a leitura é válida
+"""
+
+          new = """        // Todas as unidades do serviço selecionado são obrigatórias na exportação.
+        // Mesmo uma unidade totalmente intocada (sem foto e sem leitura) deve ser
+        // identificada como pendente para preservar o bloqueio e destaque já existentes.
+"""
+
+          if old not in text:
+              raise SystemExit('Bloco esperado não encontrado; alteração abortada sem tocar no arquivo.')
+
+          updated = text.replace(old, new, 1)
+          path.write_text(updated, encoding='utf-8')
+          PY
+
+      - name: Verify only intended source changed
+        run: |
+          git diff --check
+          git diff -- src/components/LeituraFotoModal/LeituraFotoModal.jsx
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "src/components/LeituraFotoModal/LeituraFotoModal.jsx"
+
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/LeituraFotoModal/LeituraFotoModal.jsx
+          git commit -m "fix: bloqueia exportacao com unidade sem leitura"
+          git push origin HEAD:fix/bloqueio-exportacao-unidade-intocada
