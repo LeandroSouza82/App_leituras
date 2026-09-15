@@ -762,6 +762,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // Ignora se não existir, não deve reverter a UI
       }
 
+      // 2b. EXCLUSÃO DO ARQUIVO PERSISTIDO NO LOTE OFFLINE (Directory.Data)
+      // Isolada por condomínio atual + unidade atual + serviço atual.
+      // Tolerante a arquivo inexistente — nunca quebra a interface.
+      try {
+        const safeCondNameOffline = filesystemService.sanitizeName(leitura.nome);
+        const offlinePath = `Backups/${safeCondNameOffline}/Apto${unidadeId}_${tipoServico}.jpg`;
+        await Filesystem.deleteFile({ path: offlinePath, directory: Directory.Data });
+      } catch (e) {
+        // Arquivo pode não existir no lote offline — ignora silenciosamente
+      }
+
       // 3. SINCRONIZAÇÃO EM BACKGROUND (Arquivos Antigos, Fila e Supabase)
       (async () => {
         try {
@@ -772,26 +783,41 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             }
           }
 
+          const condominioIdAtual = String(leitura?.id ?? leitura?.condominio_id ?? '').trim();
+          const condominioNomeAtual = String(leitura?.nome ?? '').trim().toLowerCase();
+
           ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
             const raw = localStorage.getItem(key);
             if (raw) {
               const filaAtual = JSON.parse(raw);
               if (Array.isArray(filaAtual) && filaAtual.length > 0) {
                 const filaFiltrada = filaAtual.filter((item) => {
+                  const itemCondominioId = String(item.condominio_id ?? item.condominioId ?? '').trim();
+                  const itemCondominioNome = String(item.condominio_nome ?? item.condominioNome ?? '').trim().toLowerCase();
+                  const mesmoCondominio =
+                    (condominioIdAtual && itemCondominioId === condominioIdAtual) ||
+                    (condominioNomeAtual && itemCondominioNome === condominioNomeAtual);
                   const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
                   const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
-                  return !(mesmaUnidade && mesmoServico);
+                  return !(mesmoCondominio && mesmaUnidade && mesmoServico);
                 });
                 localStorage.setItem(key, JSON.stringify(filaFiltrada));
               }
             }
           });
 
-          if (supabase) {
-            await supabase.from('leituras_detalhes').delete().match({
-              unidade_id: unidadeId,
-              servico: tipoServico,
-            });
+          if (supabase && leitura?.nome) {
+            const { data: authData } = await supabase.auth.getUser();
+            const userId = authData?.user?.id;
+            if (userId) {
+              await supabase
+                .from('leituras_detalhes')
+                .delete()
+                .eq('condominio_nome', leitura.nome)
+                .eq('leiturista_id', userId)
+                .eq('unidade_id', unidadeId)
+                .eq('servico', tipoServico);
+            }
           }
         } catch (bgErr) {
           console.error('Erro em background ao limpar dados remotos/sync da foto:', bgErr);
