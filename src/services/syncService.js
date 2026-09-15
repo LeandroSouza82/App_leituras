@@ -338,19 +338,6 @@ export async function sincronizarFilaEmBackground() {
           throw new Error("Erro DB insert: " + dbError.message);
         }
 
-        // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês
-        if (item.condominio_id && item.unidade_id && item.leitura_atual !== undefined && item.leitura_atual !== null) {
-          const { error: updateError } = await supabase
-            .from('unidades')
-            .update({ leitura_anterior: item.leitura_atual })
-            .eq('condominio_id', item.condominio_id)
-            .eq('nome', item.unidade_id);
-            
-          if (updateError) {
-             console.error("Erro ao atualizar leitura anterior na tabela unidades:", updateError);
-          }
-        }
-
         etapaSync = 'REMOVER_FILA';
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.
         const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
