@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js';
-import { Network } from '@capacitor/network';
+import { temConexaoInternetUtil } from './networkQualityService.js';
 import { enfileirarLeiturasAnteriores, sincronizarLeiturasAnterioresOffline } from './syncOfflineService.js';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 
@@ -223,9 +223,9 @@ export const rotacionarLeituraAnteriorLocal = (condominioId, unidadeId, tipoLeit
 
   window.dispatchEvent(new CustomEvent('offline_cache_hydrated', { detail: { condId } }));
 
-  Network.getStatus()
-    .then((status) => {
-      if (status.connected) sincronizarLeiturasAnterioresOffline();
+  temConexaoInternetUtil()
+    .then((redeUtil) => {
+      if (redeUtil) sincronizarLeiturasAnterioresOffline();
     })
     .catch(() => {});
 
@@ -254,9 +254,9 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
   if (gaveta !== null) return;
 
   try {
-    // Verifica conectividade antes de qualquer request
-    const status = await Network.getStatus();
-    if (!status.connected) return;
+    // Rede fraca é tratada como offline; o cache local continua sendo a fonte de trabalho.
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) return;
 
     // Confirma sessão ativa — respeita RLS do Supabase
     const { data: { user }, error: authError } = await supabase.auth.getUser();

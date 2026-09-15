@@ -1,5 +1,5 @@
 import { customAlert } from '../components/CustomPrompt/CustomPrompt';
-import { Network } from '@capacitor/network';
+import { temConexaoInternetUtil } from './networkQualityService';
 import { supabase } from './supabase';
 import { normalizarNome } from './ucondoImportService';
 
@@ -116,15 +116,14 @@ export const enfileirarNovoCondominio = (condominioData) => {
  */
 export const sincronizarLeiturasAnterioresOffline = async () => {
   if (isSyncLeiturasRunning) return;
+  isSyncLeiturasRunning = true;
 
   try {
-    const status = await Network.getStatus();
-    if (!status.connected) return;
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) return;
 
     const fila = lerFila();
     if (fila.length === 0) return;
-
-    isSyncLeiturasRunning = true;
 
     // Obtém o usuário autenticado uma única vez para todo o lote
     let activeUserId = null;
@@ -144,8 +143,8 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
           .eq('condominio_id', item.condominioId);
 
         if (errUnidades || !unidadesBanco || unidadesBanco.length === 0) {
-          // Mantém o item na fila para tentar novamente depois
           console.warn(`[syncOfflineService] Unidades não encontradas para condomínio ${item.condominioId}. Tentará novamente.`);
+          if (!(await temConexaoInternetUtil(2500))) break;
           continue;
         }
 
@@ -186,6 +185,7 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 
         if (erroConsultaAnteriores) {
           console.warn(`[syncOfflineService] Falha ao consultar lote anterior de ${item.condominioId}:`, erroConsultaAnteriores);
+          if (!(await temConexaoInternetUtil(2500))) break;
           continue;
         }
 
@@ -197,7 +197,8 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
         if (insertError) {
           console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);
           await customAlert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);
-          continue; // Mantém na fila, tenta novamente na próxima janela de rede
+          if (!(await temConexaoInternetUtil(2500))) break;
+          continue;
         }
 
         const idsAnteriores = (registrosAnteriores || []).map((row) => row.id).filter(Boolean);
@@ -218,6 +219,7 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 
       } catch (itemErr) {
         console.warn('[syncOfflineService] Erro inesperado ao processar item da fila:', itemErr);
+        if (!(await temConexaoInternetUtil(2500))) break;
       }
     }
   } catch (globalErr) {
@@ -229,14 +231,15 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 
 export const sincronizarCondominiosOffline = async () => {
   if (isSyncCondsRunning) return;
+  isSyncCondsRunning = true;
+
   try {
-    const status = await Network.getStatus();
-    if (!status.connected) return;
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) return;
 
     const fila = lerFilaCondominios();
     if (fila.length === 0) return;
 
-    isSyncCondsRunning = true;
     let activeUserId = null;
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -278,6 +281,7 @@ export const sincronizarCondominiosOffline = async () => {
 
            if (leituraConsultaError) {
              console.warn(`[syncOffline] Falha ao verificar leitura mensal de ${cond.nome}:`, leituraConsultaError);
+             if (!(await temConexaoInternetUtil(2500))) break;
              continue;
            }
 
@@ -291,6 +295,7 @@ export const sincronizarCondominiosOffline = async () => {
 
              if (leituraInsertError) {
                console.warn(`[syncOffline] Falha ao criar leitura mensal de ${cond.nome}:`, leituraInsertError);
+               if (!(await temConexaoInternetUtil(2500))) break;
                continue;
              }
            }
@@ -300,9 +305,11 @@ export const sincronizarCondominiosOffline = async () => {
            gravarFilaCondominios(filaAtualizada);
         } else {
            console.warn(`[syncOffline] Falha ao inserir condomínio ${cond.nome}:`, insertErr);
+           if (!(await temConexaoInternetUtil(2500))) break;
         }
       } catch (err) {
         console.warn('[syncOffline] Erro ao sincronizar condomínio:', err);
+        if (!(await temConexaoInternetUtil(2500))) break;
       }
     }
   } catch (err) {
