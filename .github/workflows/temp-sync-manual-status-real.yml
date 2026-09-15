@@ -20,7 +20,6 @@ jobs:
         run: |
           python3 .github/tmp_patch_sync_manual.py
           git diff --check
-          node --check src/components/BackupFotosMenu/BackupFotosMenu.jsx
           npm install --legacy-peer-deps
           git checkout -- package-lock.json
           npm run build
