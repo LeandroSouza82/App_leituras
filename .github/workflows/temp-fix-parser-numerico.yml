@@ -18,26 +18,7 @@ jobs:
       - name: Apply patch and validate
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/components/LeituraFotoModal/LeituraFotoModal.jsx')
-          text = p.read_text(encoding='utf-8')
-          old = '''        const valNumerico = parseFloat(String(valStr).replace(',', '.'));
-
-        if (isNaN(valNumerico)) {
-          return;
-        }
-'''
-          new = '''        const valNumerico = parseLeituraNumerica(valStr);
-
-        if (valNumerico === null || Number.isNaN(valNumerico)) {
-          return;
-        }
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Esperava 1 parser legado, encontrei {text.count(old)}')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
+          python3 .github/tmp_patch_parser.py
           git diff --check
           node --check src/components/LeituraFotoModal/LeituraFotoModal.jsx
           npm install --legacy-peer-deps
@@ -45,7 +26,7 @@ jobs:
           npm run build
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/temp-fix-parser-numerico.yml
+          git rm .github/workflows/temp-fix-parser-numerico.yml .github/tmp_patch_parser.py
           git add src/components/LeituraFotoModal/LeituraFotoModal.jsx
           git commit -m "fix: usa parser canonico no fluxo restante [skip ci]"
           git push origin HEAD:fix/parser-numerico-restante
