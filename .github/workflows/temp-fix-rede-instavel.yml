@@ -99,7 +99,6 @@ jobs:
           replace_once(offline,
             "import { Network } from '@capacitor/network';\n",
             "import { temConexaoInternetUtil } from './networkQualityService';\n")
-          # Há duas funções principais com a mesma checagem; substitui ambas.
           p = Path(offline)
           text = p.read_text(encoding='utf-8')
           old = """    const status = await Network.getStatus();\n    if (!status.connected) return;\n"""
@@ -127,6 +126,7 @@ jobs:
           node --check src/services/syncService.js
           node --check src/services/syncOfflineService.js
           node --check src/services/leiturasAnterioresService.js
+          npm install --legacy-peer-deps
           npm run build
           test "$(git diff --name-only | wc -l)" -eq 4
 
