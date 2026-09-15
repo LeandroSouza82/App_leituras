@@ -1,0 +1,139 @@
+name: Temporary Unstable Network Fix
+
+on:
+  push:
+    branches:
+      - fix/rede-instavel-offline
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply surgical unstable-network fix
+        run: |
+          cat > src/services/networkQualityService.js <<'EOF'
+          import { Network } from '@capacitor/network';
+
+          const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || '')
+            .trim()
+            .replace(/\/$/, '');
+
+          const DEFAULT_TIMEOUT_MS = 3500;
+
+          /**
+           * Considera a rede utilizável somente quando o aparelho está conectado
+           * E o backend responde dentro de um limite curto.
+           * A requisição é realmente cancelada via AbortController no timeout.
+           */
+          export async function temConexaoInternetUtil(timeoutMs = DEFAULT_TIMEOUT_MS) {
+            try {
+              const status = await Network.getStatus();
+              if (!status.connected || !SUPABASE_URL) return false;
+
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+              try {
+                const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
+                  method: 'GET',
+                  cache: 'no-store',
+                  signal: controller.signal,
+                });
+
+                return response.ok;
+              } catch (_) {
+                return false;
+              } finally {
+                clearTimeout(timeoutId);
+              }
+            } catch (_) {
+              return false;
+            }
+          }
+          EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Bloco esperado não encontrado em {path}; abortando sem alteração parcial.')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          sync = 'src/services/syncService.js'
+          replace_once(sync,
+            "import { supabase } from './supabase';\n",
+            "import { supabase } from './supabase';\nimport { temConexaoInternetUtil } from './networkQualityService';\n")
+
+          replace_once(sync,
+            """    // Se estiver online, tenta sincronizar imediatamente em background\n    Network.getStatus().then(status => {\n      if (status.connected) {\n        sincronizarFilaEmBackground();\n      }\n    }).catch(() => {});\n""",
+            """    // Só tenta sincronizar imediatamente quando a conexão está realmente utilizável.\n    // Rede conectada porém degradada continua no fluxo offline sem bloquear o usuário.\n    temConexaoInternetUtil().then(redeUtil => {\n      if (redeUtil) sincronizarFilaEmBackground();\n    }).catch(() => {});\n""")
+
+          replace_once(sync,
+            """    etapaSync = 'VERIFICAR_REDE';\n    const status = await Network.getStatus();\n    if (!status.connected) {\n      return;\n    }\n""",
+            """    etapaSync = 'VERIFICAR_REDE';\n    const redeUtil = await temConexaoInternetUtil();\n    if (!redeUtil) {\n      return;\n    }\n""")
+
+          replace_once(sync,
+            """              lastUploadError = uploadError;\n              if (attempt < 2) await new Promise(res => setTimeout(res, 1000));\n""",
+            """              lastUploadError = uploadError;\n\n              // Se a conexão degradou durante o upload, interrompe imediatamente.\n              // O item permanece íntegro na fila para uma tentativa futura.\n              const redeAindaUtil = await temConexaoInternetUtil(2500);\n              if (!redeAindaUtil) break;\n\n              if (attempt < 2) await new Promise(res => setTimeout(res, 1000));\n""")
+
+          replace_once(sync,
+            """      } catch (itemErr) {\n        // Formatar erro como solicitado\n        const erroMsg = itemErr?.message || String(itemErr);\n        \n        localStorage.setItem('sync_ultimo_erro', JSON.stringify({\n          etapa: etapaSync,\n          erro: erroMsg,\n          unidade_id: item?.unidade_id,\n          servico: item?.servico,\n          db_id: item?.db_id,\n          fileName: item?.fileName\n        }));\n      }\n""",
+            """      } catch (itemErr) {\n        const erroMsg = itemErr?.message || String(itemErr);\n        \n        localStorage.setItem('sync_ultimo_erro', JSON.stringify({\n          etapa: etapaSync,\n          erro: erroMsg,\n          unidade_id: item?.unidade_id,\n          servico: item?.servico,\n          db_id: item?.db_id,\n          fileName: item?.fileName\n        }));\n\n        // Se o backend deixou de responder, não insiste nos demais itens do lote.\n        // Tudo continua salvo localmente e será retomado quando a rede estabilizar.\n        const redeAindaUtil = await temConexaoInternetUtil(2500);\n        if (!redeAindaUtil) break;\n      }\n""")
+
+          old_observer = """  try {\n    Network.addListener('networkStatusChange', async (status) => {\n      if (status.connected) {\n        setTimeout(() => {\n          sincronizarFilaEmBackground();\n          sincronizarLeiturasAnterioresOffline();\n          sincronizarCondominiosOffline();\n        }, 1500);\n      }\n    });\n\n    Network.getStatus().then((status) => {\n      if (status.connected) {\n        sincronizarFilaEmBackground();\n        sincronizarLeiturasAnterioresOffline();\n        sincronizarCondominiosOffline();\n      }\n    }).catch(() => {});\n\n    // Executa a cada 2 minutos para garantir que nada fique preso\n    setInterval(() => {\n      Network.getStatus().then((status) => {\n        if (status.connected) {\n          sincronizarFilaEmBackground();\n          sincronizarLeiturasAnterioresOffline();\n          sincronizarCondominiosOffline();\n        }\n      }).catch(() => {});\n    }, 120000);\n\n  } catch (err) {\n  }\n"""
+          new_observer = """  try {\n    const sincronizarPendenciasSeRedeUtil = async () => {\n      const redeUtil = await temConexaoInternetUtil();\n      if (!redeUtil) return;\n\n      sincronizarFilaEmBackground();\n      sincronizarLeiturasAnterioresOffline();\n      sincronizarCondominiosOffline();\n    };\n\n    Network.addListener('networkStatusChange', (status) => {\n      if (status.connected) {\n        setTimeout(() => sincronizarPendenciasSeRedeUtil(), 1500);\n      }\n    });\n\n    sincronizarPendenciasSeRedeUtil().catch(() => {});\n\n    // Executa a cada 2 minutos, mas somente quando o backend responde bem.\n    setInterval(() => {\n      sincronizarPendenciasSeRedeUtil().catch(() => {});\n    }, 120000);\n\n  } catch (err) {\n  }\n"""
+          replace_once(sync, old_observer, new_observer)
+
+          offline = 'src/services/syncOfflineService.js'
+          replace_once(offline,
+            "import { Network } from '@capacitor/network';\n",
+            "import { temConexaoInternetUtil } from './networkQualityService';\n")
+          # Há duas funções principais com a mesma checagem; substitui ambas.
+          p = Path(offline)
+          text = p.read_text(encoding='utf-8')
+          old = """    const status = await Network.getStatus();\n    if (!status.connected) return;\n"""
+          if text.count(old) != 2:
+              raise SystemExit('Quantidade inesperada de checagens de rede em syncOfflineService.js')
+          text = text.replace(old, """    const redeUtil = await temConexaoInternetUtil();\n    if (!redeUtil) return;\n""")
+          p.write_text(text, encoding='utf-8')
+
+          anteriores = 'src/services/leiturasAnterioresService.js'
+          replace_once(anteriores,
+            "import { Network } from '@capacitor/network';\n",
+            "import { temConexaoInternetUtil } from './networkQualityService.js';\n")
+          replace_once(anteriores,
+            """  Network.getStatus()\n    .then((status) => {\n      if (status.connected) sincronizarLeiturasAnterioresOffline();\n    })\n    .catch(() => {});\n""",
+            """  temConexaoInternetUtil()\n    .then((redeUtil) => {\n      if (redeUtil) sincronizarLeiturasAnterioresOffline();\n    })\n    .catch(() => {});\n""")
+          replace_once(anteriores,
+            """    // Verifica conectividade antes de qualquer request\n    const status = await Network.getStatus();\n    if (!status.connected) return;\n""",
+            """    // Rede fraca é tratada como offline; o cache local continua sendo a fonte de trabalho.\n    const redeUtil = await temConexaoInternetUtil();\n    if (!redeUtil) return;\n""")
+          PY
+
+      - name: Validate change
+        run: |
+          git diff --check
+          node --check src/services/networkQualityService.js
+          node --check src/services/syncService.js
+          node --check src/services/syncOfflineService.js
+          node --check src/services/leiturasAnterioresService.js
+          npm run build
+          test "$(git diff --name-only | wc -l)" -eq 4
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/services/networkQualityService.js src/services/syncService.js src/services/syncOfflineService.js src/services/leiturasAnterioresService.js
+          git commit -m "fix: trata rede instavel como offline [skip ci]"
+          git push origin HEAD:fix/rede-instavel-offline
