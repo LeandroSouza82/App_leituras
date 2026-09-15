@@ -230,6 +230,8 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     setSincronizando(true);
     try {
       await sincronizarFilaEmBackground();
+
+      const filaRestante = readFilaSync();
       
       if (activeTab === 'offline') {
         await carregarPastas();
@@ -237,7 +239,11 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         await handleSearchOnline();
       }
 
-      await customAlert('Sincronização concluída com sucesso!');
+      if (filaRestante.length > 0) {
+        await customAlert(`Sincronização parcial: ${filaRestante.length} item(ns) ainda pendente(s). Eles serão mantidos com segurança para uma nova tentativa.`);
+      } else {
+        await customAlert('Sincronização concluída com sucesso!');
+      }
     } catch (err) {
       await customAlert('Erro na sincronização: ' + err.message);
     } finally {
