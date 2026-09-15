@@ -29,7 +29,6 @@ jobs:
                   raise SystemExit(f'Bloco esperado não encontrado em {path}; abortando.')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          # 1) Travas das filas auxiliares antes do primeiro await.
           offline = 'src/services/syncOfflineService.js'
           replace_once(offline,
             """export const sincronizarLeiturasAnterioresOffline = async () => {\n  if (isSyncLeiturasRunning) return;\n\n  try {\n    const redeUtil = await temConexaoInternetUtil();\n""",
@@ -43,17 +42,15 @@ jobs:
           replace_once(offline,
             """    const fila = lerFilaCondominios();\n    if (fila.length === 0) return;\n\n    isSyncCondsRunning = true;\n    let activeUserId = null;\n""",
             """    const fila = lerFilaCondominios();\n    if (fila.length === 0) return;\n\n    let activeUserId = null;\n""")
-
-          # 2) Em falhas de rede, interrompe o lote em vez de insistir nos itens seguintes.
           replace_once(offline,
             """        if (errUnidades || !unidadesBanco || unidadesBanco.length === 0) {\n          // Mantém o item na fila para tentar novamente depois\n          console.warn(`[syncOfflineService] Unidades não encontradas para condomínio ${item.condominioId}. Tentará novamente.`);\n          continue;\n        }\n""",
-            """        if (errUnidades || !unidadesBanco || unidadesBanco.length === 0) {\n          // Mantém o item na fila para tentar novamente depois.\n          console.warn(`[syncOfflineService] Unidades não encontradas para condomínio ${item.condominioId}. Tentará novamente.`);\n          if (!(await temConexaoInternetUtil(2500))) break;\n          continue;\n        }\n""")
+            """        if (errUnidades || !unidadesBanco || unidadesBanco.length === 0) {\n          console.warn(`[syncOfflineService] Unidades não encontradas para condomínio ${item.condominioId}. Tentará novamente.`);\n          if (!(await temConexaoInternetUtil(2500))) break;\n          continue;\n        }\n""")
           replace_once(offline,
             """        if (erroConsultaAnteriores) {\n          console.warn(`[syncOfflineService] Falha ao consultar lote anterior de ${item.condominioId}:`, erroConsultaAnteriores);\n          continue;\n        }\n""",
             """        if (erroConsultaAnteriores) {\n          console.warn(`[syncOfflineService] Falha ao consultar lote anterior de ${item.condominioId}:`, erroConsultaAnteriores);\n          if (!(await temConexaoInternetUtil(2500))) break;\n          continue;\n        }\n""")
           replace_once(offline,
             """        if (insertError) {\n          console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);\n          await customAlert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);\n          continue; // Mantém na fila, tenta novamente na próxima janela de rede\n        }\n""",
-            """        if (insertError) {\n          console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);\n          await customAlert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);\n          if (!(await temConexaoInternetUtil(2500))) break;\n          continue; // Mantém na fila, tenta novamente na próxima janela de rede\n        }\n""")
+            """        if (insertError) {\n          console.warn(`[syncOfflineService] Falha ao inserir lote para condomínio ${item.condominioId}:`, insertError);\n          await customAlert(`ERRO BD (unidades_leituras): ${insertError.message || JSON.stringify(insertError)}`);\n          if (!(await temConexaoInternetUtil(2500))) break;\n          continue;\n        }\n""")
           replace_once(offline,
             """      } catch (itemErr) {\n        console.warn('[syncOfflineService] Erro inesperado ao processar item da fila:', itemErr);\n      }\n""",
             """      } catch (itemErr) {\n        console.warn('[syncOfflineService] Erro inesperado ao processar item da fila:', itemErr);\n        if (!(await temConexaoInternetUtil(2500))) break;\n      }\n""")
@@ -67,7 +64,6 @@ jobs:
             """        } else {\n           console.warn(`[syncOffline] Falha ao inserir condomínio ${cond.nome}:`, insertErr);\n        }\n      } catch (err) {\n        console.warn('[syncOffline] Erro ao sincronizar condomínio:', err);\n      }\n""",
             """        } else {\n           console.warn(`[syncOffline] Falha ao inserir condomínio ${cond.nome}:`, insertErr);\n           if (!(await temConexaoInternetUtil(2500))) break;\n        }\n      } catch (err) {\n        console.warn('[syncOffline] Erro ao sincronizar condomínio:', err);\n        if (!(await temConexaoInternetUtil(2500))) break;\n      }\n""")
 
-          # 3) Sync de fotos: memoriza a degradação e revalida imediatamente antes do retry.
           sync = 'src/services/syncService.js'
           replace_once(sync,
             """    for (const item of [...fila]) {\n      etapaSync = 'PROCESSAR_ITEM';\n      \n      try {\n""",
@@ -77,24 +73,23 @@ jobs:
             """              const redeAindaUtil = await temConexaoInternetUtil(2500);\n              if (!redeAindaUtil) {\n                redeDegradadaNoItem = true;\n                break;\n              }\n\n              if (attempt < 2) {\n                await new Promise(res => setTimeout(res, 1000));\n                const redeAntesRetry = await temConexaoInternetUtil(2500);\n                if (!redeAntesRetry) {\n                  redeDegradadaNoItem = true;\n                  break;\n                }\n              }\n""")
           replace_once(sync,
             """        // Se o backend deixou de responder, não insiste nos demais itens do lote.\n        // Tudo continua salvo localmente e será retomado quando a rede estabilizar.\n        const redeAindaUtil = await temConexaoInternetUtil(2500);\n        if (!redeAindaUtil) break;\n""",
-            """        // Se este item já detectou degradação, não faz uma segunda decisão contraditória.\n        // Caso a falha tenha outra causa, confirma a rede antes de avançar para o próximo item.\n        if (redeDegradadaNoItem) break;\n        const redeAindaUtil = await temConexaoInternetUtil(2500);\n        if (!redeAindaUtil) break;\n""")
+            """        if (redeDegradadaNoItem) break;\n        const redeAindaUtil = await temConexaoInternetUtil(2500);\n        if (!redeAindaUtil) break;\n""")
 
-          # 4) O hook legado também passa a respeitar qualidade real da conexão.
           hook = 'src/hooks/useOfflineSync.js'
           replace_once(hook,
             "import { Network } from '@capacitor/network';\n",
             "import { Network } from '@capacitor/network';\nimport { temConexaoInternetUtil } from '../services/networkQualityService';\n")
           replace_once(hook,
             """  const sincronizarPendenciasOffline = useCallback(async () => {\n    if (!isOnline || !supabase) {\n      return;\n    }\n\n    const pendencias = readPendenciasOffline();\n""",
-            """  const sincronizarPendenciasOffline = useCallback(async () => {\n    if (!supabase || !(await temConexaoInternetUtil())) {\n      return;\n    }\n\n    const pendencias = readPendenciasOffline();\n""")
+            """  const sincronizarPendenciasOffline = useCallback(async () => {\n    if (!supabase || !(await temConexaoInternetUtil())) return;\n\n    const pendencias = readPendenciasOffline();\n""")
           replace_once(hook, "  }, [isOnline]);\n\n  const sincronizarFilaPendente", "  }, []);\n\n  const sincronizarFilaPendente")
           replace_once(hook,
             """  const sincronizarFilaPendente = useCallback(async () => {\n    if (!isOnline || !supabase) {\n      return;\n    }\n\n    const fila = readPendingQueue();\n""",
-            """  const sincronizarFilaPendente = useCallback(async () => {\n    if (!supabase || !(await temConexaoInternetUtil())) {\n      return;\n    }\n\n    const fila = readPendingQueue();\n""")
+            """  const sincronizarFilaPendente = useCallback(async () => {\n    if (!supabase || !(await temConexaoInternetUtil())) return;\n\n    const fila = readPendingQueue();\n""")
           replace_once(hook, "  }, [isOnline]);\n\n  useEffect(() => {", "  }, []);\n\n  useEffect(() => {")
           replace_once(hook,
             """    const setupListener = async () => {\n      const status = await Network.getStatus();\n      setIsOnline(status.connected);\n      if (status.connected) {\n        sincronizarPendenciasOffline();\n        sincronizarFilaPendente();\n      }\n\n      listenerHandle = await Network.addListener('networkStatusChange', (status) => {\n        setIsOnline(status.connected);\n        if (status.connected) {\n          sincronizarPendenciasOffline();\n          sincronizarFilaPendente();\n        }\n      });\n    };\n""",
-            """    const tentarSincronizarSeRedeUtil = async () => {\n      const redeUtil = await temConexaoInternetUtil();\n      setIsOnline(redeUtil);\n      if (!redeUtil) return;\n\n      sincronizarPendenciasOffline();\n      sincronizarFilaPendente();\n    };\n\n    const setupListener = async () => {\n      await tentarSincronizarSeRedeUtil();\n\n      listenerHandle = await Network.addListener('networkStatusChange', (status) => {\n        if (!status.connected) {\n          setIsOnline(false);\n          return;\n        }\n        tentarSincronizarSeRedeUtil().catch(() => {});\n      });\n    };\n""")
+            """    const tentarSincronizarSeRedeUtil = async () => {\n      const redeUtil = await temConexaoInternetUtil();\n      setIsOnline(redeUtil);\n      if (!redeUtil) return;\n      sincronizarPendenciasOffline();\n      sincronizarFilaPendente();\n    };\n\n    const setupListener = async () => {\n      await tentarSincronizarSeRedeUtil();\n      listenerHandle = await Network.addListener('networkStatusChange', (status) => {\n        if (!status.connected) {\n          setIsOnline(false);\n          return;\n        }\n        tentarSincronizarSeRedeUtil().catch(() => {});\n      });\n    };\n""")
           PY
 
       - name: Validate
@@ -104,6 +99,7 @@ jobs:
           node --check src/services/syncOfflineService.js
           node --check src/hooks/useOfflineSync.js
           npm install --legacy-peer-deps
+          git checkout -- package-lock.json
           npm run build
           test "$(git diff --name-only | wc -l)" -eq 3
 
