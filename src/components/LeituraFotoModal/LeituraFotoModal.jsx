@@ -1386,9 +1386,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           return;
         }
 
-        const valNumerico = parseFloat(String(valStr).replace(',', '.'));
+        const valNumerico = parseLeituraNumerica(valStr);
 
-        if (isNaN(valNumerico)) {
+        if (valNumerico === null || Number.isNaN(valNumerico)) {
           return;
         }
 
