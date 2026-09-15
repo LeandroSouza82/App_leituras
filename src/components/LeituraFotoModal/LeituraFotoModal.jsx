@@ -1228,15 +1228,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const apStr = String(uni.unidade || uni.nome || uni).trim();
       for (const srv of servicosParaValidar) {
 
-        // Checa se o usuário tirou foto ou interagiu com este apartamento
-        const statusFoto = fotosCapturadas[apStr] || {};
-        const statusConcluido = concluidosMemoria[apStr] || {};
-        const hasInteraction = statusFoto[srv] || statusConcluido[srv] || leiturasVal[apStr]?.[srv] !== undefined;
-
-        // Se não mexeu no apartamento, pula a validação dele (permite lote parcial)
-        if (!hasInteraction) continue;
-
-        // Se interagiu, verifica se a leitura é válida
+        // Todas as unidades do serviço selecionado são obrigatórias na exportação.
+        // Mesmo uma unidade totalmente intocada deve ser identificada como pendente.
         const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv] ?? obterLeituraAtualPersistida(condId, apStr, srv);
         const numVal = parseLeituraNum(val);
 
