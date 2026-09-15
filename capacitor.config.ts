@@ -1,3 +1,4 @@
+/// <reference types="@capacitor/local-notifications" />
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
@@ -13,6 +14,11 @@ const config: CapacitorConfig = {
       scopes: ['profile', 'email'],
       serverClientId: '754351603454-6rppvn63citj0rqtobico7tbhp868o1r.apps.googleusercontent.com',
       forceCodeForRefreshToken: true,
+    },
+    LocalNotifications: {
+      // Ícone monocromático próprio do Fast Leituras para a barra/status das notificações Android.
+      smallIcon: 'ic_notification_fast_leituras',
+      iconColor: '#0284C7',
     }
   }
 };
