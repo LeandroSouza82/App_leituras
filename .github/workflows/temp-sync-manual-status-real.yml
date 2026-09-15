@@ -18,40 +18,7 @@ jobs:
       - name: Apply patch and validate
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/components/BackupFotosMenu/BackupFotosMenu.jsx')
-          text = p.read_text(encoding='utf-8')
-          old = '''      await sincronizarFilaEmBackground();
-      
-      if (activeTab === 'offline') {
-        await carregarPastas();
-      } else {
-        await handleSearchOnline();
-      }
-
-      await customAlert('Sincronização concluída com sucesso!');
-'''
-          new = '''      await sincronizarFilaEmBackground();
-
-      const filaRestante = readFilaSync();
-      
-      if (activeTab === 'offline') {
-        await carregarPastas();
-      } else {
-        await handleSearchOnline();
-      }
-
-      if (filaRestante.length > 0) {
-        await customAlert(`Sincronização parcial: ${filaRestante.length} item(ns) ainda pendente(s). Eles serão mantidos com segurança para uma nova tentativa.`);
-      } else {
-        await customAlert('Sincronização concluída com sucesso!');
-      }
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Esperava 1 bloco de sincronizacao manual, encontrei {text.count(old)}')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
+          python3 .github/tmp_patch_sync_manual.py
           git diff --check
           node --check src/components/BackupFotosMenu/BackupFotosMenu.jsx
           npm install --legacy-peer-deps
@@ -59,7 +26,7 @@ jobs:
           npm run build
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/temp-sync-manual-status-real.yml
+          git rm .github/workflows/temp-sync-manual-status-real.yml .github/tmp_patch_sync_manual.py
           git add src/components/BackupFotosMenu/BackupFotosMenu.jsx
           git commit -m "fix: torna status da sincronizacao manual verdadeiro [skip ci]"
           git push origin HEAD:fix/sync-manual-status-real
