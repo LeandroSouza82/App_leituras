@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { Network } from '@capacitor/network';
+import { temConexaoInternetUtil } from '../services/networkQualityService';
 
 const STORAGE_KEY = 'leituras_pendentes';
 const PENDENCIAS_OFFLINE_KEY = 'pendencias_offline';
@@ -72,9 +73,7 @@ export function useOfflineSync() {
   }, []);
 
   const sincronizarPendenciasOffline = useCallback(async () => {
-    if (!isOnline || !supabase) {
-      return;
-    }
+    if (!supabase || !(await temConexaoInternetUtil())) return;
 
     const pendencias = readPendenciasOffline();
     if (!Array.isArray(pendencias) || pendencias.length === 0) {
@@ -118,12 +117,10 @@ export function useOfflineSync() {
     }
 
     writePendenciasOffline(pendenciasRestantes);
-  }, [isOnline]);
+  }, []);
 
   const sincronizarFilaPendente = useCallback(async () => {
-    if (!isOnline || !supabase) {
-      return;
-    }
+    if (!supabase || !(await temConexaoInternetUtil())) return;
 
     const fila = readPendingQueue();
     if (!Array.isArray(fila) || fila.length === 0) {
@@ -156,27 +153,29 @@ export function useOfflineSync() {
 
     writePendingQueue(naoEnviados);
     setPendentes(naoEnviados);
-  }, [isOnline]);
+  }, []);
 
   useEffect(() => {
     carregarFilaLocal();
 
     let listenerHandle = null;
 
-    const setupListener = async () => {
-      const status = await Network.getStatus();
-      setIsOnline(status.connected);
-      if (status.connected) {
-        sincronizarPendenciasOffline();
-        sincronizarFilaPendente();
-      }
+    const tentarSincronizarSeRedeUtil = async () => {
+      const redeUtil = await temConexaoInternetUtil();
+      setIsOnline(redeUtil);
+      if (!redeUtil) return;
+      sincronizarPendenciasOffline();
+      sincronizarFilaPendente();
+    };
 
+    const setupListener = async () => {
+      await tentarSincronizarSeRedeUtil();
       listenerHandle = await Network.addListener('networkStatusChange', (status) => {
-        setIsOnline(status.connected);
-        if (status.connected) {
-          sincronizarPendenciasOffline();
-          sincronizarFilaPendente();
+        if (!status.connected) {
+          setIsOnline(false);
+          return;
         }
+        tentarSincronizarSeRedeUtil().catch(() => {});
       });
     };
 

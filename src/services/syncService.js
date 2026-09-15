@@ -196,6 +196,7 @@ export async function sincronizarFilaEmBackground() {
 
     for (const item of [...fila]) {
       etapaSync = 'PROCESSAR_ITEM';
+      let redeDegradadaNoItem = false;
       
       try {
         if (item.leiturista_id && item.leiturista_id !== currentUserId) {
@@ -302,9 +303,19 @@ export async function sincronizarFilaEmBackground() {
               // Se a conexão degradou durante o upload, interrompe imediatamente.
               // O item permanece íntegro na fila para uma tentativa futura.
               const redeAindaUtil = await temConexaoInternetUtil(2500);
-              if (!redeAindaUtil) break;
+              if (!redeAindaUtil) {
+                redeDegradadaNoItem = true;
+                break;
+              }
 
-              if (attempt < 2) await new Promise(res => setTimeout(res, 1000));
+              if (attempt < 2) {
+                await new Promise(res => setTimeout(res, 1000));
+                const redeAntesRetry = await temConexaoInternetUtil(2500);
+                if (!redeAntesRetry) {
+                  redeDegradadaNoItem = true;
+                  break;
+                }
+              }
             }
 
             if (!uploadSuccess) {
@@ -376,8 +387,7 @@ export async function sincronizarFilaEmBackground() {
           fileName: item?.fileName
         }));
 
-        // Se o backend deixou de responder, não insiste nos demais itens do lote.
-        // Tudo continua salvo localmente e será retomado quando a rede estabilizar.
+        if (redeDegradadaNoItem) break;
         const redeAindaUtil = await temConexaoInternetUtil(2500);
         if (!redeAindaUtil) break;
       }
