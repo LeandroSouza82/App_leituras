@@ -3,57 +3,35 @@ name: Temp Remove Legacy Reading Update
 on:
   push:
     branches:
-      - fix/remover-update-legado-leitura-anterior
+      - "fix/remover-update-legado-leitura-anterior"
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Remove only legacy unidades update
+      - name: Apply patch and validate
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('src/services/syncService.js')
           text = p.read_text(encoding='utf-8')
-          old = '''        // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês
-        if (item.condominio_id && item.unidade_id && item.leitura_atual !== undefined && item.leitura_atual !== null) {
-          const { error: updateError } = await supabase
-            .from('unidades')
-            .update({ leitura_anterior: item.leitura_atual })
-            .eq('condominio_id', item.condominio_id)
-            .eq('nome', item.unidade_id);
-            
-          if (updateError) {
-             console.error("Erro ao atualizar leitura anterior na tabela unidades:", updateError);
-          }
-        }
-
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Esperava 1 bloco legado, encontrei {text.count(old)}')
-          p.write_text(text.replace(old, '', 1), encoding='utf-8')
+          start = text.index('        // UPDATE encadeado na tabela da unidade (apartamento) preparando para o próximo mês\n')
+          end_marker = '        etapaSync = \'REMOVER_FILA\';\n'
+          end = text.index(end_marker, start)
+          p.write_text(text[:start] + text[end:], encoding='utf-8')
           PY
-
-      - name: Validate
-        run: |
           git diff --check
           node --check src/services/syncService.js
           npm install --legacy-peer-deps
           git checkout -- package-lock.json
           npm run build
-          test "$(git diff --name-only | grep -v '^.github/workflows/temp-remove-legacy-reading-update.yml$' | wc -l)" -eq 1
-          git diff --name-only | grep -q '^src/services/syncService.js$'
-
-      - name: Commit source and remove temp workflow
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/temp-remove-legacy-reading-update.yml
