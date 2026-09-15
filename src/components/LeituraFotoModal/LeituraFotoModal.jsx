@@ -762,6 +762,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // Ignora se não existir, não deve reverter a UI
       }
 
+      // 2b. EXCLUSÃO DO ARQUIVO PERSISTIDO NO LOTE OFFLINE (Directory.Data)
+      // Isolada por condomínio atual + unidade atual + serviço atual.
+      // Tolerante a arquivo inexistente — nunca quebra a interface.
+      try {
+        const safeCondNameOffline = filesystemService.sanitizeName(leitura.nome);
+        const offlinePath = `Backups/${safeCondNameOffline}/Apto${unidadeId}_${tipoServico}.jpg`;
+        await Filesystem.deleteFile({ path: offlinePath, directory: Directory.Data });
+      } catch (e) {
+        // Arquivo pode não existir no lote offline — ignora silenciosamente
+      }
+
       // 3. SINCRONIZAÇÃO EM BACKGROUND (Arquivos Antigos, Fila e Supabase)
       (async () => {
         try {
