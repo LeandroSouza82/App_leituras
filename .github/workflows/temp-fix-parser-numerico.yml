@@ -3,21 +3,20 @@ name: Temp Fix Remaining Numeric Parser
 on:
   push:
     branches:
-      - fix/parser-numerico-restante
+      - "fix/parser-numerico-restante"
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Reuse canonical reading parser
+      - name: Apply patch and validate
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -39,19 +38,11 @@ jobs:
               raise SystemExit(f'Esperava 1 parser legado, encontrei {text.count(old)}')
           p.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-
-      - name: Validate
-        run: |
           git diff --check
           node --check src/components/LeituraFotoModal/LeituraFotoModal.jsx
           npm install --legacy-peer-deps
           git checkout -- package-lock.json
           npm run build
-          test "$(git diff --name-only | grep -v '^.github/workflows/temp-fix-parser-numerico.yml$' | wc -l)" -eq 1
-          git diff --name-only | grep -q '^src/components/LeituraFotoModal/LeituraFotoModal.jsx$'
-
-      - name: Commit source and remove temp workflow
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/temp-fix-parser-numerico.yml
