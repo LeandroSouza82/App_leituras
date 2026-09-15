@@ -3,6 +3,7 @@ import { Network } from '@capacitor/network';
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || '')
   .trim()
   .replace(/\/$/, '');
+const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 const DEFAULT_TIMEOUT_MS = 3500;
 
@@ -14,7 +15,7 @@ const DEFAULT_TIMEOUT_MS = 3500;
 export async function temConexaoInternetUtil(timeoutMs = DEFAULT_TIMEOUT_MS) {
   try {
     const status = await Network.getStatus();
-    if (!status.connected || !SUPABASE_URL) return false;
+    if (!status.connected || !SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -23,6 +24,9 @@ export async function temConexaoInternetUtil(timeoutMs = DEFAULT_TIMEOUT_MS) {
       const response = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
         method: 'GET',
         cache: 'no-store',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+        },
         signal: controller.signal,
       });
 
