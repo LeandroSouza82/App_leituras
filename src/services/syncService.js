@@ -1,6 +1,7 @@
 import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { supabase } from './supabase';
+import { temConexaoInternetUtil } from './networkQualityService';
 import {
   sincronizarLeiturasAnterioresOffline,
   sincronizarCondominiosOffline,
@@ -132,11 +133,10 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
     // Dispara evento instantâneo para espelhar a Interface Otimista na Busca Online
     window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
 
-    // Se estiver online, tenta sincronizar imediatamente em background
-    Network.getStatus().then(status => {
-      if (status.connected) {
-        sincronizarFilaEmBackground();
-      }
+    // Só tenta sincronizar imediatamente quando a conexão está realmente utilizável.
+    // Rede conectada porém degradada continua no fluxo offline sem bloquear o usuário.
+    temConexaoInternetUtil().then(redeUtil => {
+      if (redeUtil) sincronizarFilaEmBackground();
     }).catch(() => {});
 
     return true;
@@ -173,8 +173,8 @@ export async function sincronizarFilaEmBackground() {
     }));
 
     etapaSync = 'VERIFICAR_REDE';
-    const status = await Network.getStatus();
-    if (!status.connected) {
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) {
       return;
     }
 
@@ -298,6 +298,12 @@ export async function sincronizarFilaEmBackground() {
                 break;
               }
               lastUploadError = uploadError;
+
+              // Se a conexão degradou durante o upload, interrompe imediatamente.
+              // O item permanece íntegro na fila para uma tentativa futura.
+              const redeAindaUtil = await temConexaoInternetUtil(2500);
+              if (!redeAindaUtil) break;
+
               if (attempt < 2) await new Promise(res => setTimeout(res, 1000));
             }
 
@@ -359,7 +365,6 @@ export async function sincronizarFilaEmBackground() {
         etapaSync = 'CONCLUIDO';
 
       } catch (itemErr) {
-        // Formatar erro como solicitado
         const erroMsg = itemErr?.message || String(itemErr);
         
         localStorage.setItem('sync_ultimo_erro', JSON.stringify({
@@ -370,6 +375,11 @@ export async function sincronizarFilaEmBackground() {
           db_id: item?.db_id,
           fileName: item?.fileName
         }));
+
+        // Se o backend deixou de responder, não insiste nos demais itens do lote.
+        // Tudo continua salvo localmente e será retomado quando a rede estabilizar.
+        const redeAindaUtil = await temConexaoInternetUtil(2500);
+        if (!redeAindaUtil) break;
       }
     }
 
@@ -404,33 +414,26 @@ export function iniciarObservadorRede() {
   networkListenerInitialized = true;
 
   try {
-    Network.addListener('networkStatusChange', async (status) => {
+    const sincronizarPendenciasSeRedeUtil = async () => {
+      const redeUtil = await temConexaoInternetUtil();
+      if (!redeUtil) return;
+
+      sincronizarFilaEmBackground();
+      sincronizarLeiturasAnterioresOffline();
+      sincronizarCondominiosOffline();
+    };
+
+    Network.addListener('networkStatusChange', (status) => {
       if (status.connected) {
-        setTimeout(() => {
-          sincronizarFilaEmBackground();
-          sincronizarLeiturasAnterioresOffline();
-          sincronizarCondominiosOffline();
-        }, 1500);
+        setTimeout(() => sincronizarPendenciasSeRedeUtil(), 1500);
       }
     });
 
-    Network.getStatus().then((status) => {
-      if (status.connected) {
-        sincronizarFilaEmBackground();
-        sincronizarLeiturasAnterioresOffline();
-        sincronizarCondominiosOffline();
-      }
-    }).catch(() => {});
+    sincronizarPendenciasSeRedeUtil().catch(() => {});
 
-    // Executa a cada 2 minutos para garantir que nada fique preso
+    // Executa a cada 2 minutos, mas somente quando o backend responde bem.
     setInterval(() => {
-      Network.getStatus().then((status) => {
-        if (status.connected) {
-          sincronizarFilaEmBackground();
-          sincronizarLeiturasAnterioresOffline();
-          sincronizarCondominiosOffline();
-        }
-      }).catch(() => {});
+      sincronizarPendenciasSeRedeUtil().catch(() => {});
     }, 120000);
 
   } catch (err) {

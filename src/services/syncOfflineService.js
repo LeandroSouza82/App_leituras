@@ -1,5 +1,5 @@
 import { customAlert } from '../components/CustomPrompt/CustomPrompt';
-import { Network } from '@capacitor/network';
+import { temConexaoInternetUtil } from './networkQualityService';
 import { supabase } from './supabase';
 import { normalizarNome } from './ucondoImportService';
 
@@ -118,8 +118,8 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
   if (isSyncLeiturasRunning) return;
 
   try {
-    const status = await Network.getStatus();
-    if (!status.connected) return;
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) return;
 
     const fila = lerFila();
     if (fila.length === 0) return;
@@ -230,8 +230,8 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 export const sincronizarCondominiosOffline = async () => {
   if (isSyncCondsRunning) return;
   try {
-    const status = await Network.getStatus();
-    if (!status.connected) return;
+    const redeUtil = await temConexaoInternetUtil();
+    if (!redeUtil) return;
 
     const fila = lerFilaCondominios();
     if (fila.length === 0) return;
