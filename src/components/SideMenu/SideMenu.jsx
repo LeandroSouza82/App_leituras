@@ -12,7 +12,7 @@ import {
   Cloud,
   RefreshCw
 } from 'lucide-react';
-import { sincronizarFilaEmBackground } from '../../services/syncService';
+import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
 import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
@@ -32,7 +32,18 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     setIsSyncing(true);
     try {
       await sincronizarFilaEmBackground();
-      await customAlert('Fila processada e dados da nuvem atualizados.', 'Sincronização Concluída');
+      const pendentes = readFilaSync().length;
+      if (pendentes > 0) {
+        await customAlert(
+          `Ainda existem ${pendentes} item(ns) pendente(s) de sincronização. Tente novamente quando houver conexão.`,
+          'Sincronização Pendente'
+        );
+      } else {
+        await customAlert(
+          'Nenhum item pendente na fila de leituras e fotos.',
+          'Fila de Sincronização'
+        );
+      }
       setShowSyncModal(false);
       window.dispatchEvent(new CustomEvent('offline_cache_hydrated'));
     } catch (error) {
@@ -188,12 +199,11 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
               <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '8px', color: '#0ea5e9' }}><Cloud size={19} /></div>
               <div>
                 <h2 style={{ fontSize: '1.1rem', margin: 0, color: '#0f172a' }}>Sincronização e sistema</h2>
-                <p style={{ fontSize: '0.85rem', margin: 0, color: '#64748b' }}>Veja o estado da sua conexão e dos dados.</p>
+                <p style={{ fontSize: '0.85rem', margin: 0, color: '#64748b' }}>Envie leituras e fotos pendentes.</p>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#0f172a', marginBottom: '20px', fontWeight: '500' }}>
-              <span style={{ width: '8px', height: '8px', background: '#22c55e', borderRadius: '50%', display: 'inline-block' }} /> 
-              Banco Supabase Sincronizado
+              A sincronização precisa de conexão com a internet.
             </div>
             <button 
               type="button" 
