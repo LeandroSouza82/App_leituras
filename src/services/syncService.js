@@ -145,6 +145,96 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
   }
 }
 
+// ─── Helpers privados de resolução de arquivo físico ───────────────────────
+
+/**
+ * Tenta localizar o arquivo físico de um item da fila percorrendo os caminhos
+ * canônicos conhecidos, nesta ordem de prioridade:
+ *   1. Caminho explícito salvo no item (item.photoPath / item.photoDirectory)
+ *   2. Caminho organizado em Directory.Data: Backups/<condo>/<fileName>
+ *   3. Caminho legado em Directory.Cache: FastLeituras/<condo>/<fileName>
+ *
+ * Retorna { fileResult, photoPath, photoDirectory } do primeiro que existir, ou
+ * lança um erro descritivo se nenhum caminho for encontrado.
+ *
+ * Se o caminho encontrado for diferente do salvo no item, atualiza SOMENTE
+ * photoPath e photoDirectory no localStorage para que retentativas futuras
+ * já partam do caminho correto.
+ *
+ * @param {Object} item  Item da fila_sync_auto
+ * @returns {Promise<{fileResult: object, photoPath: string, photoDirectory: string}>}
+ */
+async function localizarFotoFisicaDaFila(item) {
+  const fileName = item.fileName;
+  const safeCondo = String(item.condominio_nome || '').replace(/[^a-z0-9]/gi, '_');
+
+  // Candidatos em ordem de prioridade:
+  //   1. Caminho explícito salvo no item
+  //   2. Backup organizado (Directory.Data)
+  //   3. Cache legado (Directory.Cache)
+  const candidatos = [
+    {
+      photoPath: item.photoPath || null,
+      photoDirectory: item.photoDirectory === 'CACHE' ? Directory.Cache : Directory.Data
+    },
+    {
+      photoPath: safeCondo ? `Backups/${safeCondo}/${fileName}` : null,
+      photoDirectory: Directory.Data
+    },
+    {
+      photoPath: safeCondo ? `FastLeituras/${safeCondo}/${fileName}` : null,
+      photoDirectory: Directory.Cache
+    }
+  ];
+
+  // Remove candidatos sem caminho definido e elimina duplicatas
+  // (dois candidatos com mesmo path+directory não devem ser tentados duas vezes)
+  const candidatosFiltrados = [];
+  const vistos = new Set();
+  for (const c of candidatos) {
+    if (!c.photoPath) continue;
+    const dirKey = c.photoDirectory === Directory.Cache ? 'CACHE' : 'DATA';
+    const chave = `${dirKey}::${c.photoPath}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    candidatosFiltrados.push(c);
+  }
+
+  for (const candidato of candidatosFiltrados) {
+    try {
+      const fileResult = await Filesystem.readFile({
+        path: candidato.photoPath,
+        directory: candidato.photoDirectory
+      });
+
+      // Foto encontrada — verifica se o caminho difere do salvo no item
+      const dirKey = candidato.photoDirectory === Directory.Cache ? 'CACHE' : 'DATA';
+      const mesmoCaminho = (item.photoPath === candidato.photoPath && item.photoDirectory === dirKey);
+
+      if (!mesmoCaminho) {
+        // Corrige o item na fila para que próximas tentativas já usem o caminho real
+        const filaAtual = readFilaSync();
+        const idx = filaAtual.findIndex(f => f.id === item.id);
+        if (idx !== -1) {
+          filaAtual[idx].photoPath = candidato.photoPath;
+          filaAtual[idx].photoDirectory = dirKey;
+          writeFilaSync(filaAtual);
+        }
+      }
+
+      return { fileResult, photoPath: candidato.photoPath, photoDirectory: candidato.photoDirectory };
+    } catch (_) {
+      // Candidato não encontrado — tenta o próximo
+    }
+  }
+
+  throw new Error(
+    `Foto física não localizada nos caminhos conhecidos para ${fileName}` +
+    (safeCondo ? ` (condomínio: ${safeCondo})` : '') +
+    '. Verifique se o arquivo foi excluído do dispositivo.'
+  );
+}
+
 // ─── 2. Sincronizar Fila em Background ──────────────────────────────────────
 
 /**
@@ -235,22 +325,11 @@ export async function sincronizarFilaEmBackground() {
           let fileResult;
           try {
             etapaSync = 'LOCALIZAR_FOTO';
-            let directoryReal = Directory.Data;
-            let pathReal = item.fileName;
-
-            if (item.photoPath) {
-              directoryReal = item.photoDirectory === 'CACHE' ? Directory.Cache : Directory.Data;
-              pathReal = item.photoPath;
-            } else if (item.fileName && item.condominio_nome) {
-              // ESTRATÉGIA B (LEGADO): Reconstrói o caminho para fotos capturadas antes da correção
-              const safeCondo = item.condominio_nome.replace(/[^a-z0-9]/gi, '_');
-              pathReal = `Backups/${safeCondo}/${item.fileName}`;
-            }
-            
-            fileResult = await Filesystem.readFile({
-              path: pathReal,
-              directory: directoryReal
-            });
+            // Delega a resolução de caminho ao helper com fallback em cascata:
+            //  1º candidato: photoPath/photoDirectory salvo no item
+            //  2º candidato: Backups/<condo>/<fileName> em Directory.Data
+            //  3º candidato: FastLeituras/<condo>/<fileName> em Directory.Cache
+            ({ fileResult } = await localizarFotoFisicaDaFila(item));
           } catch (fileError) {
             throw new Error(`Falha ao ler arquivo físico (${item.fileName}): ${fileError.message}`);
           }
