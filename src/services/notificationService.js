@@ -1,11 +1,12 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { HORARIOS_LEMBRETE, expandirHorariosNotificacao } from '../utils/horariosNotificacao';
 
 const DEDUPLICACAO_STORAGE_KEY = 'fastleituras_notificacoes_imediatas';
 
 /**
- * Obtém os identificadores técnicos de lembretes já emitidos imediatamente na data civil informada.
+ * Obtém os identificadores técnicos de lembretes agendados na data civil informada.
  * Se a data registrada for anterior à data informada, descarta automaticamente os IDs do dia anterior.
  */
 const getIdsNotificadosHoje = (dataHojeStr) => {
@@ -25,7 +26,7 @@ const getIdsNotificadosHoje = (dataHojeStr) => {
 };
 
 /**
- * Persiste no localStorage a data civil atual e as chaves técnicas dos lembretes emitidos imediatamente.
+ * Persiste no localStorage a data civil atual e as chaves técnicas dos lembretes agendados.
  */
 const salvarIdsNotificadosHoje = (dataHojeStr, idsSet) => {
   try {
@@ -70,13 +71,12 @@ const resolverIdUnicoDoLote = (chaveIdentificadora, idsUtilizadosNoLote) => {
 
 /**
  * Construtor modular de payload de notificação local para leituras.
- * Recebe o ID numérico já resolvido e exclusivo dentro do lote agendado.
+ * O ID por horário é atribuído no ponto central de inserção no lote.
  */
-const criarNotificacaoLeitura = ({ leitura, notifId, scheduleDate, title, body, focusType }) => ({
+const criarNotificacaoLeitura = ({ leitura, scheduleDate, title, body, focusType }) => ({
   title,
   body,
-  id: notifId,
-  schedule: { at: scheduleDate },
+  schedule: { at: scheduleDate, allowWhileIdle: true },
   sound: 'default',
   attachments: null,
   actionTypeId: '',
@@ -87,11 +87,10 @@ const criarNotificacaoLeitura = ({ leitura, notifId, scheduleDate, title, body, 
  * Construtor modular de payload de notificação local agrupada (quando não há vagas para individualizar).
  * Não possui id de leitura individual no payload, repassando apenas focusType: 'atrasadas' para navegação cíclica.
  */
-const criarNotificacaoAgrupada = ({ notifId, scheduleDate, title, body, focusType = 'atrasadas' }) => ({
+const criarNotificacaoAgrupada = ({ scheduleDate, title, body, focusType = 'atrasadas' }) => ({
   title,
   body,
-  id: notifId,
-  schedule: { at: scheduleDate },
+  schedule: { at: scheduleDate, allowWhileIdle: true },
   sound: 'default',
   attachments: null,
   actionTypeId: '',
@@ -205,8 +204,8 @@ export const NotificationService = {
    * 3. Terceira prioridade: demais agendamentos futuros (dias de leitura futura);
    * 4. Lembretes diários de atraso com o app fechado para leituras atrasadas:
    *    - Vagas restantes calculadas estritamente: Math.max(0, MAX - notifications.length);
-   *    - Janela: Math.min(30, Math.floor(vagasRestantes / quantidadeAtrasadas));
-   *    - Se não houver vagas para individualizar todos, cria no máximo 1 notificação diária agrupada por dia;
+   *    - Janela: até 30 dias, reservando dois horários por leitura e dia;
+   *    - Se não houver vagas para individualizar todos, cria avisos agrupados às 9h e 14h por dia;
    *    - Matematicamente impossível ultrapassar 50 notificações.
    * @param {Array} leituras - Lista completa de objetos de leitura.
    */
@@ -230,7 +229,7 @@ export const NotificationService = {
       const MAX_NOTIFICACOES_PENDENTES = 50;
       const notifications = [];
       const idsUtilizadosNoLote = new Set();
-      const leituraDiaNotificadoSet = new Set();
+      const horariosAdicionados = new Set();
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
@@ -243,28 +242,21 @@ export const NotificationService = {
       const hojeFormatado = `${yearStr}-${monthStr}-${dayStr}`;
 
       const idsNotificadosHoje = getIdsNotificadosHoje(hojeFormatado);
-      let novosIdsRegistrados = false;
+      const idsAgendadosHoje = new Set(idsNotificadosHoje);
 
-      // Trava estrita de inserção: impede matematicamente que o array ultrapasse MAX_NOTIFICACOES_PENDENTES
-      // e assegura no máximo uma notificação para a mesma leitura por data civil
+      // Cada data gera avisos às 9h e 14h. O limite conta notificações reais.
       const tentarAdicionar = (notificacao) => {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) {
-          return false;
+        for (const horario of expandirHorariosNotificacao(notificacao, now, idsNotificadosHoje)) {
+          if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
+          if (horariosAdicionados.has(horario.chave)) continue;
+          horariosAdicionados.add(horario.chave);
+          notifications.push({
+            ...notificacao,
+            id: resolverIdUnicoDoLote(horario.chave, idsUtilizadosNoLote),
+            schedule: { at: horario.at, allowWhileIdle: true },
+          });
+          if (horario.hoje) idsAgendadosHoje.add(horario.chave);
         }
-        const leituraId = notificacao.extra?.id;
-        if (leituraId && notificacao.schedule?.at) {
-          const atDate = notificacao.schedule.at;
-          const y = atDate.getFullYear();
-          const m = String(atDate.getMonth() + 1).padStart(2, '0');
-          const d = String(atDate.getDate()).padStart(2, '0');
-          const chaveDataCivil = `${leituraId}:${y}-${m}-${d}`;
-          if (leituraDiaNotificadoSet.has(chaveDataCivil)) {
-            return false;
-          }
-          leituraDiaNotificadoSet.add(chaveDataCivil);
-        }
-        notifications.push(notificacao);
-        return true;
       };
 
       // Classificação das leituras pendentes
@@ -290,125 +282,37 @@ export const NotificationService = {
 
       // ── 1. PRIORIDADE 1: NOTIFICAÇÕES DE HOJE ──
 
-      // 1.1 Leituras que vencem hoje
-      for (const item of leiturasHoje) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataDia = new Date(currentYear, currentMonth, item.dueDay, 9, 0, 0);
-        if (dataDia > now) {
-          const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:dia`, idsUtilizadosNoLote);
-          tentarAdicionar(
-            criarNotificacaoLeitura({
-              leitura: item.leitura,
-              notifId,
-              scheduleDate: dataDia,
-              title: '🚨 Leitura deve ser realizada hoje',
-              body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
-              focusType: 'hoje',
-            })
-          );
-        } else {
-          const chaveDia = `${item.leitura.id}:dia`;
-          if (!idsNotificadosHoje.has(chaveDia)) {
-            idsNotificadosHoje.add(chaveDia);
-            novosIdsRegistrados = true;
-            const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:dia`, idsUtilizadosNoLote);
-            tentarAdicionar(
-              criarNotificacaoLeitura({
-                leitura: item.leitura,
-                notifId,
-                scheduleDate: new Date(Date.now() + (notifications.length + 1) * 5000),
-                title: '🚨 Leitura deve ser realizada hoje',
-                body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
-                focusType: 'hoje',
-              })
-            );
-          }
-        }
-      }
-
-      // 1.2 Vésperas de leituras que vencem amanhã (cujo lembrete ocorre hoje)
-      for (const item of leiturasAmanha) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataVespera = new Date(currentYear, currentMonth, item.dueDay - 1, 9, 0, 0);
-        if (dataVespera > now) {
-          const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:vespera`, idsUtilizadosNoLote);
-          tentarAdicionar(
-            criarNotificacaoLeitura({
-              leitura: item.leitura,
-              notifId,
-              scheduleDate: dataVespera,
-              title: '⏰ Leitura vence amanhã',
-              body: `A leitura do condomínio ${item.leitura.nome} deve ser realizada amanhã.`,
-              focusType: 'amanha',
-            })
-          );
-        } else {
-          const chaveVespera = `${item.leitura.id}:vespera`;
-          if (!idsNotificadosHoje.has(chaveVespera)) {
-            idsNotificadosHoje.add(chaveVespera);
-            novosIdsRegistrados = true;
-            const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:vespera`, idsUtilizadosNoLote);
-            tentarAdicionar(
-              criarNotificacaoLeitura({
-                leitura: item.leitura,
-                notifId,
-                scheduleDate: new Date(Date.now() + (notifications.length + 1) * 5000),
-                title: '⏰ Leitura vence amanhã',
-                body: `A leitura do condomínio ${item.leitura.nome} deve ser realizada amanhã.`,
-                focusType: 'amanha',
-              })
-            );
-          }
-        }
-      }
-
-      // 1.3 Leituras já atrasadas hoje - Aviso do dia atual
-      for (const item of leiturasAtrasadas) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataHoje09 = new Date(currentYear, currentMonth, hoje, 9, 0, 0);
-        if (dataHoje09 > now) {
-          const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:atrasada:${hojeFormatado}`, idsUtilizadosNoLote);
-          tentarAdicionar(
-            criarNotificacaoLeitura({
-              leitura: item.leitura,
-              notifId,
-              scheduleDate: dataHoje09,
-              title: '🚨 Leitura continua atrasada',
-              body: `A leitura do condomínio ${item.leitura.nome} ainda não foi concluída.`,
-              focusType: 'atrasadas',
-            })
-          );
-        } else {
-          const chaveAtrasadaHoje = `${item.leitura.id}:atrasada`;
-          if (!idsNotificadosHoje.has(chaveAtrasadaHoje)) {
-            idsNotificadosHoje.add(chaveAtrasadaHoje);
-            novosIdsRegistrados = true;
-            const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:atrasada:${hojeFormatado}`, idsUtilizadosNoLote);
-            tentarAdicionar(
-              criarNotificacaoLeitura({
-                leitura: item.leitura,
-                notifId,
-                scheduleDate: new Date(Date.now() + (notifications.length + 1) * 5000),
-                title: '🚨 Leitura continua atrasada',
-                body: `A leitura do condomínio ${item.leitura.nome} ainda não foi concluída.`,
-                focusType: 'atrasadas',
-              })
-            );
-          }
+      const avisosHoje = [
+        { itens: leiturasHoje, title: '🚨 Leitura deve ser realizada hoje',
+          body: (nome) => `A leitura do condomínio ${nome} está programada para hoje.`, focusType: 'hoje' },
+        { itens: leiturasAmanha, title: '⏰ Leitura vence amanhã',
+          body: (nome) => `A leitura do condomínio ${nome} deve ser realizada amanhã.`, focusType: 'amanha' },
+        { itens: leiturasAtrasadas, title: '🚨 Leitura continua atrasada',
+          body: (nome) => `A leitura do condomínio ${nome} ainda não foi concluída.`, focusType: 'atrasadas' },
+      ];
+      for (const aviso of avisosHoje) {
+        for (const { leitura } of aviso.itens) {
+          if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
+          tentarAdicionar(criarNotificacaoLeitura({
+            leitura,
+            scheduleDate: new Date(currentYear, currentMonth, hoje, 9, 0, 0),
+            title: aviso.title,
+            body: aviso.body(leitura.nome),
+            focusType: aviso.focusType,
+          }));
         }
       }
 
       // ── 2. PRIORIDADE 2: AMANHÃ / VÉSPERAS FUTURAS ──
 
-      // 2.1 Leituras que vencem amanhã (alarme programado para amanhã às 09:00)
+      // 2.1 Leituras que vencem amanhã (alarmes programados para amanhã às 9h e 14h)
       for (const item of leiturasAmanha) {
         if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
         const dataDia = new Date(currentYear, currentMonth, item.dueDay, 9, 0, 0);
-        const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:dia`, idsUtilizadosNoLote);
+
         tentarAdicionar(
           criarNotificacaoLeitura({
             leitura: item.leitura,
-            notifId,
             scheduleDate: dataDia,
             title: '🚨 Leitura deve ser realizada hoje',
             body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
@@ -417,16 +321,14 @@ export const NotificationService = {
         );
       }
 
-      // 2.2 Vésperas de leituras futuras (programadas para dueDay - 1 às 09:00)
+      // 2.2 Vésperas de leituras futuras (programadas para dueDay - 1 às 9h e 14h)
       for (const item of leiturasFuturas) {
         if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
         const dataVespera = new Date(currentYear, currentMonth, item.dueDay - 1, 9, 0, 0);
         if (dataVespera > now) {
-          const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:vespera`, idsUtilizadosNoLote);
           tentarAdicionar(
             criarNotificacaoLeitura({
               leitura: item.leitura,
-              notifId,
               scheduleDate: dataVespera,
               title: '⏰ Leitura vence amanhã',
               body: `A leitura do condomínio ${item.leitura.nome} deve ser realizada amanhã.`,
@@ -440,11 +342,10 @@ export const NotificationService = {
       for (const item of leiturasFuturas) {
         if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
         const dataDia = new Date(currentYear, currentMonth, item.dueDay, 9, 0, 0);
-        const notifId = resolverIdUnicoDoLote(`${item.leitura.id}:dia`, idsUtilizadosNoLote);
+
         tentarAdicionar(
           criarNotificacaoLeitura({
             leitura: item.leitura,
-            notifId,
             scheduleDate: dataDia,
             title: '🚨 Leitura deve ser realizada hoje',
             body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
@@ -460,7 +361,7 @@ export const NotificationService = {
       // Todas as leituras não concluídas precisam de cobertura de atraso a partir de dueDay + 1:
       const totalLeiturasNaoConcluidas = leiturasNaoConcluidas.length;
       const diasJanelaAtraso = totalLeiturasNaoConcluidas > 0
-        ? Math.min(30, Math.floor(vagasRestantes / totalLeiturasNaoConcluidas))
+        ? Math.min(30, Math.floor(vagasRestantes / (totalLeiturasNaoConcluidas * HORARIOS_LEMBRETE.length)))
         : 0;
 
       // ── ETAPA 5: AGENDAMENTO PRÉVIO DE ATRASO (D+1, D+2...) COM O APP FECHADO ──
@@ -482,47 +383,27 @@ export const NotificationService = {
             const dataFutura = new Date(currentYear, currentMonth, diaAlvo, 9, 0, 0);
             if (dataFutura <= now) continue;
 
-            const anoFuturo = dataFutura.getFullYear();
-            const mesFuturo = String(dataFutura.getMonth() + 1).padStart(2, '0');
-            const diaFuturo = String(dataFutura.getDate()).padStart(2, '0');
-            const dataFuturaStr = `${anoFuturo}-${mesFuturo}-${diaFuturo}`;
-            const chaveLeituraData = `${leitura.id}:${dataFuturaStr}`;
-
-            // Previne duplicidade de notificação para a mesma leitura na mesma data civil
-            if (leituraDiaNotificadoSet.has(chaveLeituraData)) continue;
-
-            const notifId = resolverIdUnicoDoLote(`${leitura.id}:atrasada:${dataFuturaStr}`, idsUtilizadosNoLote);
-            if (tentarAdicionar(
+            tentarAdicionar(
               criarNotificacaoLeitura({
                 leitura,
-                notifId,
                 scheduleDate: dataFutura,
                 title: '🚨 Leitura continua atrasada',
                 body: `A leitura do condomínio ${leitura.nome} ainda não foi concluída.`,
                 focusType: 'atrasadas',
               })
-            )) {
-              leituraDiaNotificadoSet.add(chaveLeituraData);
-            }
+            );
           }
         }
       } else if (totalLeiturasNaoConcluidas > 0 && vagasRestantes > 0) {
         // Vagas insuficientes para individualizar todas as leituras por dia:
-        // Cria no máximo uma notificação diária agrupada por dia civil futuro, respeitando estritamente o limite de 50.
-        const diasAgrupados = Math.min(30, vagasRestantes);
+        // Cria avisos agrupados às 9h e 14h por dia civil futuro, respeitando estritamente o limite de 50.
+        const diasAgrupados = Math.min(30, Math.floor(vagasRestantes / HORARIOS_LEMBRETE.length));
         for (let offset = 1; offset <= diasAgrupados; offset++) {
           if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
 
           const dataFutura = new Date(currentYear, currentMonth, hoje + offset, 9, 0, 0);
-          const anoFuturo = dataFutura.getFullYear();
-          const mesFuturo = String(dataFutura.getMonth() + 1).padStart(2, '0');
-          const diaFuturo = String(dataFutura.getDate()).padStart(2, '0');
-          const dataFuturaStr = `${anoFuturo}-${mesFuturo}-${diaFuturo}`;
-
-          const notifId = resolverIdUnicoDoLote(`agrupada:atrasadas:${dataFuturaStr}`, idsUtilizadosNoLote);
           tentarAdicionar(
             criarNotificacaoAgrupada({
-              notifId,
               scheduleDate: dataFutura,
               title: '🚨 Leituras continuam atrasadas',
               body: `Você possui ${totalLeiturasNaoConcluidas} condomínios com leituras ainda não concluídas.`,
@@ -532,10 +413,6 @@ export const NotificationService = {
         }
       }
 
-      if (novosIdsRegistrados) {
-        salvarIdsNotificadosHoje(hojeFormatado, idsNotificadosHoje);
-      }
-
       if (notifications.length > 0) {
         // Ordena pela data/hora para disparo ordenado pelo Android
         notifications.sort((a, b) => a.schedule.at.getTime() - b.schedule.at.getTime());
@@ -543,6 +420,7 @@ export const NotificationService = {
         await LocalNotifications.schedule({
           notifications,
         });
+        salvarIdsNotificadosHoje(hojeFormatado, idsAgendadosHoje);
       }
     } catch (error) {
       console.warn('[NotificationService] Falha ao agendar notificações:', error);
