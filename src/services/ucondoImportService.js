@@ -5,6 +5,7 @@ import { supabase } from './supabase';
 import { customAlert, customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
 import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
 import { deduplicarGavetaAnteriores } from './leiturasAnterioresService';
+import { ordenarParesNatural } from '../utils/ordenarUnidades';
 import {
   normalizarNome,
   calcularDistanciaLevenstein,
@@ -234,10 +235,15 @@ export const UCondoImportService = {
     if (!condominioId || !Array.isArray(unidades)) return;
 
     // Normaliza entrada: aceita string pura (compatibilidade) ou objeto {unidade, leituraAnterior}
-    const pares = unidades.map(item => {
+    const paresRaw = unidades.map(item => {
       if (typeof item === 'string') return { unidade: String(item).trim(), leituraAnterior: null };
       return { unidade: String(item.unidade ?? item).trim(), leituraAnterior: item.leituraAnterior ?? null };
     });
+
+    // Ordenar pares naturalmente, mantendo a associacao leitura anterior <-> unidade intacta.
+    // Isso tambem protege contra qualquer fonte (Supabase, FS, localStorage) que retorne
+    // unidades fora de ordem. A lista salva e a usada em tela serao sempre canonicas.
+    const pares = ordenarParesNatural(paresRaw);
 
     const nomesUnidades = pares.map(p => p.unidade);
     const temLeituras = pares.some(p => p.leituraAnterior !== null);

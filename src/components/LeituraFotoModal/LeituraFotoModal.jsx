@@ -18,6 +18,7 @@ import { UCondoImportService } from '../../services/ucondoImportService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
+import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -420,13 +421,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
 
           if (unidadesParaCarregar.length > 0) {
-            setUnidadesAtualizadas(unidadesParaCarregar);
+            // Normalizar, desduplicar e ordenar naturalmente antes de usar.
+            // Isso autocorrige caches antigos corrompidos (ex: A-0704 antes de A-0101)
+            // na primeira abertura após esta versão do app.
+            const unidadesOrdenadas = ordenarUnidadesNatural(
+              unidadesParaCarregar.map(u =>
+                typeof u === 'object'
+                  ? String(u.numero || u.identificador || u.nome || u.unidade || '').trim()
+                  : String(u || '').trim()
+              )
+            );
 
-            // Garantir que a lista esteja cacheada localmente
-            localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesParaCarregar));
+            setUnidadesAtualizadas(unidadesOrdenadas);
+
+            // Regravar o cache já na ordem correta para sanar arquivos antigos
+            localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesOrdenadas));
             Filesystem.writeFile({
               path: `unidades_${condId}.json`,
-              data: JSON.stringify(unidadesParaCarregar),
+              data: JSON.stringify(unidadesOrdenadas),
               directory: Directory.Data,
               encoding: Encoding.UTF8
             }).catch(() => {});
@@ -488,13 +500,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   }, [isOpen, leitura, storageKey]);
 
   // Lógica de processamento de unidades e torres
+  // listaCompleta é a FONTE CANÔNICA para renderização, validação e exportação.
+  // ordenarUnidadesNatural garante que a ordem seja sempre alfanumérica correta,
+  // independente da ordem salva no cache (corrige caches antigos durante o uso).
   const { unidadesPorTorre, torres, listaCompleta } = useMemo(() => {
     const mapa = {};
-    const listaUnidades = unidadesCarregadas.length > 0 ? unidadesCarregadas : (leitura?.unidades || []);
+    const listaRaw = unidadesCarregadas.length > 0 ? unidadesCarregadas : (leitura?.unidades || []);
 
-    listaUnidades.forEach(unidade => {
+    // Aplicar ordenação natural como última linha de defesa (cobre todos os caminhos de entrada)
+    const listaOrdenada = ordenarUnidadesNatural(
+      listaRaw.map(u =>
+        typeof u === 'object'
+          ? String(u.numero || u.identificador || u.nome || u.unidade || '').trim()
+          : String(u || '').trim()
+      )
+    );
+
+    listaOrdenada.forEach(unidadeFormatada => {
       try {
-        const unidadeFormatada = String(unidade || '').trim();
         if (!unidadeFormatada) return;
 
         const match = unidadeFormatada.match(/^([A-Za-z0-9]+)-/);
@@ -525,7 +548,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return {
       unidadesPorTorre: mapa,
       torres: finalTorres,
-      listaCompleta: listaUnidades.map(u => String(u || '').trim()).filter(Boolean)
+      listaCompleta: listaOrdenada
     };
   }, [leitura, unidadesCarregadas]);
 
