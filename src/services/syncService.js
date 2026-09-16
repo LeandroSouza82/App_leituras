@@ -60,6 +60,62 @@ const base64ToBlob = (base64, mimeType = 'image/jpeg') => {
   }
 };
 
+// ─── Compressão de Foto Legada do Cache ─────────────────────────────────────
+
+/**
+ * Recebe o base64 de uma foto pesada localizada em Directory.Cache (fallback legado)
+ * e retorna uma versão comprimida como base64 puro (sem prefixo data:URL).
+ *
+ * Regras:
+ *  - Largura máxima: 1200 px. Imagens menores NÃO são ampliadas (sem upscale).
+ *  - Proporção original preservada.
+ *  - Qualidade JPEG: 0.7
+ *  - A foto de entrada já possui carimbo/tarja; este helper NÃO adiciona nenhum.
+ *
+ * @param {string} base64  Base64 puro ou com prefixo data:URL da imagem original.
+ * @returns {Promise<string>} Base64 puro (sem prefixo) da versão comprimida.
+ */
+async function comprimirFotoLegadaParaSync(base64) {
+  const MAX_LARGURA = 1200;
+  const QUALITY = 0.7;
+
+  const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
+
+  // Decodifica base64 para Blob
+  const byteChars = atob(cleanBase64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: 'image/jpeg' });
+
+  // Cria ImageBitmap (compatível com WebView Android)
+  const imageBitmap = await createImageBitmap(blob);
+
+  const srcW = imageBitmap.width;
+  const srcH = imageBitmap.height;
+
+  // Calcula dimensões de saída: nunca aumenta imagem menor que MAX_LARGURA
+  let destW = srcW;
+  let destH = srcH;
+  if (srcW > MAX_LARGURA) {
+    destW = MAX_LARGURA;
+    destH = Math.round(srcH * (MAX_LARGURA / srcW));
+  }
+
+  // Renderiza em canvas DOM (mecanismo comprovado no WebView Android)
+  const canvas = document.createElement('canvas');
+  canvas.width = destW;
+  canvas.height = destH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(imageBitmap, 0, 0, destW, destH);
+  if (typeof imageBitmap.close === 'function') imageBitmap.close();
+
+  // Serializa como JPEG com qualidade definida e retorna base64 puro
+  const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
+  return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+}
+
 // ─── 1. Salvar Leitura Offline ──────────────────────────────────────────────
 
 /**
@@ -200,32 +256,95 @@ async function localizarFotoFisicaDaFila(item) {
     candidatosFiltrados.push(c);
   }
 
-  for (const candidato of candidatosFiltrados) {
+  for (let ci = 0; ci < candidatosFiltrados.length; ci++) {
+    const candidato = candidatosFiltrados[ci];
+    const ehFallbackCache = candidato.photoDirectory === Directory.Cache;
+
+    // ── Etapa 1: tenta ler o candidato — catch SOMENTE para "arquivo não existe" ──
+    let fileResult;
     try {
-      const fileResult = await Filesystem.readFile({
+      fileResult = await Filesystem.readFile({
         path: candidato.photoPath,
         directory: candidato.photoDirectory
       });
+    } catch (_) {
+      // Arquivo não existe neste candidato — tenta o próximo
+      continue;
+    }
 
-      // Foto encontrada — verifica se o caminho difere do salvo no item
-      const dirKey = candidato.photoDirectory === Directory.Cache ? 'CACHE' : 'DATA';
-      const mesmoCaminho = (item.photoPath === candidato.photoPath && item.photoDirectory === dirKey);
+    // ── Etapa 2: arquivo encontrado — qualquer falha daqui propaga como erro real ──
 
-      if (!mesmoCaminho) {
-        // Corrige o item na fila para que próximas tentativas já usem o caminho real
-        const filaAtual = readFilaSync();
-        const idx = filaAtual.findIndex(f => f.id === item.id);
-        if (idx !== -1) {
-          filaAtual[idx].photoPath = candidato.photoPath;
-          filaAtual[idx].photoDirectory = dirKey;
-          writeFilaSync(filaAtual);
-        }
+    // ── Fallback de Cache legado: comprime antes de fazer upload ────────────
+    // Quando a foto pesada é encontrada SOMENTE no Cache (3º candidato),
+    // gera uma cópia JPEG comprimida em Directory.Data/Backups e atualiza
+    // a fila para apontar para essa versão comprimida.
+    // Se a cópia comprimida já existir em Backups, reutiliza sem recomprimir.
+    if (ehFallbackCache && fileResult?.data) {
+      const backupPath = `Backups/${safeCondo}/${fileName}`;
+
+      // Verifica se a versão comprimida já existe em Directory.Data/Backups
+      let backupJaExiste = false;
+      let backupFileResult = null;
+      try {
+        backupFileResult = await Filesystem.readFile({
+          path: backupPath,
+          directory: Directory.Data
+        });
+        backupJaExiste = true;
+      } catch (_) {
+        // Não existe ainda — será criada abaixo
       }
 
-      return { fileResult, photoPath: candidato.photoPath, photoDirectory: candidato.photoDirectory };
-    } catch (_) {
-      // Candidato não encontrado — tenta o próximo
+      if (!backupJaExiste) {
+        // Comprime a foto pesada do Cache (já carimbada) sem re-carimbar.
+        // Erros de compressão, canvas ou gravação propagam sem ser silenciados.
+        const base64Comprimido = await comprimirFotoLegadaParaSync(fileResult.data);
+
+        // Persiste a versão comprimida em Directory.Data/Backups
+        await Filesystem.writeFile({
+          path: backupPath,
+          data: base64Comprimido,
+          directory: Directory.Data,
+          recursive: true
+        });
+
+        // Lê de volta para retornar como fileResult padronizado
+        backupFileResult = await Filesystem.readFile({
+          path: backupPath,
+          directory: Directory.Data
+        });
+      }
+
+      // Atualiza o item da fila para apontar para a versão comprimida em DATA
+      const filaAtual = readFilaSync();
+      const idx = filaAtual.findIndex(f => f.id === item.id);
+      if (idx !== -1) {
+        filaAtual[idx].photoPath = backupPath;
+        filaAtual[idx].photoDirectory = 'DATA';
+        writeFilaSync(filaAtual);
+      }
+
+      return { fileResult: backupFileResult, photoPath: backupPath, photoDirectory: Directory.Data };
     }
+    // ── Fim do bloco de fallback de Cache legado ─────────────────────────────
+
+    // Foto encontrada em DATA ou no caminho explícito — verifica se o caminho
+    // difere do salvo no item para corrigir a fila
+    const dirKey = candidato.photoDirectory === Directory.Cache ? 'CACHE' : 'DATA';
+    const mesmoCaminho = (item.photoPath === candidato.photoPath && item.photoDirectory === dirKey);
+
+    if (!mesmoCaminho) {
+      // Corrige o item na fila para que próximas tentativas já usem o caminho real
+      const filaAtual = readFilaSync();
+      const idx = filaAtual.findIndex(f => f.id === item.id);
+      if (idx !== -1) {
+        filaAtual[idx].photoPath = candidato.photoPath;
+        filaAtual[idx].photoDirectory = dirKey;
+        writeFilaSync(filaAtual);
+      }
+    }
+
+    return { fileResult, photoPath: candidato.photoPath, photoDirectory: candidato.photoDirectory };
   }
 
   throw new Error(
