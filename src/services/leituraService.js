@@ -311,6 +311,21 @@ export const LeituraService = {
         };
       });
 
+      // ── SEGUNDA BARREIRA DEFENSIVA ────────────────────────────────────────
+      // Garante que nenhuma linha com 'Leitura atual *' vazia chegue ao XLSX.
+      // A validação principal é feita em validarLeiturasLote (LeituraFotoModal).
+      const linhaIncompleta = dadosExcel.find(
+        item => String(item['Leitura atual *'] ?? '').trim() === ''
+      );
+      if (linhaIncompleta) {
+        await customAlert(
+          `A unidade ${linhaIncompleta['Unidade *']} está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
+          'Exportação bloqueada'
+        );
+        return false;
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const ws = XLSX.utils.json_to_sheet(dadosExcel);
 
       // Aplica o tipo texto 's' e formato '@' na coluna B (Leitura atual *)

@@ -18,6 +18,7 @@ import { UCondoImportService } from '../../services/ucondoImportService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
+import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -420,13 +421,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           }
 
           if (unidadesParaCarregar.length > 0) {
-            setUnidadesAtualizadas(unidadesParaCarregar);
+            // Normalizar, desduplicar e ordenar naturalmente antes de usar.
+            // Isso autocorrige caches antigos corrompidos (ex: A-0704 antes de A-0101)
+            // na primeira abertura após esta versão do app.
+            const unidadesOrdenadas = ordenarUnidadesNatural(
+              unidadesParaCarregar.map(u =>
+                typeof u === 'object'
+                  ? String(u.numero || u.identificador || u.nome || u.unidade || '').trim()
+                  : String(u || '').trim()
+              )
+            );
 
-            // Garantir que a lista esteja cacheada localmente
-            localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesParaCarregar));
+            setUnidadesAtualizadas(unidadesOrdenadas);
+
+            // Regravar o cache já na ordem correta para sanar arquivos antigos
+            localStorage.setItem(`unidades_${condId}`, JSON.stringify(unidadesOrdenadas));
             Filesystem.writeFile({
               path: `unidades_${condId}.json`,
-              data: JSON.stringify(unidadesParaCarregar),
+              data: JSON.stringify(unidadesOrdenadas),
               directory: Directory.Data,
               encoding: Encoding.UTF8
             }).catch(() => {});
@@ -488,13 +500,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   }, [isOpen, leitura, storageKey]);
 
   // Lógica de processamento de unidades e torres
+  // listaCompleta é a FONTE CANÔNICA para renderização, validação e exportação.
+  // ordenarUnidadesNatural garante que a ordem seja sempre alfanumérica correta,
+  // independente da ordem salva no cache (corrige caches antigos durante o uso).
   const { unidadesPorTorre, torres, listaCompleta } = useMemo(() => {
     const mapa = {};
-    const listaUnidades = unidadesCarregadas.length > 0 ? unidadesCarregadas : (leitura?.unidades || []);
+    const listaRaw = unidadesCarregadas.length > 0 ? unidadesCarregadas : (leitura?.unidades || []);
 
-    listaUnidades.forEach(unidade => {
+    // Aplicar ordenação natural como última linha de defesa (cobre todos os caminhos de entrada)
+    const listaOrdenada = ordenarUnidadesNatural(
+      listaRaw.map(u =>
+        typeof u === 'object'
+          ? String(u.numero || u.identificador || u.nome || u.unidade || '').trim()
+          : String(u || '').trim()
+      )
+    );
+
+    listaOrdenada.forEach(unidadeFormatada => {
       try {
-        const unidadeFormatada = String(unidade || '').trim();
         if (!unidadeFormatada) return;
 
         const match = unidadeFormatada.match(/^([A-Za-z0-9]+)-/);
@@ -525,7 +548,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return {
       unidadesPorTorre: mapa,
       torres: finalTorres,
-      listaCompleta: listaUnidades.map(u => String(u || '').trim()).filter(Boolean)
+      listaCompleta: listaOrdenada
     };
   }, [leitura, unidadesCarregadas]);
 
@@ -1227,7 +1250,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   // FUNÇÃO MODULAR DE VALIDAÇÃO RIGOROSA ANTES DO ENVIO
-  const validarLeiturasLote = (scopeParam, tipoCondominioOrig, unidadesList, leiturasVal) => {
+  // fotosMap: mapa de fotos em memória (fotosCapturadas). Obrigatório para detectar FOTO_AUSENTE.
+  const validarLeiturasLote = (scopeParam, tipoCondominioOrig, unidadesList, leiturasVal, fotosMap) => {
     const tipo = String(tipoCondominioOrig || '').toLowerCase();
     const isMisto = !tipo.includes('somente') && !tipo.includes('energia');
 
@@ -1242,28 +1266,48 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
 
     const condId = leitura?.id || leitura?.condominio_id;
-    // Lê gaveta de leituras anteriores UMA vez para todo o lote
-    let gavetaAnteriores = [];
-    try {
-      const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
-      if (rawGav) gavetaAnteriores = JSON.parse(rawGav) || [];
-      if (!Array.isArray(gavetaAnteriores)) gavetaAnteriores = [];
-    } catch { gavetaAnteriores = []; }
 
     for (const uni of unidadesList) {
       const apStr = String(uni.unidade || uni.nome || uni).trim();
       for (const srv of servicosParaValidar) {
+        const srvKey = normalizarServicoLocal(srv);
 
-        // Todas as unidades do serviço selecionado são obrigatórias na exportação.
-        // Mesmo uma unidade totalmente intocada deve ser identificada como pendente.
-        const val = leiturasVal[`${apStr}_${srv}`] ?? leiturasVal[apStr]?.[srv] ?? obterLeituraAtualPersistida(condId, apStr, srv);
+        // ── FASE 1: verificar leitura atual ───────────────────────────────
+        // Consulta as mesmas fontes já existentes: estado em memória e localStorage.
+        // Valor antigo sozinho NÃO é prova de conclusão — a foto ainda precisa existir.
+        const val =
+          leiturasVal[`${apStr}_${srvKey}`]
+          ?? leiturasVal[apStr]?.[srvKey]
+          ?? obterLeituraAtualPersistida(condId, apStr, srvKey);
         const numVal = parseLeituraNum(val);
 
         if (val === undefined || val === null || val === '' || numVal === null || Number.isNaN(numVal)) {
-          return { isValid: false, unidade: apStr, servico: srv };
+          return { isValid: false, motivo: 'LEITURA_AUSENTE', unidade: apStr, servico: srvKey };
         }
 
-        // ── FASE 2: barreira atual < anterior ─────────────────────────────
+        // ── FASE 2: verificar evidência de foto ───────────────────────────
+        // Aceita foto em memória OU foto persistida (foto_path + concluido === 'true').
+        // concluidosMemoria sozinho NÃO prova existência de foto.
+        // foto_path sozinho (sem concluido) NÃO prova existência de foto.
+        const temFotoMemoria = Boolean(fotosMap?.[apStr]?.[srvKey]);
+
+        const chaveLocal = gerarChaveLeituraLocal(condId, apStr, srvKey);
+        const fotoPathPersistida = chaveLocal
+          ? localStorage.getItem(`foto_path_${chaveLocal}`)
+          : null;
+        const concluidoPersistido = chaveLocal
+          ? localStorage.getItem(`concluido_${chaveLocal}`) === 'true'
+          : false;
+        const temFotoPersistida = Boolean(fotoPathPersistida) && concluidoPersistido;
+
+        const temFoto = temFotoMemoria || temFotoPersistida;
+
+        if (!temFoto) {
+          return { isValid: false, motivo: 'FOTO_AUSENTE', unidade: apStr, servico: srvKey };
+        }
+
+        // ── FASE 3: barreira atual < anterior ─────────────────────────────
+        // Executada somente após leitura e foto confirmadas.
         const leitAnt = obterLeituraAnterior(condId, apStr, srv);
         if (leitAnt !== null) {
           const atFixed = Math.round(numVal * 10000);
@@ -1273,7 +1317,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               isValid: false,
               motivo: 'MENOR_QUE_ANTERIOR',
               unidade: apStr,
-              servico: srv,
+              servico: srvKey,
               leituraAtual: numVal,
               leituraAnterior: leitAnt,
             };
@@ -1300,13 +1344,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     // VALIDAÇÃO
     // ------------------------
     etapaAtual = 'VALIDACAO';
+    // listaCompleta é a fonte canônica (mesma ordem usada no fluxo de exportação).
+    // Nunca usar unidadesCarregadas aqui — ela pode estar desatualizada ou em ordem diferente.
     const validacao = validarLeiturasLote(
       servico,
       leitura?.tipoLeitura || leitura?.tipo_leitura,
-      unidadesCarregadas,
+      listaCompleta,
       leiturasValores,
-      fotosCapturadas,
-      concluidosMemoria
+      fotosCapturadas
     );
     if (!validacao.isValid) {
       if (validacao.motivo === 'MENOR_QUE_ANTERIOR') {
@@ -1316,9 +1361,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           `A leitura atual não pode ser menor que a leitura anterior.\n\nUnidade: ${validacao.unidade} (${validacao.servico.toUpperCase()})\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
           'Leitura inválida'
         );
+      } else if (validacao.motivo === 'FOTO_AUSENTE') {
+        await customAlert(
+          `A unidade ${validacao.unidade} (${validacao.servico.toUpperCase()}) possui leitura, mas ainda não possui a foto obrigatória do medidor.`,
+          'Foto Pendente'
+        );
       } else {
-        const msg = `A leitura de ${validacao.servico.toUpperCase()} da unidade ${validacao.unidade} não possui foto ou não foi preenchida.`;
-        await customAlert(msg, 'Leitura Pendente');
+        // LEITURA_AUSENTE ou motivo não reconhecido
+        await customAlert(
+          `A unidade ${validacao.unidade} (${validacao.servico.toUpperCase()}) ainda não possui leitura atual preenchida.`,
+          'Leitura Pendente'
+        );
       }
       setTimeout(() => {
         const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
