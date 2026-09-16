@@ -557,6 +557,14 @@ export async function sincronizarFilaEmBackground() {
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.
         const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
         writeFilaSync(filaAtualizada);
+
+        if (readFilaSync().length === 0) {
+          try {
+            localStorage.removeItem('sync_ultimo_erro');
+          } catch (cleanupErr) {
+            console.warn('Não foi possível limpar o diagnóstico antigo de sincronização:', cleanupErr);
+          }
+        }
         
         etapaSync = 'CONCLUIDO';
 
