@@ -9,6 +9,7 @@ import { buscarCondominios } from '../../services/condominioService';
 import { supabase } from '../../services/supabase';
 import { filesystemService } from '../../services/filesystemService';
 import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
+import { exportarFotosCondominioZip } from '../../services/fotoExportService';
 import './BackupFotosMenu.css';
 
 const extractStoragePath = (urlOrPath) => {
@@ -353,40 +354,14 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     if (isSharing) return;
     setIsSharing(true);
     try {
-      const fileUris = [];
-
-      for (let i = 0; i < condo.arquivos.length; i++) {
-        const fileName = condo.arquivos[i].name;
-        const sourcePath = `Backups/${condo.pathFisico}/${fileName}`;
-        const tempFileName = `share_lote_${condo.pathFisico}_${i}.jpg`;
-        
-        try {
-          const base64Data = await filesystemService.lerFotoBase64(sourcePath);
-          const base64Pure = base64Data.replace(/^data:image\/[a-z]+;base64,/, "");
-
-          const savedFile = await Filesystem.writeFile({
-            path: tempFileName,
-            data: base64Pure,
-            directory: Directory.Cache,
-            recursive: true
-          });
-          
-          const localUri = savedFile.uri.startsWith('file://') ? savedFile.uri : `file://${savedFile.uri}`;
-          fileUris.push(localUri);
-        } catch (err) {}
-      }
-
-      if (fileUris.length === 0) {
-        return;
-      }
-
-      await Share.share({
-        dialogTitle: `Lote: ${condo.nome}`,
-        files: fileUris
-      });
-
-    } catch (e) {
-      console.log('Compartilhamento cancelado ou falhou:', e);
+      await exportarFotosCondominioZip(condo);
+    } catch (error) {
+      // AbortError = usuario cancelou o Share nativo — nao e erro para o usuario
+      if (error?.name === 'AbortError' || error?.message?.toLowerCase().includes('cancel')) return;
+      await customAlert(
+        `Erro ao gerar o ZIP: ${error?.message || 'Erro desconhecido'}`,
+        'Exportacao ZIP'
+      );
     } finally {
       setIsSharing(false);
     }
