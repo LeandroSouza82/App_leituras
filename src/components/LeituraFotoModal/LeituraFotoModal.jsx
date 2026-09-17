@@ -1788,7 +1788,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             />
 
             <div className="modal-selectors">
-              <div className="selectors-top-row">
+              <div className={`selectors-top-row ${showAgua && showGas && showEnergia ? 'selectors-top-row--three-services' : ''}`}>
                 <div className="torre-filter-wrapper-select">
                   <select
                     className="select-torre-ap"
