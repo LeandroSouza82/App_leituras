@@ -1,7 +1,10 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
-import { HORARIOS_LEMBRETE, expandirHorariosNotificacao } from '../utils/horariosNotificacao';
+import { expandirHorariosNotificacao, dataCivilNotificacao } from '../utils/horariosNotificacao';
+import { criarPlanoLembretes } from '../utils/planoLembretes';
+
+let agendamentoEmFila = Promise.resolve();
 
 const DEDUPLICACAO_STORAGE_KEY = 'fastleituras_notificacoes_imediatas';
 
@@ -68,34 +71,6 @@ const resolverIdUnicoDoLote = (chaveIdentificadora, idsUtilizadosNoLote) => {
   idsUtilizadosNoLote.add(notifId);
   return notifId;
 };
-
-/**
- * Construtor modular de payload de notificação local para leituras.
- * O ID por horário é atribuído no ponto central de inserção no lote.
- */
-const criarNotificacaoLeitura = ({ leitura, scheduleDate, title, body, focusType }) => ({
-  title,
-  body,
-  schedule: { at: scheduleDate, allowWhileIdle: true },
-  sound: 'default',
-  attachments: null,
-  actionTypeId: '',
-  extra: { id: leitura.id, focusType },
-});
-
-/**
- * Construtor modular de payload de notificação local agrupada (quando não há vagas para individualizar).
- * Não possui id de leitura individual no payload, repassando apenas focusType: 'atrasadas' para navegação cíclica.
- */
-const criarNotificacaoAgrupada = ({ scheduleDate, title, body, focusType = 'atrasadas' }) => ({
-  title,
-  body,
-  schedule: { at: scheduleDate, allowWhileIdle: true },
-  sound: 'default',
-  attachments: null,
-  actionTypeId: '',
-  extra: { focusType },
-});
 
 /**
  * NotificationService - Serviço modular para gerenciar notificações locais e alarmes agendados.
@@ -197,33 +172,32 @@ export const NotificationService = {
     }
   },
 
-  /**
-   * Agenda lembretes locais no Android para leituras não concluídas respeitando estritamente o limite de 50:
-   * 1. Prioridade máxima: notificações de hoje (leituras de hoje, vésperas que caem hoje, atrasadas de hoje);
-   * 2. Segunda prioridade: notificações de amanhã/véspera (leituras que vencem amanhã e vésperas futuras);
-   * 3. Terceira prioridade: demais agendamentos futuros (dias de leitura futura);
-   * 4. Lembretes diários de atraso com o app fechado para leituras atrasadas:
-   *    - Vagas restantes calculadas estritamente: Math.max(0, MAX - notifications.length);
-   *    - Janela: até 30 dias, reservando dois horários por leitura e dia;
-   *    - Se não houver vagas para individualizar todos, cria avisos agrupados às 9h e 14h por dia;
-   *    - Matematicamente impossível ultrapassar 50 notificações.
-   * @param {Array} leituras - Lista completa de objetos de leitura.
-   */
-  async scheduleReadings(leituras = []) {
-    if (!Capacitor.isNativePlatform()) return;
+  // Serializa cancelamento e agendamento para que a lista mais recente prevaleça.
+  scheduleReadings(leituras = []) {
+    const snapshot = leituras.map((leitura) => ({ ...leitura }));
+    agendamentoEmFila = agendamentoEmFila.catch(() => {}).then(() => this._scheduleReadings(snapshot));
+    return agendamentoEmFila;
+  },
+
+  /** Agenda até 25 dias com um resumo por horário (9h e 14h), no máximo 50 avisos. */
+  async _scheduleReadings(leituras) {
+    if (!Capacitor.isNativePlatform()) return true;
 
     try {
       // Não tenta agendar notificações se a permissão não estiver concedida
       const { granted } = await this.checkPermissionStatus();
       if (!granted) {
-        return;
+        return false;
       }
 
       await this.cancelAll();
 
-      const leiturasNaoConcluidas = leituras.filter((l) => !l.completo && this._extractDay(l.diaLeitura));
+      const leiturasNaoConcluidas = leituras
+        .filter((leitura) => !leitura.completo)
+        .map((leitura) => ({ leitura, dia: this._extractDay(leitura.diaLeitura) }))
+        .filter(({ dia }) => dia >= 1 && dia <= 31);
       if (leiturasNaoConcluidas.length === 0) {
-        return;
+        return true;
       }
 
       const MAX_NOTIFICACOES_PENDENTES = 50;
@@ -231,15 +205,7 @@ export const NotificationService = {
       const idsUtilizadosNoLote = new Set();
       const horariosAdicionados = new Set();
       const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      const hoje = now.getDate();
-
-      // Formato civil local YYYY-MM-DD para controle de deduplicação diária
-      const yearStr = String(currentYear);
-      const monthStr = String(currentMonth + 1).padStart(2, '0');
-      const dayStr = String(hoje).padStart(2, '0');
-      const hojeFormatado = `${yearStr}-${monthStr}-${dayStr}`;
+      const hojeFormatado = dataCivilNotificacao(now);
 
       const idsNotificadosHoje = getIdsNotificadosHoje(hojeFormatado);
       const idsAgendadosHoje = new Set(idsNotificadosHoje);
@@ -259,158 +225,8 @@ export const NotificationService = {
         }
       };
 
-      // Classificação das leituras pendentes
-      const leiturasAtrasadas = [];
-      const leiturasHoje = [];
-      const leiturasAmanha = [];
-      const leiturasFuturas = [];
-
-      leiturasNaoConcluidas.forEach((leitura) => {
-        const dia = this._extractDay(leitura.diaLeitura);
-        if (!dia) return;
-        const dueDay = dia;
-        if (dueDay < hoje) {
-          leiturasAtrasadas.push({ leitura, dueDay });
-        } else if (dueDay === hoje) {
-          leiturasHoje.push({ leitura, dueDay });
-        } else if (dueDay === hoje + 1) {
-          leiturasAmanha.push({ leitura, dueDay });
-        } else {
-          leiturasFuturas.push({ leitura, dueDay });
-        }
-      });
-
-      // ── 1. PRIORIDADE 1: NOTIFICAÇÕES DE HOJE ──
-
-      const avisosHoje = [
-        { itens: leiturasHoje, title: '🚨 Leitura deve ser realizada hoje',
-          body: (nome) => `A leitura do condomínio ${nome} está programada para hoje.`, focusType: 'hoje' },
-        { itens: leiturasAmanha, title: '⏰ Leitura vence amanhã',
-          body: (nome) => `A leitura do condomínio ${nome} deve ser realizada amanhã.`, focusType: 'amanha' },
-        { itens: leiturasAtrasadas, title: '🚨 Leitura continua atrasada',
-          body: (nome) => `A leitura do condomínio ${nome} ainda não foi concluída.`, focusType: 'atrasadas' },
-      ];
-      for (const aviso of avisosHoje) {
-        for (const { leitura } of aviso.itens) {
-          if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-          tentarAdicionar(criarNotificacaoLeitura({
-            leitura,
-            scheduleDate: new Date(currentYear, currentMonth, hoje, 9, 0, 0),
-            title: aviso.title,
-            body: aviso.body(leitura.nome),
-            focusType: aviso.focusType,
-          }));
-        }
-      }
-
-      // ── 2. PRIORIDADE 2: AMANHÃ / VÉSPERAS FUTURAS ──
-
-      // 2.1 Leituras que vencem amanhã (alarmes programados para amanhã às 9h e 14h)
-      for (const item of leiturasAmanha) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataDia = new Date(currentYear, currentMonth, item.dueDay, 9, 0, 0);
-
-        tentarAdicionar(
-          criarNotificacaoLeitura({
-            leitura: item.leitura,
-            scheduleDate: dataDia,
-            title: '🚨 Leitura deve ser realizada hoje',
-            body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
-            focusType: 'hoje',
-          })
-        );
-      }
-
-      // 2.2 Vésperas de leituras futuras (programadas para dueDay - 1 às 9h e 14h)
-      for (const item of leiturasFuturas) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataVespera = new Date(currentYear, currentMonth, item.dueDay - 1, 9, 0, 0);
-        if (dataVespera > now) {
-          tentarAdicionar(
-            criarNotificacaoLeitura({
-              leitura: item.leitura,
-              scheduleDate: dataVespera,
-              title: '⏰ Leitura vence amanhã',
-              body: `A leitura do condomínio ${item.leitura.nome} deve ser realizada amanhã.`,
-              focusType: 'amanha',
-            })
-          );
-        }
-      }
-
-      // ── 3. PRIORIDADE 3: DEMAIS AGENDAMENTOS FUTUROS (DIAS DE LEITURA FUTURA) ──
-      for (const item of leiturasFuturas) {
-        if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-        const dataDia = new Date(currentYear, currentMonth, item.dueDay, 9, 0, 0);
-
-        tentarAdicionar(
-          criarNotificacaoLeitura({
-            leitura: item.leitura,
-            scheduleDate: dataDia,
-            title: '🚨 Leitura deve ser realizada hoje',
-            body: `A leitura do condomínio ${item.leitura.nome} está programada para hoje.`,
-            focusType: 'hoje',
-          })
-        );
-      }
-
-      // ── ETAPA 4: CÁLCULO ESTRITO DE VAGAS RESTANTES E JANELA DE DIAS DE ATRASO ──
-      // Contagem real das notificações já inseridas no lote:
-      const vagasRestantes = Math.max(0, MAX_NOTIFICACOES_PENDENTES - notifications.length);
-
-      // Todas as leituras não concluídas precisam de cobertura de atraso a partir de dueDay + 1:
-      const totalLeiturasNaoConcluidas = leiturasNaoConcluidas.length;
-      const diasJanelaAtraso = totalLeiturasNaoConcluidas > 0
-        ? Math.min(30, Math.floor(vagasRestantes / (totalLeiturasNaoConcluidas * HORARIOS_LEMBRETE.length)))
-        : 0;
-
-      // ── ETAPA 5: AGENDAMENTO PRÉVIO DE ATRASO (D+1, D+2...) COM O APP FECHADO ──
-      if (diasJanelaAtraso > 0) {
-        // Há vagas para agendamento individualizado de todas as leituras não concluídas por diasJanelaAtraso dias
-        for (let offset = 1; offset <= diasJanelaAtraso; offset++) {
-          if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-
-          for (const leitura of leiturasNaoConcluidas) {
-            if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-
-            const dueDay = this._extractDay(leitura.diaLeitura);
-            if (!dueDay) continue;
-
-            // Ponto de partida do atraso para esta leitura:
-            // Se dueDay < hoje (já atrasada), o próximo dia de atraso começa em hoje + offset.
-            // Se dueDay >= hoje (vence hoje ou no futuro), o atraso D+1 começa estritamente em dueDay + offset.
-            const diaAlvo = dueDay < hoje ? (hoje + offset) : (dueDay + offset);
-            const dataFutura = new Date(currentYear, currentMonth, diaAlvo, 9, 0, 0);
-            if (dataFutura <= now) continue;
-
-            tentarAdicionar(
-              criarNotificacaoLeitura({
-                leitura,
-                scheduleDate: dataFutura,
-                title: '🚨 Leitura continua atrasada',
-                body: `A leitura do condomínio ${leitura.nome} ainda não foi concluída.`,
-                focusType: 'atrasadas',
-              })
-            );
-          }
-        }
-      } else if (totalLeiturasNaoConcluidas > 0 && vagasRestantes > 0) {
-        // Vagas insuficientes para individualizar todas as leituras por dia:
-        // Cria avisos agrupados às 9h e 14h por dia civil futuro, respeitando estritamente o limite de 50.
-        const diasAgrupados = Math.min(30, Math.floor(vagasRestantes / HORARIOS_LEMBRETE.length));
-        for (let offset = 1; offset <= diasAgrupados; offset++) {
-          if (notifications.length >= MAX_NOTIFICACOES_PENDENTES) break;
-
-          const dataFutura = new Date(currentYear, currentMonth, hoje + offset, 9, 0, 0);
-          tentarAdicionar(
-            criarNotificacaoAgrupada({
-              scheduleDate: dataFutura,
-              title: '🚨 Leituras continuam atrasadas',
-              body: `Você possui ${totalLeiturasNaoConcluidas} condomínios com leituras ainda não concluídas.`,
-              focusType: 'atrasadas',
-            })
-          );
-        }
+      for (const notificacao of criarPlanoLembretes(leiturasNaoConcluidas, now)) {
+        tentarAdicionar(notificacao);
       }
 
       if (notifications.length > 0) {
@@ -422,8 +238,10 @@ export const NotificationService = {
         });
         salvarIdsNotificadosHoje(hojeFormatado, idsAgendadosHoje);
       }
+      return true;
     } catch (error) {
       console.warn('[NotificationService] Falha ao agendar notificações:', error);
+      return false;
     }
   },
 

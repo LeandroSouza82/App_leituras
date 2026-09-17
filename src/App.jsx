@@ -1,5 +1,5 @@
 import { customAlert } from './components/CustomPrompt/CustomPrompt';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
@@ -9,6 +9,7 @@ import BottomNavbar from './components/BottomNavbar/BottomNavbar';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import AReceberModal from './components/AReceberModal/AReceberModal';
 import { useLeituras } from './hooks/useLeituras';
+import { useLembretesLeituras } from './hooks/useLembretesLeituras';
 import { NotificationService } from './services/notificationService';
 import ModalAviso from './components/ModalAviso/ModalAviso';
 import ListaCondominiosModal from './components/ListaCondominiosModal/ListaCondominiosModal';
@@ -43,7 +44,6 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
   const [focoLeituraTipo, setFocoLeituraTipo] = useState('atrasadas');
   const [focoEspecifico, setFocoEspecifico] = useState(null);
-  const lastScheduledSignatureRef = useRef('');
   const { toast, showToast, dismissToast } = useToast();
   const {
     leituras,
@@ -65,13 +65,7 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
     () => leiturasHoje.length + leiturasAmanha.length + leiturasAtrasadas.length,
     [leiturasHoje, leiturasAmanha, leiturasAtrasadas]
   );
-  const leiturasSignature = useMemo(() => {
-    if (!Array.isArray(leituras) || leituras.length === 0) return '';
-    return [...leituras]
-      .sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')))
-      .map((l) => `${l.id}:${l.completo ? 1 : 0}:${l.diaLeitura ?? ''}`)
-      .join('|');
-  }, [leituras]);
+  useLembretesLeituras(leituras);
 
   const handleAdicionarLeitura = async (dados) => {
     if (!isOnline) {
@@ -270,15 +264,9 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
   }, []);
 
   useEffect(() => {
-    // Apenas reagenda se a lista real de leituras (IDs, dias ou status) tiver sido alterada
-    if (lastScheduledSignatureRef.current !== leiturasSignature) {
-      lastScheduledSignatureRef.current = leiturasSignature;
-      NotificationService.scheduleReadings(leituras);
-    }
-
     const temPendencias = totalPendentes > 0;
     atualizarBadgeIcone(temPendencias ? totalPendentes : 0);
-  }, [leituras, leiturasSignature, totalPendentes]);
+  }, [totalPendentes]);
 
   useEffect(() => {
     const chave = sessionStorage.getItem('leituras-alerta-aberto');
