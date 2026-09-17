@@ -8,7 +8,7 @@
  */
 
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
-import { supabase } from './supabaseClient';
+import { supabase } from './supabase';
 
 /**
  * Inicializa o plugin nativo do Google Auth.

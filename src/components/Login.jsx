@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, LockKeyhole, Mail, LogIn, UserPlus, UserRound, Phone, KeyRound, ArrowLeft } from 'lucide-react';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../services/supabase';
 import { Capacitor } from '@capacitor/core';
 import { useGoogleLogin } from '@react-oauth/google';
 import { loginGoogleNativo } from '../services/googleAuthService';

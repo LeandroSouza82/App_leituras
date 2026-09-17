@@ -5,7 +5,7 @@ import { Browser } from '@capacitor/browser';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import './CondominioDetalheModal.css';
-import { supabase } from '../../services/supabaseClient';
+import { supabase } from '../../services/supabase';
 import ContactActionModal from '../ContactActionModal/ContactActionModal';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
