@@ -30,6 +30,23 @@ const extractStoragePath = (urlOrPath) => {
   }
 };
 
+const removerFotosStorageConfirmado = async (paths) => {
+  const pathsUnicos = [...new Set(paths.filter(Boolean))];
+  if (pathsUnicos.length === 0) return;
+
+  const { data, error } = await supabase.storage
+    .from('fotos_leituras')
+    .remove(pathsUnicos);
+
+  if (error) throw error;
+
+  const removidos = new Set((data || []).map(item => item.name));
+  const naoRemovidos = pathsUnicos.filter(path => !removidos.has(path));
+  if (naoRemovidos.length > 0) {
+    throw new Error('O armazenamento não confirmou a exclusão de todas as fotos.');
+  }
+};
+
 const itemFilaPertenceAoArquivo = (itemFila, arquivo) => {
   const caminho = String(arquivo.path || '').replace(/\\/g, '/');
   const caminhoFila = String(itemFila.photoPath || '').replace(/\\/g, '/');
@@ -104,23 +121,32 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         
         await carregarPastas();
       } else if (type === 'online') {
+        if (item.foto_url && typeof item.foto_url === 'string') {
+          const path = extractStoragePath(item.foto_url);
+          if (path) {
+            await removerFotosStorageConfirmado([path]);
+          }
+        }
+        
+        if (item.id && !item.isPending) {
+          const { data: registrosExcluidos, error: deleteError } = await supabase
+            .from('leituras_detalhes')
+            .delete()
+            .eq('id', item.id)
+            .select('id');
+
+          if (deleteError) throw deleteError;
+          if (registrosExcluidos?.length !== 1) {
+            throw new Error('O banco de dados não confirmou a exclusão da foto.');
+          }
+        }
+
         try {
           const chaveFila = 'fila_sync_auto';
           let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
           let novaFila = fila.filter(f => f.id !== item.id);
           localStorage.setItem(chaveFila, JSON.stringify(novaFila));
         } catch(e) {}
-
-        if (item.foto_url && typeof item.foto_url === 'string') {
-          const path = extractStoragePath(item.foto_url);
-          if (path) {
-             await supabase.storage.from('fotos_leituras').remove([path]);
-          }
-        }
-        
-        if (item.id && !item.isPending) {
-           await supabase.from('leituras_detalhes').delete().eq('id', item.id);
-        }
         
         setOnlinePhotos(prev => prev.filter(p => p.id !== item.id));
       }
@@ -142,7 +168,39 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       const userId = sessionData?.user?.id;
       if (userId && backupAtual?.nome) {
         
-        // 0. Remover da fila de sincronização no localStorage para o item não voltar
+        // 1. Apagar as fotos do Storage
+        const pathsParaDeletar = backupAtual.arquivos
+          .map(arq => extractStoragePath(arq.foto_url))
+          .filter(Boolean);
+
+        if (pathsParaDeletar.length > 0) {
+          await removerFotosStorageConfirmado(pathsParaDeletar);
+        }
+
+        // 2. Apagar o registro da tabela
+        const idsParaDeletar = backupAtual.arquivos
+          .filter(item => !item.isPending && item.id)
+          .map(item => item.id);
+        let registrosExcluidos = [];
+
+        if (idsParaDeletar.length > 0) {
+          const { data, error } = await supabase
+            .from('leituras_detalhes')
+            .delete()
+            .eq('leiturista_id', userId)
+            .in('id', idsParaDeletar)
+            .select('id');
+
+          if (error) throw error;
+          registrosExcluidos = data || [];
+        }
+
+        const registrosEsperados = idsParaDeletar.length;
+        if (registrosExcluidos?.length !== registrosEsperados) {
+          throw new Error('O banco de dados não confirmou a exclusão de todas as fotos.');
+        }
+
+        // 3. Limpar a fila local somente depois da confirmação da nuvem
         try {
           const chaveFila = 'fila_sync_auto';
           let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
@@ -151,32 +209,8 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         } catch (err) {
           console.error('Erro ao purgar item local da fila:', err);
         }
-
-        // 1. Apagar as fotos do Storage
-        const pathsParaDeletar = backupAtual.arquivos
-          .map(arq => extractStoragePath(arq.foto_url))
-          .filter(Boolean);
-
-        if (pathsParaDeletar.length > 0) {
-          const { error: storageError } = await supabase.storage
-            .from('fotos_leituras')
-            .remove(pathsParaDeletar);
-          if (storageError) {
-            console.error('Erro ao deletar arquivos do storage:', storageError);
-            throw new Error('Falha ao remover as fotos do armazenamento na nuvem.');
-          }
-        }
-
-        // 2. Apagar o registro da tabela
-        const { error } = await supabase
-          .from('leituras_detalhes')
-          .delete()
-          .eq('condominio_nome', backupAtual.nome)
-          .eq('leiturista_id', userId);
         
-        if (error) throw error;
-        
-        // 3. Atualizar a UI e fechar modal
+        // 4. Atualizar a UI e fechar modal
         setOnlinePhotos(prev => prev.filter(item => item.condominio_nome !== backupAtual.nome));
         window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
         await customAlert('Backup e fotos excluídos permanentemente!');
