@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { Browser } from '@capacitor/browser';
 import { ExternalLink, LogOut, ShieldCheck } from 'lucide-react';
-import {
-  PRIVACY_POLICY_URL,
-} from '../PrivacyTermsModal/PrivacyTermsModal';
+import { PRIVACY_POLICY_URL } from '../../config/publicUrls';
 import {
   LEGAL_TERMS_VERSION,
   registerLegalTermsAcceptance,

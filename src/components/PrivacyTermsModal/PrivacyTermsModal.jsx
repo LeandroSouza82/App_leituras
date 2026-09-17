@@ -2,10 +2,7 @@ import React from 'react';
 import { Browser } from '@capacitor/browser';
 import { ExternalLink, Headset, ShieldCheck, Trash2, X } from 'lucide-react';
 import './PrivacyTermsModal.css';
-
-export const PRIVACY_POLICY_URL = 'https://leituras.appviper.com.br/privacidade';
-export const ACCOUNT_DELETION_URL = 'https://leituras.appviper.com.br/exclusao';
-export const SUPPORT_URL = 'https://leituras.appviper.com.br/suporte';
+import { PRIVACY_POLICY_URL, ACCOUNT_DELETION_URL, SUPPORT_URL } from '../../config/publicUrls';
 
 const POLICY_SECTIONS = [
   {
