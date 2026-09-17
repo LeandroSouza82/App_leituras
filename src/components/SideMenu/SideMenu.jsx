@@ -19,6 +19,7 @@ import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
+import { SUPPORT_URL } from '../../config/publicUrls';
 
 const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
@@ -60,16 +61,10 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
 
   const handleSuporteTecnico = async () => {
-    // Substitua pelo número real de suporte com código do país (55) e DDD
-    const numeroWhatsApp = "5548996525008"; 
-    const mensagem = "Olá! Preciso de suporte com o aplicativo Fast Leituras.";
-    const url = `https://wa.me/${numeroWhatsApp}?text=${encodeURIComponent(mensagem)}`;
-
     try {
-      await Browser.open({ url });
+      await Browser.open({ url: SUPPORT_URL });
     } catch (error) {
-      // Fallback para web caso o Capacitor falhe
-      window.open(url, '_blank');
+      window.open(SUPPORT_URL, '_blank');
     }
   };
 
