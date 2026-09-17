@@ -7,10 +7,10 @@ import { PRIVACY_POLICY_URL, ACCOUNT_DELETION_URL, SUPPORT_URL } from '../../con
 const POLICY_SECTIONS = [
   {
     title: '1. Identificação',
+    privacyContact: true,
     paragraphs: [
       'O Fast Leituras é um aplicativo desenvolvido por Leandro Ditamar de Souza, sob a marca AppViper, para apoiar o registro e a gestão de leituras de água, gás e energia em condomínios.',
       'Ao utilizar o aplicativo, você declara ciência destes Termos de Uso. Os dados pessoais eventualmente tratados são utilizados conforme descrito nesta Política de Privacidade e de acordo com as bases legais aplicáveis.',
-      'Para questões relacionadas à privacidade ou para exercer direitos, entre em contato pelo e-mail privacidade@appviper.com.br.',
     ],
   },
   {
@@ -164,6 +164,18 @@ const PrivacyTermsModal = ({ isOpen, onClose }) => {
             <section className="privacy-terms-section" key={section.title}>
               <h3>{section.title}</h3>
               {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+              {section.privacyContact && (
+                <p>
+                  Para questões relacionadas à privacidade ou para exercer direitos, entre em contato pelo e-mail{' '}
+                  <button
+                    type="button"
+                    className="privacy-terms-inline-link"
+                    onClick={() => abrirPaginaExterna(PRIVACY_POLICY_URL)}
+                  >
+                    privacidade@appviper.com.br
+                  </button>.
+                </p>
+              )}
               {section.bullets?.length > 0 && (
                 <ul>
                   {section.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
