@@ -85,9 +85,16 @@ const FeedbackModal = ({ isOpen, onClose }) => {
 
       // 2. Envia para a tabela app_feedbacks mapeando exatamente com as colunas reais
       if (supabase) {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          throw new Error('Usuário não autenticado.');
+        }
+
         const payload = {
           descricao: textoFeedback.trim(),
-          imagem_url: imagemComprimida || ''
+          imagem_url: imagemComprimida || '',
+          user_id: user.id
         };
 
         const { error } = await supabase.from('app_feedbacks').insert([payload]);
