@@ -468,8 +468,11 @@ const App = () => {
     userId: null,
     checked: false,
     granted: false,
+    notificationGranted: false,
+    exactAlarmGranted: false,
     canRequest: true,
     status: 'prompt',
+    exactAlarmStatus: 'denied',
   });
   const [pendingNotificationAction, setPendingNotificationAction] = useState(null);
 
@@ -487,8 +490,11 @@ const App = () => {
       userId: session?.user?.id || null,
       checked: true,
       granted: res.granted,
+      notificationGranted: res.notificationGranted,
+      exactAlarmGranted: res.exactAlarmGranted,
       canRequest: res.canRequest,
       status: res.status,
+      exactAlarmStatus: res.exactAlarmStatus,
     });
     return res;
   }, [session?.user?.id]);
@@ -506,8 +512,11 @@ const App = () => {
         userId: null,
         checked: false,
         granted: false,
+        notificationGranted: false,
+        exactAlarmGranted: false,
         canRequest: true,
         status: 'prompt',
+        exactAlarmStatus: 'denied',
       });
       return;
     }
@@ -737,19 +746,14 @@ const App = () => {
             userId: session.user.id,
             checked: true,
             granted: res.granted,
+            notificationGranted: res.notificationGranted,
+            exactAlarmGranted: res.exactAlarmGranted,
             canRequest: res.canRequest,
             status: res.status,
+            exactAlarmStatus: res.exactAlarmStatus,
           });
         }}
-        onPermissionGranted={() => {
-          setNotificationPermissionStatus({
-            userId: session.user.id,
-            checked: true,
-            granted: true,
-            canRequest: false,
-            status: 'granted',
-          });
-        }}
+        onPermissionGranted={revalidarPermissaoNotificacao}
         onLogout={handleLogout}
       />
     );
