@@ -5,7 +5,7 @@ create table if not exists public.condominios (
   user_id uuid not null references auth.users(id) on delete cascade,
   nome text not null,
   tipo_leitura text not null default 'Água e Gás' check (
-    tipo_leitura in ('Água e Gás', 'Somente Água', 'Somente Gás', 'Energia Elétrica')
+    tipo_leitura in ('Água e Gás', 'Água, Gás e Energia', 'Somente Água', 'Somente Gás', 'Energia Elétrica')
   ),
   dia_leitura integer not null check (dia_leitura between 1 and 31),
   apartamentos integer not null check (apartamentos >= 0),

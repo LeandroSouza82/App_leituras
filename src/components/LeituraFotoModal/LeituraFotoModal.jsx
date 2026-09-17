@@ -1266,15 +1266,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // FUNÇÃO MODULAR DE VALIDAÇÃO RIGOROSA ANTES DO ENVIO
   // fotosMap: mapa de fotos em memória (fotosCapturadas). Obrigatório para detectar FOTO_AUSENTE.
   const validarLeiturasLote = (scopeParam, tipoCondominioOrig, unidadesList, leiturasVal, fotosMap) => {
-    const tipo = String(tipoCondominioOrig || '').toLowerCase();
-    const isMisto = !tipo.includes('somente') && !tipo.includes('energia');
+    const tipo = String(tipoCondominioOrig || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     let servicosParaValidar = [];
     if (scopeParam === 'todos') {
-      if (isMisto) servicosParaValidar = ['agua', 'gas'];
-      else if (tipo.includes('agua')) servicosParaValidar = ['agua'];
-      else if (tipo.includes('gas')) servicosParaValidar = ['gas'];
-      else if (tipo.includes('energia')) servicosParaValidar = ['energia'];
+      if (tipo.includes('agua') || tipo === '') servicosParaValidar.push('agua');
+      if (tipo.includes('gas') || tipo === '') servicosParaValidar.push('gas');
+      if (tipo.includes('energia')) servicosParaValidar.push('energia');
     } else {
       servicosParaValidar = [scopeParam];
     }
@@ -1387,6 +1387,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           'Leitura Pendente'
         );
       }
+
+      // Exibe o serviço exato apontado pela validação antes de localizar o card.
+      setTipoMedicaoAtivo(validacao.servico);
       setTimeout(() => {
         const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
         if (cardErro) {
@@ -1785,7 +1788,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             />
 
             <div className="modal-selectors">
-              <div className="selectors-top-row">
+              <div className={`selectors-top-row ${showAgua && showGas && showEnergia ? 'selectors-top-row--three-services' : ''}`}>
                 <div className="torre-filter-wrapper-select">
                   <select
                     className="select-torre-ap"

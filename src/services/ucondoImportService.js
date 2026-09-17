@@ -144,7 +144,9 @@ export const UCondoImportService = {
     let tipoNormalizado = "Água e Gás"; // Valor padrão para cadastro de condomínio
     const tipo = String(tipoBruto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-    if (tipo.includes('agua') && tipo.includes('gas')) {
+    if (tipo.includes('agua') && tipo.includes('gas') && tipo.includes('energia')) {
+      tipoNormalizado = "Água, Gás e Energia";
+    } else if (tipo.includes('agua') && tipo.includes('gas')) {
       tipoNormalizado = "Água e Gás";
     } else if (tipo.includes('agua') || tipo.includes('somente agua')) {
       tipoNormalizado = "Somente Água";
