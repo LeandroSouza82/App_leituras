@@ -1387,6 +1387,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           'Leitura Pendente'
         );
       }
+
+      // Exibe o serviço exato apontado pela validação antes de localizar o card.
+      setTipoMedicaoAtivo(validacao.servico);
       setTimeout(() => {
         const cardErro = document.getElementById(`card-unidade-${validacao.unidade}`);
         if (cardErro) {
