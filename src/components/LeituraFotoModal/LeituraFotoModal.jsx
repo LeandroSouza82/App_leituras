@@ -1248,17 +1248,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleExportar = () => {
-    // Análise Automática de Utilitários e Roteamento (Offline-First UX)
-    const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const abaExclusiva = obterAbaExclusivaDoCondominio(leitura);
 
-    if (tipo.includes('somente agua') || tipo === 'agua') {
-      executeExport('agua');
-    } else if (tipo.includes('somente gas') || tipo === 'gas') {
-      executeExport('gas');
-    } else if (tipo.includes('energia')) {
-      executeExport('energia');
+    if (abaExclusiva) {
+      executeExport(abaExclusiva);
     } else {
-      // Caso Misto ou indefinido, abre o modal de opções
+      // Condomínios mistos sempre precisam escolher o formato de exportação.
       setIsExportModalOpen(true);
     }
   };
