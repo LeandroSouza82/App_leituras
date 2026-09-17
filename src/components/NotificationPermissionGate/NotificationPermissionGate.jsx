@@ -15,7 +15,9 @@ const NotificationPermissionGate = ({
 
   const statusAtual = permissionStatus?.status || 'prompt';
   const canRequest = permissionStatus?.canRequest ?? true;
-  const isDeniedPermanent = statusAtual === 'denied' || (!canRequest && tentouSolicitar);
+  const notificationGranted = permissionStatus?.notificationGranted ?? statusAtual === 'granted';
+  const precisaAlarmeExato = notificationGranted && permissionStatus?.exactAlarmGranted === false;
+  const isDeniedPermanent = !precisaAlarmeExato && (statusAtual === 'denied' || (!canRequest && tentouSolicitar));
 
   const verificarNovamente = useCallback(async () => {
     setIsProcessing(true);
@@ -35,16 +37,19 @@ const NotificationPermissionGate = ({
     setIsProcessing(true);
     setTentouSolicitar(true);
     try {
-      const concedido = await NotificationService.requestPermissions();
-      if (concedido) {
-        onPermissionGranted?.();
-        return;
-      }
-      // Revalida o estado real retornado pelo Android
-      const res = await NotificationService.checkPermissionStatus();
-      onPermissionUpdated?.(res);
+      await NotificationService.requestPermissions();
+      await verificarNovamente();
     } catch (error) {
       console.warn('[NotificationPermissionGate] Erro ao solicitar permissão:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAtivarAlarmesExatos = async () => {
+    setIsProcessing(true);
+    try {
+      await NotificationService.openExactAlarmSettings();
     } finally {
       setIsProcessing(false);
     }
@@ -104,7 +109,7 @@ const NotificationPermissionGate = ({
               </div>
               <div className="notification-gate-reminder-text">
                 <p className="notification-gate-reminder-title">⏰ 1 dia antes da leitura</p>
-                <p className="notification-gate-reminder-desc">Lembrete prévio às 09:00 para você planejar a sua rota de medição.</p>
+                <p className="notification-gate-reminder-desc">Lembretes às 09:00 e às 14:00 para você planejar a sua rota de medição.</p>
               </div>
             </div>
 
@@ -114,7 +119,7 @@ const NotificationPermissionGate = ({
               </div>
               <div className="notification-gate-reminder-text">
                 <p className="notification-gate-reminder-title">🚨 No próprio dia da leitura</p>
-                <p className="notification-gate-reminder-desc">Lembrete prioritário às 09:00 informando os condomínios do dia.</p>
+                <p className="notification-gate-reminder-desc">Lembretes prioritários às 09:00 e às 14:00 informando os condomínios do dia.</p>
               </div>
             </div>
 
@@ -128,6 +133,23 @@ const NotificationPermissionGate = ({
               </div>
             </div>
           </div>
+
+          {precisaAlarmeExato && (
+            <>
+              <div className="notification-gate-alert-box" role="alert">
+                O Android ainda não autorizou os alarmes exatos. Sem essa autorização, os lembretes podem chegar atrasados quando o aplicativo estiver fechado.
+              </div>
+
+              <div className="notification-gate-instructions">
+                <strong>Como garantir os horários de 09:00 e 14:00:</strong>
+                <ol>
+                  <li>Toque em <strong>Ativar alarmes exatos</strong> abaixo;</li>
+                  <li>Ative a opção para o <strong>Fast Leituras</strong>;</li>
+                  <li>Retorne ao aplicativo.</li>
+                </ol>
+              </div>
+            </>
+          )}
 
           {isDeniedPermanent && (
             <>
@@ -155,7 +177,29 @@ const NotificationPermissionGate = ({
         </div>
 
         <footer className="notification-gate-footer">
-          {isDeniedPermanent ? (
+          {precisaAlarmeExato ? (
+            <>
+              <button
+                type="button"
+                className="notification-gate-btn-primary"
+                onClick={handleAtivarAlarmesExatos}
+                disabled={isProcessing}
+              >
+                <Settings size={18} />
+                Ativar alarmes exatos
+              </button>
+
+              <button
+                type="button"
+                className="notification-gate-btn-secondary"
+                onClick={verificarNovamente}
+                disabled={isProcessing}
+              >
+                <RefreshCw size={17} className={isProcessing ? 'animate-spin' : ''} />
+                Já ativei / Verificar permissão
+              </button>
+            </>
+          ) : isDeniedPermanent ? (
             <>
               <button
                 type="button"
