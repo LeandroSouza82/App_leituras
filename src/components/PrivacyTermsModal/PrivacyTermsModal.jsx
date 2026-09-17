@@ -3,9 +3,9 @@ import { Browser } from '@capacitor/browser';
 import { ExternalLink, Headset, ShieldCheck, Trash2, X } from 'lucide-react';
 import './PrivacyTermsModal.css';
 
-export const PRIVACY_POLICY_URL = 'https://fastleiturasweb.vercel.app/privacidade';
-export const ACCOUNT_DELETION_URL = 'https://fastleiturasweb.vercel.app/exclusao';
-export const SUPPORT_URL = 'https://fastleiturasweb.vercel.app/suporte';
+export const PRIVACY_POLICY_URL = 'https://leituras.appviper.com.br/privacidade';
+export const ACCOUNT_DELETION_URL = 'https://leituras.appviper.com.br/exclusao';
+export const SUPPORT_URL = 'https://leituras.appviper.com.br/suporte';
 
 const POLICY_SECTIONS = [
   {
@@ -72,7 +72,7 @@ const POLICY_SECTIONS = [
   {
     title: '8. Serviços de terceiros e compartilhamento',
     paragraphs: [
-      'Para operar o aplicativo, utilizamos provedores de infraestrutura. O Supabase é utilizado para autenticação, banco de dados e armazenamento de fotos. O login Google é utilizado somente quando o usuário escolhe essa forma de autenticação. A página pública de política, suporte e exclusão é hospedada na Vercel.',
+      'Para operar o aplicativo, utilizamos provedores de infraestrutura. O Supabase é utilizado para autenticação, banco de dados e armazenamento de fotos. O login Google é utilizado somente quando o usuário escolhe essa forma de autenticação. A política de privacidade, o suporte e a exclusão de conta estão disponíveis no portal oficial do Fast Leituras.',
       'Ao compartilhar uma planilha ou arquivo, o envio ocorre por ação expressa do usuário para o aplicativo ou destinatário escolhido. O Fast Leituras não envia arquivos para o WhatsApp ou para outro aplicativo sem essa ação.',
       'Podemos compartilhar dados com prestadores que atuem em nosso nome, com o condomínio autorizado pelo usuário ou quando houver obrigação legal, regulatória ou ordem válida de autoridade competente. Não vendemos dados pessoais.',
     ],
