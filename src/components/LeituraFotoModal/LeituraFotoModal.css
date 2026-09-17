@@ -345,6 +345,22 @@
   white-space: nowrap;
 }
 
+@media (max-width: 480px) {
+  .selectors-top-row--three-services {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .selectors-top-row--three-services .torre-filter-wrapper-select,
+  .selectors-top-row--three-services .medicao-toggle-group-expand {
+    flex: 1 1 100%;
+  }
+
+  .selectors-top-row--three-services .btn-medicao-toggle {
+    min-height: 40px;
+  }
+}
+
 .btn-medicao-toggle.active-energia {
   background: #16a34a;
   color: white;
