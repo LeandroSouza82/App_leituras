@@ -6,6 +6,19 @@ import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { obterLeituraAnterior } from './leiturasAnterioresService.js';
 
+const obterServicosAtivos = (leitura) => {
+  const tipoLeitura = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const servicos = [];
+
+  if (tipoLeitura.includes('agua') || tipoLeitura === '') servicos.push('agua');
+  if (tipoLeitura.includes('gas') || tipoLeitura === '') servicos.push('gas');
+  if (tipoLeitura.includes('energia')) servicos.push('energia');
+
+  return servicos;
+};
+
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
  */
@@ -272,8 +285,7 @@ export const LeituraService = {
       if (servicoFiltro !== 'todos') {
         validarServico(String(servicoFiltro));
       } else {
-        validarServico('AGUA');
-        validarServico('GAS');
+        obterServicosAtivos(leitura).forEach(validarServico);
       }
 
       if (falhasValidacao.length > 0) {
@@ -288,61 +300,62 @@ export const LeituraService = {
       }
 
       const wb = XLSX.utils.book_new();
+      const criarAbaServico = async (servico, nomeAba) => {
+        const servicoUpper = String(servico).toUpperCase();
+        const dadosExcel = unidades.map(unidade => {
+          const nomeOriginal = typeof unidade === 'object'
+            ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
+            : String(unidade || '').trim();
 
-      // 2. Mapeamento das unidades com Cruzamento de Dados (Join)
-      if (servicoFiltro === 'todos') {
-        await customAlert('Por exigência do uCondo, a planilha de exportação deve conter apenas uma aba "Consumos". Por favor, exporte cada serviço (Água ou Gás) separadamente.', 'Atenção');
-        return false;
-      }
+          const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servicoUpper, valoresParam);
 
-      // 2. Mapeamento das unidades com Cruzamento de Dados (Join)
-      const servico = String(servicoFiltro).toUpperCase();
-      const dadosExcel = unidades.map(unidade => {
-        const nomeOriginal = typeof unidade === 'object'
-          ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
-          : String(unidade || '').trim();
+          return {
+            'Unidade *': nomeOriginal,
+            'Leitura atual *': this.formatarValorLeitura(valorBruto),
+          };
+        });
 
-        const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servico, valoresParam);
-        const valorFormatado = this.formatarValorLeitura(valorBruto);
-
-        return {
-          'Unidade *': nomeOriginal,
-          'Leitura atual *': valorFormatado,
-        };
-      });
-
-      // ── SEGUNDA BARREIRA DEFENSIVA ────────────────────────────────────────
-      // Garante que nenhuma linha com 'Leitura atual *' vazia chegue ao XLSX.
-      // A validação principal é feita em validarLeiturasLote (LeituraFotoModal).
-      const linhaIncompleta = dadosExcel.find(
-        item => String(item['Leitura atual *'] ?? '').trim() === ''
-      );
-      if (linhaIncompleta) {
-        await customAlert(
-          `A unidade ${linhaIncompleta['Unidade *']} está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
-          'Exportação bloqueada'
+        // Barreira defensiva: nenhuma aba pode ser gerada com leitura vazia.
+        const linhaIncompleta = dadosExcel.find(
+          item => String(item['Leitura atual *'] ?? '').trim() === ''
         );
-        return false;
-      }
-      // ─────────────────────────────────────────────────────────────────────
-
-      const ws = XLSX.utils.json_to_sheet(dadosExcel);
-
-      // Aplica o tipo texto 's' e formato '@' na coluna B (Leitura atual *)
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        const addrA = XLSX.utils.encode_cell({c: 0, r: R});
-        const addrB = XLSX.utils.encode_cell({c: 1, r: R});
-        if(ws[addrA]) {
-          ws[addrA].t = 's';
+        if (linhaIncompleta) {
+          await customAlert(
+            `A unidade ${linhaIncompleta['Unidade *']} (${servicoUpper}) está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
+            'Exportação bloqueada'
+          );
+          return false;
         }
-        if(ws[addrB]) {
-          ws[addrB].t = 's';
-          ws[addrB].z = '@';
-        }
-      }
 
-      XLSX.utils.book_append_sheet(wb, ws, 'Consumos');
+        const ws = XLSX.utils.json_to_sheet(dadosExcel);
+        const range = XLSX.utils.decode_range(ws['!ref']);
+
+        // Mantém as duas colunas como texto, no mesmo padrão aceito pelo uCondo.
+        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+          const addrA = XLSX.utils.encode_cell({ c: 0, r: R });
+          const addrB = XLSX.utils.encode_cell({ c: 1, r: R });
+          if (ws[addrA]) ws[addrA].t = 's';
+          if (ws[addrB]) {
+            ws[addrB].t = 's';
+            ws[addrB].z = '@';
+          }
+        }
+
+        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+        return true;
+      };
+
+      if (servicoFiltro === 'todos') {
+        const nomesAbas = { agua: 'Água', gas: 'Gás', energia: 'Energia' };
+        const abasAtivas = obterServicosAtivos(leitura)
+          .map(servico => [servico, nomesAbas[servico]]);
+
+        for (const [servico, nomeAba] of abasAtivas) {
+          if (!await criarAbaServico(servico, nomeAba)) return false;
+        }
+      } else {
+        if (!await criarAbaServico(servicoFiltro, 'Consumos')) return false;
+      }
 
       // 3. Criação do arquivo Excel (.xlsx)
       const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
