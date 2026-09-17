@@ -30,6 +30,18 @@ const extractStoragePath = (urlOrPath) => {
   }
 };
 
+const itemFilaPertenceAoArquivo = (itemFila, arquivo) => {
+  const caminho = String(arquivo.path || '').replace(/\\/g, '/');
+  const caminhoFila = String(itemFila.photoPath || '').replace(/\\/g, '/');
+  if (caminho && caminhoFila) return caminhoFila === caminho;
+
+  const pastaArquivo = filesystemService.sanitizeName(arquivo.condominio_nome);
+  const pastaFila = filesystemService.sanitizeName(itemFila.condominio_nome || itemFila.condominioNome);
+  const mesmoCondominio = !!(pastaArquivo && pastaFila && pastaArquivo === pastaFila);
+  const mesmoArquivo = String(itemFila.fileName || '').split('/').pop() === arquivo.name;
+  return mesmoCondominio && mesmoArquivo;
+};
+
 const BackupFotosMenu = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('offline'); // 'offline' | 'online'
 
@@ -86,7 +98,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         try {
           const chaveFila = 'fila_sync_auto';
           let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
-          let novaFila = fila.filter(f => f.fileName !== filePath && !(f.fileName && f.fileName.endsWith(item.name)));
+          let novaFila = fila.filter(f => !itemFilaPertenceAoArquivo(f, item));
           localStorage.setItem(chaveFila, JSON.stringify(novaFila));
         } catch(e) {}
         
@@ -296,7 +308,8 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                    });
                    const webPath = Capacitor.convertFileSrc(uriResult.uri);
 
-                   const isPending = filaSync.some(item => item.fileName === sourcePath || (item.fileName && item.fileName.endsWith(fName)));
+                   const arquivoAtual = { path: sourcePath, name: fName, condominio_nome: nomePasta };
+                   const isPending = filaSync.some(item => itemFilaPertenceAoArquivo(item, arquivoAtual));
 
                    return {
                       name: fName,

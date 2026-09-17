@@ -817,9 +817,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 const filaFiltrada = filaAtual.filter((item) => {
                   const itemCondominioId = String(item.condominio_id ?? item.condominioId ?? '').trim();
                   const itemCondominioNome = String(item.condominio_nome ?? item.condominioNome ?? '').trim().toLowerCase();
-                  const mesmoCondominio =
-                    (condominioIdAtual && itemCondominioId === condominioIdAtual) ||
-                    (condominioNomeAtual && itemCondominioNome === condominioNomeAtual);
+                  const mesmoCondominio = itemCondominioId && condominioIdAtual
+                    ? itemCondominioId === condominioIdAtual
+                    : !!(itemCondominioNome && condominioNomeAtual && itemCondominioNome === condominioNomeAtual);
                   const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId || String(item.unidadeId ?? '') === unidadeId;
                   const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
                   return !(mesmoCondominio && mesmaUnidade && mesmoServico);
@@ -1110,15 +1110,22 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // 2. Limpa da fila offline e localStorage
       try {
+        const condominioIdAtual = String(leitura?.id ?? leitura?.condominio_id ?? '').trim();
+        const condominioNomeAtual = String(leitura?.nome ?? '').trim().toLowerCase();
         ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
           const raw = localStorage.getItem(key);
           if (raw) {
             const filaAtual = JSON.parse(raw);
             if (Array.isArray(filaAtual)) {
               const filaFiltrada = filaAtual.filter((item) => {
-                const mesmaUnidade = String(item.unidade_id ?? '') === unidadeId;
-                const mesmoServico = (item.servico ?? '').toUpperCase() === tipoServico;
-                return !(mesmaUnidade && mesmoServico);
+                const itemCondominioId = String(item.condominio_id ?? item.condominioId ?? '').trim();
+                const itemCondominioNome = String(item.condominio_nome ?? item.condominioNome ?? '').trim().toLowerCase();
+                const mesmoCondominio = itemCondominioId && condominioIdAtual
+                  ? itemCondominioId === condominioIdAtual
+                  : !!(itemCondominioNome && condominioNomeAtual && itemCondominioNome === condominioNomeAtual);
+                const mesmaUnidade = String(item.unidade_id ?? item.unidadeId ?? '') === unidadeId;
+                const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
+                return !(mesmoCondominio && mesmaUnidade && mesmoServico);
               });
               localStorage.setItem(key, JSON.stringify(filaFiltrada));
             }
@@ -1130,10 +1137,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 3. Limpa no Supabase se possível (sem travar a UI se offline)
       if (supabase) {
         try {
-          await supabase.from('leituras_detalhes').delete().match({
-            unidade_id: unidadeId,
-            servico: tipoServico,
-          });
+          const { data: authData } = await supabase.auth.getUser();
+          const userId = authData?.user?.id;
+          if (userId && leitura?.nome) {
+            await supabase
+              .from('leituras_detalhes')
+              .delete()
+              .eq('condominio_nome', leitura.nome)
+              .eq('leiturista_id', userId)
+              .eq('unidade_id', unidadeId)
+              .eq('servico', tipoServico);
+          }
         } catch (supaErr) {
         }
       }
