@@ -9,7 +9,7 @@ export const expandirHorariosNotificacao = (notificacao, agora, registradosHoje)
   const dataBase = notificacao.schedule.at;
   const dia = dataCivilNotificacao(dataBase);
   const hoje = dataCivilNotificacao(agora);
-  const identidade = notificacao.extra?.id ?? `agrupada:${notificacao.extra?.focusType}`;
+  const identidade = notificacao.extra?.scheduleKey ?? notificacao.extra?.id ?? `agrupada:${notificacao.extra?.focusType}`;
   const horarios = HORARIOS_LEMBRETE.map((hora) => {
     const at = new Date(dataBase);
     at.setHours(hora, 0, 0, 0);
