@@ -79,28 +79,51 @@ export const NotificationService = {
   /**
    * Consulta o estado atual da permissão de notificações locais.
    * Retorna:
-   * - granted: boolean (true se display === 'granted')
+   * - granted: boolean (true quando notificações e alarmes exatos estão autorizados)
+   * - notificationGranted: boolean (true se display === 'granted')
+   * - exactAlarmGranted: boolean (true se o Android permite alarmes exatos)
    * - canRequest: boolean (true se o sistema ainda permite abrir o diálogo nativo: 'prompt' ou 'prompt-with-rationale')
    * - status: string ('granted' | 'denied' | 'prompt' | 'prompt-with-rationale')
    */
   async checkPermissionStatus() {
     if (!Capacitor.isNativePlatform()) {
-      return { granted: true, canRequest: false, status: 'granted' };
+      return {
+        granted: true,
+        notificationGranted: true,
+        exactAlarmGranted: true,
+        canRequest: false,
+        status: 'granted',
+        exactAlarmStatus: 'granted',
+      };
     }
     try {
       const permission = await LocalNotifications.checkPermissions();
-      const granted = permission.display === 'granted';
+      const exactAlarmPermission = Capacitor.getPlatform() === 'android'
+        ? await LocalNotifications.checkExactNotificationSetting()
+        : { exact_alarm: 'granted' };
+      const notificationGranted = permission.display === 'granted';
+      const exactAlarmGranted = exactAlarmPermission.exact_alarm === 'granted';
       // No Android 13+ (API 33+), 'prompt' ou 'prompt-with-rationale' permite nova solicitação via diálogo.
       // 'denied' indica recusa permanente que exige abertura das configurações.
       const canRequest = permission.display === 'prompt' || permission.display === 'prompt-with-rationale';
       return {
-        granted,
+        granted: notificationGranted && exactAlarmGranted,
+        notificationGranted,
+        exactAlarmGranted,
         canRequest,
         status: permission.display,
+        exactAlarmStatus: exactAlarmPermission.exact_alarm,
       };
     } catch (error) {
       console.warn('[NotificationService] Erro ao consultar permissão:', error);
-      return { granted: false, canRequest: false, status: 'denied' };
+      return {
+        granted: false,
+        notificationGranted: false,
+        exactAlarmGranted: false,
+        canRequest: false,
+        status: 'denied',
+        exactAlarmStatus: 'denied',
+      };
     }
   },
 
@@ -132,6 +155,20 @@ export const NotificationService = {
       return true;
     } catch (error) {
       console.warn('[NotificationService] Não foi possível abrir configurações diretamente:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Abre a tela do Android que autoriza alarmes exatos para este aplicativo.
+   */
+  async openExactAlarmSettings() {
+    if (Capacitor.getPlatform() !== 'android') return true;
+    try {
+      await LocalNotifications.changeExactNotificationSetting();
+      return true;
+    } catch (error) {
+      console.warn('[NotificationService] Não foi possível abrir a configuração de alarmes exatos:', error);
       return false;
     }
   },
