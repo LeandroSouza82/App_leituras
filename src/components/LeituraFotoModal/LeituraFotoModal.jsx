@@ -220,7 +220,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
           <span>Fotografar</span>
           {leituraAnterior !== undefined && leituraAnterior !== null && (
             <span style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
-              Ant: {typeof leituraAnterior === 'number' ? leituraAnterior.toFixed(4).replace('.', ',') : leituraAnterior}
+              Ant: {formatarLeituraLocal(leituraAnterior)}
             </span>
           )}
         </div>
