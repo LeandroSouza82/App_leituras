@@ -2,6 +2,28 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install --legacy-peer-deps",
   "buildCommand": "npm run build",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://leituras.appviper.com.br",
+      "permanent": true
+    },
+    {
+      "source": "/privacidade",
+      "destination": "https://leituras.appviper.com.br/privacidade",
+      "permanent": true
+    },
+    {
+      "source": "/suporte",
+      "destination": "https://leituras.appviper.com.br/suporte",
+      "permanent": true
+    },
+    {
+      "source": "/exclusao",
+      "destination": "https://leituras.appviper.com.br/exclusao",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",

@@ -3,9 +3,9 @@ import { Browser } from '@capacitor/browser';
 import { ExternalLink, Headset, ShieldCheck, Trash2, X } from 'lucide-react';
 import './PrivacyTermsModal.css';
 
-export const PRIVACY_POLICY_URL = 'https://app.vipper.com.br/privacidade';
-export const ACCOUNT_DELETION_URL = 'https://app.vipper.com.br/exclusao';
-export const SUPPORT_URL = 'https://app.vipper.com.br/suporte';
+export const PRIVACY_POLICY_URL = 'https://leituras.appviper.com.br/privacidade';
+export const ACCOUNT_DELETION_URL = 'https://leituras.appviper.com.br/exclusao';
+export const SUPPORT_URL = 'https://leituras.appviper.com.br/suporte';
 
 const POLICY_SECTIONS = [
   {
