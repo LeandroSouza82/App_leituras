@@ -247,9 +247,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [showToast, setShowToast] = useState(false);
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [showModalLimpeza, setShowModalLimpeza] = useState(false);
   const [hydrationCounter, setHydrationCounter] = useState(0);
-  const [previewSessionKey, setPreviewSessionKey] = useState(0);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -1930,7 +1928,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       {/* 3. Modal de Revisão da Foto e Lançamento de Leitura */}
       <PreviewFotoModal
-        key={`preview-${activeApto}-${tipoMedicaoAtivo}-${previewSessionKey}`}
+        key={`preview-${activeApto}-${tipoMedicaoAtivo}`}
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo] || ''}

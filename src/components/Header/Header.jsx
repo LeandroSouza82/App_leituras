@@ -34,7 +34,6 @@ const Header = ({
   onOpenAlerts,
   onOpenProgressoModal,
   onOpenFaturamento,
-  onSync,
   onLogout,
   onNavigate,
 }) => {

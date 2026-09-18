@@ -302,7 +302,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
 
   const carregarPastas = async () => {
     setIsLoadingOffline(true);
-    console.log('[BackupFotosMenu] Iniciando leitura da raiz de backups...');
     try {
       let files = [];
       try {
@@ -314,8 +313,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         return;
       }
       
-      console.log(`[BackupFotosMenu] Encontradas ${files.length} pastas na raiz.`);
-
       let dbCondominios = [];
       try {
         dbCondominios = await buscarCondominios();
@@ -326,7 +323,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       const pastasEncontradas = await Promise.all(
         files.map(async (pasta) => {
           const nomePasta = pasta.name || pasta;
-          console.log(`[BackupFotosMenu] Lendo pasta do condomínio: ${nomePasta}`);
           try {
             const rawArquivos = await filesystemService.listarFotosLote(nomePasta);
             
@@ -358,8 +354,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
             );
 
             const validFiles = filesData.filter(Boolean);
-            console.log(`[BackupFotosMenu] Pasta ${nomePasta} processou ${validFiles.length} arquivos.`);
-
             if (validFiles.length > 0) {
               const matchedCondo = dbCondominios.find(c => filesystemService.sanitizeName(c.nome) === nomePasta);
               const nomeOriginal = matchedCondo ? matchedCondo.nome : nomePasta.replace(/_/g, ' ');
@@ -378,7 +372,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
       );
 
       const resultadosFinais = pastasEncontradas.filter(Boolean);
-      console.log(`[BackupFotosMenu] Leitura concluída. Atualizando estado com ${resultadosFinais.length} condomínios.`);
       setCondominios(resultadosFinais);
 
     } catch (e) {

@@ -1,7 +1,7 @@
 import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { temConexaoInternetUtil } from './networkQualityService';
 import { supabase } from './supabase';
-import { normalizarNome } from './ucondoImportService';
+import { normalizarNome } from './ucondoSpreadsheetMetadata';
 
 /**
  * syncOfflineService — Fila de Sincronização para Leituras Anteriores (Offline-First)
