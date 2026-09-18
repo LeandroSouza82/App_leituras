@@ -5,19 +5,7 @@ import { supabase } from './supabase.js';
 import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { obterLeituraAnterior } from './leiturasAnterioresService.js';
-
-const obterServicosAtivos = (leitura) => {
-  const tipoLeitura = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const servicos = [];
-
-  if (tipoLeitura.includes('agua') || tipoLeitura === '') servicos.push('agua');
-  if (tipoLeitura.includes('gas') || tipoLeitura === '') servicos.push('gas');
-  if (tipoLeitura.includes('energia')) servicos.push('energia');
-
-  return servicos;
-};
+import { obterServicosAtivos } from '../utils/servicosCondominio.js';
 
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
@@ -233,6 +221,17 @@ export const LeituraService = {
    */
   async exportarParaWhatsApp(leitura, servicoFiltro = 'todos', unidadesParam = null, valoresParam = {}) {
     try {
+      const servicoNormalizado = String(servicoFiltro || '').toLowerCase();
+      const servicosAtivos = obterServicosAtivos(leitura);
+
+      if (servicoNormalizado !== 'todos' && !servicosAtivos.includes(servicoNormalizado)) {
+        await customAlert(
+          `Este condomínio não possui medição de ${servicoNormalizado.toUpperCase()}.`,
+          'Serviço indisponível'
+        );
+        return false;
+      }
+
       const nomeLimpo = String(leitura?.nome || 'Condominio')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -285,7 +284,7 @@ export const LeituraService = {
       if (servicoFiltro !== 'todos') {
         validarServico(String(servicoFiltro));
       } else {
-        obterServicosAtivos(leitura).forEach(validarServico);
+        servicosAtivos.forEach(validarServico);
       }
 
       if (falhasValidacao.length > 0) {
@@ -347,7 +346,7 @@ export const LeituraService = {
 
       if (servicoFiltro === 'todos') {
         const nomesAbas = { agua: 'Água', gas: 'Gás', energia: 'Energia' };
-        const abasAtivas = obterServicosAtivos(leitura)
+        const abasAtivas = servicosAtivos
           .map(servico => [servico, nomesAbas[servico]]);
 
         for (const [servico, nomeAba] of abasAtivas) {
