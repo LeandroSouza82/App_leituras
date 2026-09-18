@@ -622,9 +622,17 @@
   transition: all 0.2s;
 }
 
-.btn-export-primary:hover {
+.btn-export-primary:hover:not(:disabled) {
   background-color: #059669;
   transform: translateY(-2px);
+}
+
+.btn-export-primary:disabled {
+  background-color: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
 }
 
 .btn-export-secondary {

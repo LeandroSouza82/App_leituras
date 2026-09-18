@@ -19,6 +19,7 @@ import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPr
 import CustomCamera from '../CustomCamera/CustomCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
 import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
+import { obterServicosAtivos } from '../../utils/servicosCondominio';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -36,17 +37,8 @@ const normalizarServicoLocal = (servico) => {
 };
 
 const obterAbaExclusivaDoCondominio = (leitura) => {
-  const tipo = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-
-  if (tipo === 'somente gas' || tipo === 'gas') return 'gas';
-  if (tipo === 'somente agua' || tipo === 'agua') return 'agua';
-
-  const somenteEnergia = tipo.includes('energia') && !tipo.includes('agua') && !tipo.includes('gas');
-  return somenteEnergia ? 'energia' : null;
+  const servicos = obterServicosAtivos(leitura);
+  return servicos.length === 1 ? servicos[0] : null;
 };
 
 const gerarChaveLeituraLocal = (condominioId, unidadeId, servico) => {
@@ -250,6 +242,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [hydrationCounter, setHydrationCounter] = useState(0);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const servicosAtivos = useMemo(
+    () => obterServicosAtivos(leitura),
+    [leitura?.tipoLeitura, leitura?.tipo_leitura]
+  );
 
   // Fonte única da leitura anterior exibida: recalcula imediatamente para o
   // serviço ativo e nunca reaproveita o mapa de outra aba.
@@ -1259,18 +1255,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // FUNÇÃO MODULAR DE VALIDAÇÃO RIGOROSA ANTES DO ENVIO
   // fotosMap: mapa de fotos em memória (fotosCapturadas). Obrigatório para detectar FOTO_AUSENTE.
   const validarLeiturasLote = (scopeParam, tipoCondominioOrig, unidadesList, leiturasVal, fotosMap) => {
-    const tipo = String(tipoCondominioOrig || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-    let servicosParaValidar = [];
-    if (scopeParam === 'todos') {
-      if (tipo.includes('agua') || tipo === '') servicosParaValidar.push('agua');
-      if (tipo.includes('gas') || tipo === '') servicosParaValidar.push('gas');
-      if (tipo.includes('energia')) servicosParaValidar.push('energia');
-    } else {
-      servicosParaValidar = [scopeParam];
-    }
+    const servicosPermitidos = obterServicosAtivos(tipoCondominioOrig);
+    const servicosParaValidar = scopeParam === 'todos'
+      ? servicosPermitidos
+      : [scopeParam];
 
     const condId = leitura?.id || leitura?.condominio_id;
 
@@ -1346,6 +1334,16 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     const servico = (scope && ['agua', 'gas', 'energia', 'todos'].includes(scope))
       ? scope
       : tipoMedicaoAtivo;
+
+    if (servico !== 'todos' && !servicosAtivos.includes(servico)) {
+      await customAlert(
+        `Este condomínio não possui medição de ${servico.toUpperCase()}.`,
+        'Serviço indisponível'
+      );
+      return;
+    }
+
+    const servicosParaExportar = servico === 'todos' ? servicosAtivos : [servico];
 
     // ------------------------
     // VALIDAÇÃO
@@ -1536,9 +1534,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Loop real por unidades
       for (const unidadeObj of listaDeUnidades) {
         const apString = String(unidadeObj.unidade).trim();
-        if (servico === 'agua' || servico === 'todos') await processarServico(apString, 'agua');
-        if (servico === 'gas' || servico === 'todos') await processarServico(apString, 'gas');
-        if (servico === 'energia' || servico === 'todos') await processarServico(apString, 'energia');
+        for (const servicoAtivo of servicosParaExportar) {
+          await processarServico(apString, servicoAtivo);
+        }
       }
 
       const filaDepoisSync = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]').length;
@@ -1577,9 +1575,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
            }
         };
 
-        validarServico('agua');
-        validarServico('gas');
-        validarServico('energia');
+        servicosParaExportar.forEach(validarServico);
       }
 
       if (falhas.length > 0) {
@@ -1647,12 +1643,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     const condId = leitura?.id || leitura?.condominio_id;
     try {
-      const servicosAtivos = [];
-      const t = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (t.includes('agua') || t === '') servicosAtivos.push('agua');
-      if (t.includes('gas') || t === '') servicosAtivos.push('gas');
-      if (t.includes('energia')) servicosAtivos.push('energia');
-
       let gavetaAnteriores = [];
       try {
         const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
@@ -1722,13 +1712,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 3. TRAVA DE SEGURANÇA (APÓS TODOS OS HOOKS)
   if (!isOpen || !leitura) return null;
 
-  const tipoCondominioStr = String(leitura?.tipoLeitura || leitura?.tipo_leitura || '')
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  const showAgua = tipoCondominioStr.includes('agua') || tipoCondominioStr === '';
-  const showGas = tipoCondominioStr.includes('gas') || tipoCondominioStr === '';
-  const showEnergia = tipoCondominioStr.includes('energia');
+  const showAgua = servicosAtivos.includes('agua');
+  const showGas = servicosAtivos.includes('gas');
+  const showEnergia = servicosAtivos.includes('energia');
 
   return (
     <>
@@ -1973,18 +1959,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                 <button
                   className="btn-export-primary"
                   onClick={() => executeExport('agua')}
+                  disabled={!showAgua}
+                  aria-disabled={!showAgua}
                 >
                   Enviar Apenas Água
                 </button>
                 <button
                   className="btn-export-primary"
                   onClick={() => executeExport('gas')}
+                  disabled={!showGas}
+                  aria-disabled={!showGas}
                 >
                   Enviar Apenas Gás
                 </button>
                 <button
                   className="btn-export-primary"
                   onClick={() => executeExport('energia')}
+                  disabled={!showEnergia}
+                  aria-disabled={!showEnergia}
                 >
                   Enviar Apenas Energia
                 </button>
