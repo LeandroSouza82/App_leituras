@@ -331,7 +331,6 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
               onOpenAlerts={handleOpenAlerts}
               onOpenProgressoModal={() => setShowProgressoModal(true)}
               onOpenFaturamento={() => setShowAReceberModal(true)}
-              onSync={recarregarCondominios}
               onLogout={onLogout}
               onNavigate={setAbaAtiva}
             />
@@ -408,7 +407,6 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
             <Perfil
               onShowToast={showToast}
               onNavigate={setAbaAtiva}
-              onRefresh={() => recarregarCondominios()}
               onLogout={onLogout}
             />
           </div>

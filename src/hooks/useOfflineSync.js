@@ -6,8 +6,6 @@ import { temConexaoInternetUtil } from '../services/networkQualityService';
 const STORAGE_KEY = 'leituras_pendentes';
 const PENDENCIAS_OFFLINE_KEY = 'pendencias_offline';
 
-// ... (keep helper functions unchanged)
-
 const readPendingQueue = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

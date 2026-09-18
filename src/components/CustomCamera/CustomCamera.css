@@ -3,15 +3,6 @@
    O preview fica atrás (toBack: true). Este layer fica na frente.
    ================================================================ */
 
-/* Quando a câmera está ativa, o html, body e o root precisam ser
-   transparentes para o preview nativo aparecer atrás da WebView. */
-html.camera-active,
-body.camera-active,
-body.camera-active #root {
-  background: transparent !important;
-  background-color: transparent !important;
-}
-
 /* Container fullscreen que cobre toda a tela por cima do preview */
 .custom-camera-root {
   position: fixed;
@@ -25,8 +16,7 @@ body.camera-active #root {
 }
 
 /* ...exceto nos botões que precisam de interação total */
-.custom-camera-root button,
-.custom-camera-root .cam-footer {
+.custom-camera-root button {
   pointer-events: auto !important;
 }
 
@@ -43,116 +33,6 @@ body.camera-active #root {
 
 .cam-btn-close:hover {
   background: rgba(255, 255, 255, 0.25);
-}
-
-/* ── Botão Flash / Lanterna no topo direito ── */
-.cam-btn-flash {
-  position: absolute;
-  top: 24px;
-  right: 20px;
-  width: 52px;
-  height: 52px;
-  z-index: 100000;
-  pointer-events: auto !important;
-  transition: all 0.2s ease;
-}
-
-.cam-btn-flash:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.cam-btn-flash.flash-active {
-  background: rgba(250, 204, 21, 0.25);
-  border: 2px solid #facc15;
-  box-shadow: 0 0 16px rgba(250, 204, 21, 0.5);
-}
-
-/* ── Loading ── */
-.cam-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 99998;
-  pointer-events: auto;
-}
-
-.cam-loading span {
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-/* ── Rodapé centralizado ── */
-.cam-footer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 24px 20px 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
-  z-index: 100000;
-  pointer-events: auto !important;
-}
-
-/* ── Botão base ── */
-.cam-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  color: #ffffff;
-  background: rgba(15, 15, 20, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-.cam-btn:active {
-  transform: scale(0.92);
-}
-
-.cam-btn:disabled {
-  opacity: 0.40;
-  cursor: not-allowed;
-}
-
-/* ── Botão capturar (gigante central) ── */
-.cam-btn-capture {
-  width: 84px;
-  height: 84px;
-  background: rgba(255, 255, 255, 0.95);
-  color: #0f0f14;
-  border: 4px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.25), 0 6px 24px rgba(0, 0, 0, 0.5);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  z-index: 100001;
-  pointer-events: auto !important;
-}
-
-.cam-btn-capture:hover:not(:disabled) {
-  transform: scale(1.06);
-  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.35), 0 8px 28px rgba(0, 0, 0, 0.55);
-}
-
-.cam-btn-capture.capturing {
-  animation: pulse-capture 0.6s ease infinite alternate;
-}
-
-@keyframes pulse-capture {
-  from { transform: scale(1.00); opacity: 1; }
-  to   { transform: scale(1.08); opacity: 0.75; }
 }
 
 /* ── Simulador Web (Retícula e Badge) ── */

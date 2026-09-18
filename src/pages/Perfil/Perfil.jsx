@@ -60,7 +60,7 @@ const loadProfileData = async (userId) => {
   return data;
 };
 
-const Perfil = ({ onShowToast, onNavigate, onRefresh, onLogout }) => {
+const Perfil = ({ onShowToast, onNavigate, onLogout }) => {
   const [user, setUser] = useState(FALLBACK_USER);
   const [name, setName] = useState('');
   const [pix, setPix] = useState('');
