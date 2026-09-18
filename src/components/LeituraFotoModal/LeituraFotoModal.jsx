@@ -5,7 +5,6 @@ import { Capacitor } from '@capacitor/core';
 import { LeituraService } from '../../services/leituraService';
 import { CameraService } from '../../services/cameraService';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { getUnidadesOffline } from '../../data/unidadesLocais';
 import ModalGerenciarUnidades from '../ModalGerenciarUnidades/ModalGerenciarUnidades';
 import PreviewFotoModal from '../PreviewFotoModal/PreviewFotoModal';
 import { StorageService } from '../../services/storageService';
@@ -403,14 +402,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
             if (!supaErr && unidadesData && unidadesData.length > 0) {
               unidadesParaCarregar = unidadesData.map(u => u.numero || u.identificador || u.unidade);
-            }
-          }
-
-          // 5. Último recurso: Lista offline padrão
-          if (unidadesParaCarregar.length === 0) {
-            const locais = getUnidadesOffline(leitura.nome);
-            if (locais) {
-              unidadesParaCarregar = locais;
             }
           }
 
