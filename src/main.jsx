@@ -6,6 +6,11 @@ import './index.css';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { initGoogleAuth } from './services/googleAuthService';
+import { inicializarSentry } from './services/sentryService';
+
+// Inicializa o monitoramento antes dos demais serviços do aplicativo.
+// VITE_SENTRY_DSN pode substituir a DSN padrão quando necessário.
+inicializarSentry();
 
 // Registra os elementos de PWA do Ionic (necessário para a câmera no navegador/WebView)
 defineCustomElements(window);

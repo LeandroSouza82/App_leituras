@@ -21,6 +21,7 @@ dependencies {
     implementation project(':capawesome-capacitor-file-picker')
     implementation project(':capgo-capacitor-zip')
     implementation project(':codetrix-studio-capacitor-google-auth')
+    implementation project(':sentry-capacitor')
 
 }
 

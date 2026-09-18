@@ -30,6 +30,8 @@
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@ionic/pwa-elements": "^3.4.0",
     "@react-oauth/google": "^0.13.5",
+    "@sentry/capacitor": "4.4.0",
+    "@sentry/react": "10.69.0",
     "@supabase/supabase-js": "^2.112.3",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
