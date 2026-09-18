@@ -16,9 +16,6 @@ class ErrorBoundary extends Component {
     };
   }
 
-  componentDidCatch(error, errorInfo) {
-  }
-
   handleReset = () => {
     this.setState({ hasError: false, error: null });
     if (typeof window !== 'undefined') {

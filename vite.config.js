@@ -24,12 +24,4 @@ export default defineConfig({
       },
     },
   },
-  pwa: {
-    registerType: 'prompt',
-    injectRegister: 'auto',
-    workbox: {
-      skipWaiting: false,
-      clientsClaim: false,
-    },
-  },
 });
