@@ -1,5 +1,5 @@
 import { customAlert } from './components/CustomPrompt/CustomPrompt';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, FolderSync } from 'lucide-react';
 import './index.css';
 import Header from './components/Header/Header';
@@ -33,8 +33,9 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { logoutGoogleNativo } from './services/googleAuthService';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { restaurarDadosParaUsoOffline } from './services/restauracaoOfflineService';
 
-const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHandled }) => {
+const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationActionHandled }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
@@ -44,6 +45,12 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
   const [focoLeituraTipo, setFocoLeituraTipo] = useState('atrasadas');
   const [focoEspecifico, setFocoEspecifico] = useState(null);
+  const [restauracaoOffline, setRestauracaoOffline] = useState({
+    ativa: false,
+    atual: 0,
+    total: 0,
+  });
+  const restauracaoUsuarioRef = useRef(null);
   const { toast, showToast, dismissToast } = useToast();
   const {
     leituras,
@@ -110,106 +117,6 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
     // Inicializa o observador de conectividade para sincronização automática
     iniciarObservadorRede();
 
-    // Restauração silenciosa das leituras anteriores do Supabase -> localStorage
-    // CICLO CONTÍNUO: Prioriza leituras_detalhes (coletadas pelo app) para o próximo mês.
-    // Fallback para unidades_leituras (planilhas importadas) para novos condomínios.
-    const restaurarLeiturasDaNuvem = async () => {
-      try {
-        if (!supabase) return;
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user?.id) return;
-
-        // ── Etapa 1: Ciclo contínuo – busca a ÚLTIMA leitura de cada unidade
-        // coletada pelo próprio app (leituras_detalhes). Isso torna o sistema
-        // 100% autossustentável: a leitura atual do mês vira a anterior do próximo.
-        const { data: detalhes, error: errDetalhes } = await supabase
-          .from('leituras_detalhes')
-          .select('unidade_id, condominio_nome, servico, leitura_atual, data_leitura')
-          .eq('leiturista_id', user.id)
-          .order('data_leitura', { ascending: false });
-
-        // Mapa de chave "condId__servico" -> array de leituras (deduplicado por unidade)
-        const gruposApp = {};
-
-        const { data: dbCondominios } = await supabase
-          .from('condominios')
-          .select('id, nome')
-          .eq('user_id', user.id);
-
-        const mapCondominios = {};
-        if (dbCondominios) {
-          for (const cond of dbCondominios) {
-            mapCondominios[cond.nome] = cond.id;
-          }
-        }
-
-        if (!errDetalhes && Array.isArray(detalhes) && detalhes.length > 0) {
-          // Deduplicar: mantém apenas o registro mais recente por unidade+serviço
-          const vistos = new Set();
-          for (const reg of detalhes) {
-            const condId = mapCondominios[reg.condominio_nome];
-            if (!condId) continue; // Ignora se não achar o ID correspondente
-            const servico = (reg.servico || 'AGUA').toUpperCase();
-            const chaveUnidade = `${condId}__${servico}__${String(reg.unidade_id).trim()}`;
-
-            if (vistos.has(chaveUnidade)) continue; // já tem registro mais recente
-            vistos.add(chaveUnidade);
-
-            const chaveGrupo = `${condId}__${servico}`;
-            if (!gruposApp[chaveGrupo]) gruposApp[chaveGrupo] = { condId, servico, leituras: [] };
-            gruposApp[chaveGrupo].leituras.push({
-              unidade: String(reg.unidade_id).trim(),
-              leitura_anterior: reg.leitura_atual, // atual de hoje = anterior do próximo mês
-            });
-          }
-        }
-
-        // ── Etapa 2: Fallback – planilhas importadas (unidades_leituras)
-        // Cobre condomínios ainda não operados pelo app ou recém-cadastrados.
-        const { data: planilhas, error: errPlanilhas } = await supabase
-          .from('unidades_leituras')
-          .select('condominio_nome, unidade, leitura_anterior, servico, atualizado_em')
-          .eq('leiturista_id', user.id)
-          .order('atualizado_em', { ascending: true });
-
-        const gruposPlanilha = {};
-        if (!errPlanilhas && Array.isArray(planilhas) && planilhas.length > 0) {
-          for (const reg of planilhas) {
-            const condId = reg.condominio_nome; // No legado, condominio_nome já contém o ID
-            const servico = (reg.servico || 'AGUA').toUpperCase();
-            const chaveGrupo = `${condId}__${servico}`;
-            // Só usa planilha se o app ainda não tem dados do ciclo contínuo
-            if (gruposApp[chaveGrupo]) continue;
-            if (!gruposPlanilha[chaveGrupo]) gruposPlanilha[chaveGrupo] = { condId, servico, leituras: [] };
-            gruposPlanilha[chaveGrupo].leituras.push({
-              unidade: reg.unidade,
-              leitura_anterior: reg.leitura_anterior,
-            });
-          }
-        }
-
-        // ── Etapa 3: Persiste no localStorage
-        // Dados do ciclo do app SEMPRE sobrescrevem (são mais recentes).
-        // Dados de planilha só gravam se a chave ainda estiver vazia.
-        const todosGrupos = [
-          ...Object.values(gruposApp).map(g => ({ ...g, sobrescrever: true })),
-          ...Object.values(gruposPlanilha).map(g => ({ ...g, sobrescrever: false })),
-        ];
-
-        for (const { condId, servico, leituras, sobrescrever } of todosGrupos) {
-          const storageKey = `leituras_anteriores_${condId}_${servico}`;
-          if (sobrescrever || !localStorage.getItem(storageKey)) {
-            localStorage.setItem(storageKey, JSON.stringify(leituras));
-          }
-        }
-      } catch (_) {
-        // Falha silenciosa — offline ou sem permissão
-      }
-    };
-
-    restaurarLeiturasDaNuvem();
-
     // Inicializa o serviço de recebimento de planilhas via Share Intent (WhatsApp, Arquivos, etc.)
     ShareIntentService.init(async (fileData) => {
       try {
@@ -264,6 +171,65 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
   }, []);
 
   useEffect(() => {
+    if (!isOnline || !userId || restauracaoUsuarioRef.current === userId) return;
+
+    let ativo = true;
+    let concluida = false;
+    restauracaoUsuarioRef.current = userId;
+    setRestauracaoOffline({ ativa: true, atual: 0, total: 0 });
+
+    restaurarDadosParaUsoOffline({
+      userId,
+      onProgress: ({ atual, total }) => {
+        if (ativo) setRestauracaoOffline({ ativa: true, atual, total });
+      },
+    })
+      .then((resultado) => {
+        if (!ativo) return;
+
+        setRestauracaoOffline((estado) => ({ ...estado, ativa: false }));
+
+        if (resultado.status !== 'concluido') {
+          restauracaoUsuarioRef.current = null;
+          return;
+        }
+
+        concluida = true;
+        recarregarCondominios();
+
+        if (resultado.semDados > 0) {
+          showToast(
+            `${resultado.semDados} condomínio${resultado.semDados > 1 ? 's não possuem' : ' não possui'} unidades salvas na nuvem.`,
+            'error'
+          );
+          return;
+        }
+
+        if (resultado.restaurados > 0) {
+          showToast(
+            `${resultado.restaurados} condomínio${resultado.restaurados > 1 ? 's' : ''} pronto${resultado.restaurados > 1 ? 's' : ''} para uso offline.`,
+            'success'
+          );
+        }
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        concluida = true;
+        restauracaoUsuarioRef.current = null;
+        setRestauracaoOffline((estado) => ({ ...estado, ativa: false }));
+        console.warn('[App] Falha ao preparar dados para uso offline:', error);
+        showToast('Não foi possível preparar todos os dados offline. Tente novamente com internet.', 'error');
+      });
+
+    return () => {
+      ativo = false;
+      if (!concluida && restauracaoUsuarioRef.current === userId) {
+        restauracaoUsuarioRef.current = null;
+      }
+    };
+  }, [isOnline, showToast, userId]);
+
+  useEffect(() => {
     const temPendencias = totalPendentes > 0;
     atualizarBadgeIcone(temPendencias ? totalPendentes : 0);
   }, [totalPendentes]);
@@ -315,6 +281,14 @@ const MainApp = ({ onLogout, pendingNotificationAction, onNotificationActionHand
           <div className={`offline-banner offline`}>
             Offline - Sincronização pendente para o banco de dados
             {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
+          </div>
+        )}
+        {isOnline && restauracaoOffline.ativa && (
+          <div className="offline-banner online" role="status" aria-live="polite">
+            Preparando dados para uso offline
+            {restauracaoOffline.total > 0 && (
+              <span> · {restauracaoOffline.atual}/{restauracaoOffline.total} condomínios</span>
+            )}
           </div>
         )}
 
@@ -759,6 +733,7 @@ const App = () => {
 
   return (
     <MainApp
+      userId={session.user.id}
       onLogout={handleLogout}
       pendingNotificationAction={pendingNotificationAction}
       onNotificationActionHandled={() => setPendingNotificationAction(null)}
