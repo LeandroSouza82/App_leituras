@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { capturarErroSentry } from '../../services/sentryService';
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -14,6 +15,10 @@ class ErrorBoundary extends Component {
       hasError: true,
       error,
     };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    capturarErroSentry(error, errorInfo);
   }
 
   handleReset = () => {
