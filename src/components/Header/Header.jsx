@@ -198,12 +198,55 @@ const Header = ({
           </svg>
         </div>
         <div
-          className="header-metrica-bloco header-metrica-bloco--clickable"
+          className="header-metrica-bloco header-metrica-bloco--faturamento header-metrica-bloco--clickable"
           onClick={onOpenFaturamento}
           aria-label="Ver faturamento detalhado"
         >
-          <span className="header-metrica-label">Faturado</span>
-          <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
+          <div className="header-metrica-conteudo">
+            <span className="header-metrica-label">Faturado</span>
+            <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
+          </div>
+          <svg
+            className="header-faturamento-ilustracao"
+            viewBox="0 0 72 72"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="faturamento-moeda" x1="23" y1="14" x2="56" y2="57" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#ffffff" stopOpacity="0.96" />
+                <stop offset="1" stopColor="#d9f1ff" stopOpacity="0.68" />
+              </linearGradient>
+              <linearGradient id="faturamento-moeda-fundo" x1="10" y1="28" x2="42" y2="60" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#d7efff" stopOpacity="0.72" />
+                <stop offset="1" stopColor="#ffffff" stopOpacity="0.38" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="27"
+              cy="42"
+              r="17"
+              fill="url(#faturamento-moeda-fundo)"
+              stroke="#ffffff"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="43"
+              cy="33"
+              r="21"
+              fill="url(#faturamento-moeda)"
+              stroke="#ffffff"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M47.5 22.5h-8.3c-3.7 0-6 2.1-6 5.1 0 3.2 2.4 4.6 6 5.4l6.2 1.3c3.8.8 6 2.4 6 5.6 0 3.1-2.5 5.4-6.5 5.4h-9.2M42.3 18.4v31"
+              fill="none"
+              stroke="#268ed5"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M13 61h48" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </div>
       </div>
 
