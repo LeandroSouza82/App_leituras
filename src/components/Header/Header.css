@@ -174,14 +174,23 @@
 .header-metrica-bloco--condominios,
 .header-metrica-bloco--faturamento {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 54px;
   align-items: center;
-  gap: 8px;
   overflow: hidden;
 }
 
 .header-metrica-bloco--condominios {
+  grid-template-columns: minmax(0, 1fr) 54px;
+  gap: 8px;
   cursor: default;
+}
+
+.header-metrica-bloco--faturamento {
+  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-areas:
+    "label icon"
+    "value value";
+  column-gap: 8px;
+  row-gap: 2px;
 }
 
 .header-metrica-conteudo {
@@ -199,6 +208,25 @@
   opacity: 0.96;
   filter: drop-shadow(0 6px 10px rgba(9, 72, 125, 0.2));
   pointer-events: none;
+}
+
+.header-metrica-label--faturamento {
+  grid-area: label;
+}
+
+.header-metrica-valor--faturamento {
+  grid-area: value;
+  min-width: 0;
+  font-size: clamp(0.9rem, 4vw, 1.15rem);
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-faturamento-ilustracao {
+  grid-area: icon;
+  width: 44px;
+  height: 44px;
 }
 
 .header-metrica-bloco--clickable {
