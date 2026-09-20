@@ -114,33 +114,6 @@
   line-height: 1;
 }
 
-/* ===== BARRA DE PROGRESSO ===== */
-.header-progresso {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.header-progresso-track {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.header-progresso-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #34d399, #22c55e);
-  border-radius: 999px;
-  transition: width 0.5s ease;
-}
-
-.header-progresso-texto {
-  font-size: 0.82rem;
-  opacity: 0.9;
-  letter-spacing: 0.01em;
-}
-
 /* ===== MÉTRICAS SECUNDÁRIAS ===== */
 .header-metricas {
   display: grid;
