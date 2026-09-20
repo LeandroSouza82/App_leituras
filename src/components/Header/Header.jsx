@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Bell, Menu, Share2, Eye, EyeOff } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioLeiturasExcel } from '../../services/relatorioExcelService';
+import ProgressoLeituras from '../ProgressoLeituras/ProgressoLeituras';
 import SideMenu from '../SideMenu/SideMenu';
 
 const formatCurrency = (value) =>
@@ -130,20 +131,13 @@ const Header = ({
         </strong>
       </div>
 
-      {/* Linha 3: Barra de progresso */}
-      <div
-        className="header-progresso"
+      {/* Linha 3: Progresso mensal */}
+      <ProgressoLeituras
+        percentual={percentualConcluido}
+        concluidos={totalConcluidos}
+        total={totalCondominios}
         onClick={onOpenProgressoModal}
-        style={{ cursor: 'pointer' }}
-        aria-label="Ver progresso"
-      >
-        <div className="header-progresso-track">
-          <div className="header-progresso-fill" style={{ width: `${percentualConcluido}%` }} />
-        </div>
-        <span className="header-progresso-texto">
-          {totalConcluidos}/{totalCondominios} concluídos
-        </span>
-      </div>
+      />
 
       {/* Linha 4: Métricas secundárias lado a lado */}
       <div className="header-metricas">
