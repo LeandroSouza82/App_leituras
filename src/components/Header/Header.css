@@ -159,10 +159,6 @@
   transition: background 0.2s ease;
 }
 
-.header-metrica-bloco:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
-
 .header-metrica-label {
   font-size: 0.78rem;
   opacity: 0.82;
@@ -173,6 +169,31 @@
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.header-metrica-bloco--condominios {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+  overflow: hidden;
+}
+
+.header-metrica-conteudo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.header-condominio-ilustracao {
+  width: 54px;
+  height: 54px;
+  justify-self: end;
+  opacity: 0.96;
+  filter: drop-shadow(0 6px 10px rgba(9, 72, 125, 0.2));
+  pointer-events: none;
 }
 
 .header-metrica-bloco--clickable {
