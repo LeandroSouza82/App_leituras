@@ -174,59 +174,47 @@
 .header-metrica-bloco--condominios,
 .header-metrica-bloco--faturamento {
   display: grid;
-  align-items: center;
-  overflow: hidden;
-}
-
-.header-metrica-bloco--condominios {
-  grid-template-columns: minmax(0, 1fr) 54px;
-  gap: 8px;
-  cursor: default;
-}
-
-.header-metrica-bloco--faturamento {
   grid-template-columns: minmax(0, 1fr) 44px;
   grid-template-areas:
     "label icon"
     "value value";
+  align-items: center;
   column-gap: 8px;
   row-gap: 2px;
+  overflow: hidden;
 }
 
-.header-metrica-conteudo {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+.header-metrica-bloco--condominios {
+  cursor: default;
 }
 
 .header-condominio-ilustracao,
 .header-faturamento-ilustracao {
-  width: 54px;
-  height: 54px;
+  grid-area: icon;
+  width: 44px;
+  height: 44px;
   justify-self: end;
   opacity: 0.96;
   filter: drop-shadow(0 6px 10px rgba(9, 72, 125, 0.2));
   pointer-events: none;
 }
 
+.header-metrica-label--condominios,
 .header-metrica-label--faturamento {
   grid-area: label;
 }
 
+.header-metrica-valor--condominios,
 .header-metrica-valor--faturamento {
   grid-area: value;
   min-width: 0;
-  font-size: clamp(0.9rem, 4vw, 1.15rem);
   line-height: 1.1;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.header-faturamento-ilustracao {
-  grid-area: icon;
-  width: 44px;
-  height: 44px;
+.header-metrica-valor--faturamento {
+  font-size: clamp(0.9rem, 4vw, 1.15rem);
 }
 
 .header-metrica-bloco--clickable {
