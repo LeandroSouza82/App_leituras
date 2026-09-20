@@ -114,33 +114,6 @@
   line-height: 1;
 }
 
-/* ===== BARRA DE PROGRESSO ===== */
-.header-progresso {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.header-progresso-track {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.header-progresso-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #34d399, #22c55e);
-  border-radius: 999px;
-  transition: width 0.5s ease;
-}
-
-.header-progresso-texto {
-  font-size: 0.82rem;
-  opacity: 0.9;
-  letter-spacing: 0.01em;
-}
-
 /* ===== MÉTRICAS SECUNDÁRIAS ===== */
 .header-metricas {
   display: grid;
@@ -159,10 +132,6 @@
   transition: background 0.2s ease;
 }
 
-.header-metrica-bloco:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
-
 .header-metrica-label {
   font-size: 0.78rem;
   opacity: 0.82;
@@ -173,6 +142,52 @@
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.header-metrica-bloco--condominios,
+.header-metrica-bloco--faturamento {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-areas:
+    "label icon"
+    "value value";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  overflow: hidden;
+}
+
+.header-metrica-bloco--condominios {
+  cursor: default;
+}
+
+.header-condominio-ilustracao,
+.header-faturamento-ilustracao {
+  grid-area: icon;
+  width: 44px;
+  height: 44px;
+  justify-self: end;
+  opacity: 0.96;
+  filter: drop-shadow(0 6px 10px rgba(9, 72, 125, 0.2));
+  pointer-events: none;
+}
+
+.header-metrica-label--condominios,
+.header-metrica-label--faturamento {
+  grid-area: label;
+}
+
+.header-metrica-valor--condominios,
+.header-metrica-valor--faturamento {
+  grid-area: value;
+  min-width: 0;
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-metrica-valor--faturamento {
+  font-size: clamp(0.9rem, 4vw, 1.15rem);
 }
 
 .header-metrica-bloco--clickable {

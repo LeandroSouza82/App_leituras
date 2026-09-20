@@ -1,0 +1,100 @@
+.progresso-leituras {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.progresso-leituras-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progresso-leituras-titulo {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.9;
+}
+
+.progresso-leituras-percentual {
+  min-width: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 4px 12px rgba(9, 72, 125, 0.14);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(8px);
+}
+
+.progresso-leituras-trilho {
+  width: 100%;
+  height: 9px;
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 2px rgba(9, 72, 125, 0.16);
+}
+
+.progresso-leituras-preenchimento {
+  position: relative;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34d399 0%, #22c55e 65%, #16a34a 100%);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.34);
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.progresso-leituras-ponta {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 7px rgba(255, 255, 255, 0.74);
+  transform: translateY(-50%);
+}
+
+.progresso-leituras-descricao {
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  opacity: 0.92;
+}
+
+.progresso-leituras--completo .progresso-leituras-percentual {
+  background: rgba(34, 197, 94, 0.3);
+  border-color: rgba(167, 243, 208, 0.62);
+}
+
+.progresso-leituras:hover .progresso-leituras-percentual {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.progresso-leituras:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.92);
+  outline-offset: 5px;
+}

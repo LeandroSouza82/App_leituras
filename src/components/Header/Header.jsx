@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Bell, Menu, Share2, Eye, EyeOff } from 'lucide-react';
 import './Header.css';
 import { gerarRelatorioLeiturasExcel } from '../../services/relatorioExcelService';
-import ListaCondominiosModal from '../ListaCondominiosModal/ListaCondominiosModal';
+import ProgressoLeituras from '../ProgressoLeituras/ProgressoLeituras';
 import SideMenu from '../SideMenu/SideMenu';
 
 const formatCurrency = (value) =>
@@ -37,7 +37,6 @@ const Header = ({
   onLogout,
   onNavigate,
 }) => {
-  const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
   const [mostrarValor, setMostrarValor] = useState(() => {
     const salvo = localStorage.getItem(VISIBILIDADE_VALORES_KEY);
@@ -132,47 +131,118 @@ const Header = ({
         </strong>
       </div>
 
-      {/* Linha 3: Barra de progresso */}
-      <div
-        className="header-progresso"
+      {/* Linha 3: Progresso mensal */}
+      <ProgressoLeituras
+        percentual={percentualConcluido}
+        concluidos={totalConcluidos}
+        total={totalCondominios}
         onClick={onOpenProgressoModal}
-        style={{ cursor: 'pointer' }}
-        aria-label="Ver progresso"
-      >
-        <div className="header-progresso-track">
-          <div className="header-progresso-fill" style={{ width: `${percentualConcluido}%` }} />
-        </div>
-        <span className="header-progresso-texto">
-          {totalConcluidos}/{totalCondominios} concluídos
-        </span>
-      </div>
+      />
 
       {/* Linha 4: Métricas secundárias lado a lado */}
       <div className="header-metricas">
         <div
-          className="header-metrica-bloco"
-          onClick={() => setModalCondominiosAberto(true)}
-          style={{ cursor: 'pointer' }}
-          aria-label="Ver condomínios"
+          className="header-metrica-bloco header-metrica-bloco--condominios"
+          aria-label={`${totalCondominios} condomínios cadastrados`}
         >
-          <span className="header-metrica-label">Condomínios</span>
-          <strong className="header-metrica-valor">{totalCondominios}</strong>
+          <span className="header-metrica-label header-metrica-label--condominios">Condomínios</span>
+          <strong className="header-metrica-valor header-metrica-valor--condominios">
+            {totalCondominios}
+          </strong>
+          <svg
+            className="header-condominio-ilustracao"
+            viewBox="0 0 72 72"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="condominio-fachada" x1="15" y1="10" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#ffffff" stopOpacity="0.96" />
+                <stop offset="1" stopColor="#d9f1ff" stopOpacity="0.68" />
+              </linearGradient>
+              <linearGradient id="condominio-lateral" x1="44" y1="27" x2="60" y2="59" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#d7efff" stopOpacity="0.82" />
+                <stop offset="1" stopColor="#ffffff" stopOpacity="0.48" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M16 59V23.5c0-1.8 1.1-3.5 2.8-4.2L43 9.2c1.3-.5 2.7.4 2.7 1.8v48"
+              fill="url(#condominio-fachada)"
+              stroke="#ffffff"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M45.7 27.2 57 32.1c1.2.5 2 1.7 2 3V59H45.7"
+              fill="url(#condominio-lateral)"
+              stroke="#ffffff"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <g fill="#268ed5" fillOpacity="0.74">
+              <rect x="22" y="23" width="6" height="6" rx="1.4" />
+              <rect x="33" y="20" width="6" height="6" rx="1.4" />
+              <rect x="22" y="34" width="6" height="6" rx="1.4" />
+              <rect x="33" y="31" width="6" height="6" rx="1.4" />
+              <rect x="22" y="45" width="6" height="6" rx="1.4" />
+              <rect x="33" y="42" width="6" height="6" rx="1.4" />
+              <rect x="49" y="37" width="5.5" height="5.5" rx="1.3" />
+              <rect x="49" y="47" width="5.5" height="5.5" rx="1.3" />
+            </g>
+            <path d="M33 59v-9h7v9M10 59h53" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </div>
         <div
-          className="header-metrica-bloco header-metrica-bloco--clickable"
+          className="header-metrica-bloco header-metrica-bloco--faturamento header-metrica-bloco--clickable"
           onClick={onOpenFaturamento}
           aria-label="Ver faturamento detalhado"
         >
-          <span className="header-metrica-label">Faturado</span>
-          <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
+          <span className="header-metrica-label header-metrica-label--faturamento">Faturado</span>
+          <strong className="header-metrica-valor header-metrica-valor--faturamento">
+            {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
+          </strong>
+          <svg
+            className="header-faturamento-ilustracao"
+            viewBox="0 0 72 72"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="faturamento-moeda" x1="23" y1="14" x2="56" y2="57" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#ffffff" stopOpacity="0.96" />
+                <stop offset="1" stopColor="#d9f1ff" stopOpacity="0.68" />
+              </linearGradient>
+              <linearGradient id="faturamento-moeda-fundo" x1="10" y1="28" x2="42" y2="60" gradientUnits="userSpaceOnUse">
+                <stop stopColor="#d7efff" stopOpacity="0.72" />
+                <stop offset="1" stopColor="#ffffff" stopOpacity="0.38" />
+              </linearGradient>
+            </defs>
+            <circle
+              cx="27"
+              cy="42"
+              r="17"
+              fill="url(#faturamento-moeda-fundo)"
+              stroke="#ffffff"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="43"
+              cy="33"
+              r="21"
+              fill="url(#faturamento-moeda)"
+              stroke="#ffffff"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M47.5 22.5h-8.3c-3.7 0-6 2.1-6 5.1 0 3.2 2.4 4.6 6 5.4l6.2 1.3c3.8.8 6 2.4 6 5.6 0 3.1-2.5 5.4-6.5 5.4h-9.2M42.3 18.4v31"
+              fill="none"
+              stroke="#268ed5"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M13 61h48" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </div>
       </div>
-
-      <ListaCondominiosModal
-        isOpen={modalCondominiosAberto}
-        onClose={() => setModalCondominiosAberto(false)}
-        leituras={leituras || []}
-      />
 
       <SideMenu
         isOpen={isSideMenuOpen}
