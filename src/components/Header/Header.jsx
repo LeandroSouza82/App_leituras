@@ -151,10 +151,10 @@ const Header = ({
           className="header-metrica-bloco header-metrica-bloco--condominios"
           aria-label={`${totalCondominios} condomínios cadastrados`}
         >
-          <div className="header-metrica-conteudo">
-            <span className="header-metrica-label">Condomínios</span>
-            <strong className="header-metrica-valor">{totalCondominios}</strong>
-          </div>
+          <span className="header-metrica-label header-metrica-label--condominios">Condomínios</span>
+          <strong className="header-metrica-valor header-metrica-valor--condominios">
+            {totalCondominios}
+          </strong>
           <svg
             className="header-condominio-ilustracao"
             viewBox="0 0 72 72"
