@@ -202,10 +202,10 @@ const Header = ({
           onClick={onOpenFaturamento}
           aria-label="Ver faturamento detalhado"
         >
-          <div className="header-metrica-conteudo">
-            <span className="header-metrica-label">Faturado</span>
-            <strong className="header-metrica-valor">{mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}</strong>
-          </div>
+          <span className="header-metrica-label header-metrica-label--faturamento">Faturado</span>
+          <strong className="header-metrica-valor header-metrica-valor--faturamento">
+            {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
+          </strong>
           <svg
             className="header-faturamento-ilustracao"
             viewBox="0 0 72 72"
