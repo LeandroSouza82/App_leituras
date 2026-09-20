@@ -171,13 +171,17 @@
   letter-spacing: -0.02em;
 }
 
-.header-metrica-bloco--condominios {
+.header-metrica-bloco--condominios,
+.header-metrica-bloco--faturamento {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 54px;
   align-items: center;
   gap: 8px;
-  cursor: default;
   overflow: hidden;
+}
+
+.header-metrica-bloco--condominios {
+  cursor: default;
 }
 
 .header-metrica-conteudo {
@@ -187,7 +191,8 @@
   min-width: 0;
 }
 
-.header-condominio-ilustracao {
+.header-condominio-ilustracao,
+.header-faturamento-ilustracao {
   width: 54px;
   height: 54px;
   justify-self: end;
