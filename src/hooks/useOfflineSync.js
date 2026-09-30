@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { Network } from '@capacitor/network';
 import { temConexaoInternetUtil } from '../services/networkQualityService';
+import { alternarStatusLeitura } from '../services/condominioService';
 
 const STORAGE_KEY = 'leituras_pendentes';
 const PENDENCIAS_OFFLINE_KEY = 'pendencias_offline';
@@ -83,6 +84,11 @@ export function useOfflineSync() {
 
     for (const item of pendencias) {
       try {
+        // As marcações dos cards usam condomínio + mês, inclusive após a virada.
+        if (item.mes_referencia && typeof item.completo === 'boolean') {
+          await alternarStatusLeitura(item.id, item.mes_referencia, !item.completo);
+          continue;
+        }
         const payload = {};
 
         if (item.status !== undefined) {

@@ -1,15 +1,11 @@
 import { supabase } from './supabase';
+import { getCurrentMonthKey } from '../utils/mesLeituras';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
   if (!diaTexto) return null;
   const numeroString = String(diaTexto).match(/\d+/)?.[0];
   return numeroString ? Number.parseInt(numeroString, 10) : null;
-};
-
-const getCurrentMonthKey = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
 const requireSupabase = () => {
@@ -63,6 +59,7 @@ const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey()) => {
     latitude: row.latitude ? Number(row.latitude) : null,
     longitude: row.longitude ? Number(row.longitude) : null,
     completo: Boolean(leituraDoMes?.concluido),
+    mesReferencia,
   };
 };
 
@@ -70,7 +67,7 @@ const throwDatabaseError = (action, error) => {
   throw new Error(`${action}: ${error?.message || 'erro desconhecido'}`);
 };
 
-export const buscarCondominios = async () => {
+export const buscarCondominios = async (mesReferencia = getCurrentMonthKey()) => {
   try {
     const client = requireSupabase();
     const userId = await getAuthenticatedUserId();
@@ -85,7 +82,7 @@ export const buscarCondominios = async () => {
 
     // Ordena por dia_leitura em JavaScript (seguro para strings e valores "Variado")
     return (data || [])
-      .map((row) => toApplicationCondominio(row))
+      .map((row) => toApplicationCondominio(row, mesReferencia))
       .sort((a, b) => {
         const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
         const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;

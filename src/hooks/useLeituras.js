@@ -7,6 +7,8 @@ import {
   salvarCondominio,
 } from '../services/condominioService';
 import { NotificationService } from '../services/notificationService';
+import { useDataLeituras } from './useDataLeituras';
+import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -15,17 +17,28 @@ const extrairNumeroDia = (diaTexto) => {
   return numeroString ? Number.parseInt(numeroString, 10) : null;
 };
 
-const getCurrentMonthKey = () => {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const year = String(now.getFullYear());
-  return `${year}-${month}`;
+const aplicarMesAtual = (dados, mesReferencia) => {
+  let pendencias = [];
+  try {
+    const fila = JSON.parse(localStorage.getItem('pendencias_offline') || '[]');
+    if (Array.isArray(fila)) pendencias = fila;
+  } catch (error) {
+    console.warn('Erro ao ler marcações offline', error);
+  }
+  return leiturasParaMes(dados, mesReferencia, pendencias);
 };
 
 export const useLeituras = (onFeedback = () => {}) => {
-  const diaAtual = new Date().getDate();
-  const ultimoDiaDoMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-  const [leituras, setLeituras] = useState([]);
+  const dataAtual = useDataLeituras();
+  const mesReferencia = getCurrentMonthKey(dataAtual);
+  const diaAtual = dataAtual.getDate();
+  const ultimoDiaDoMes = new Date(dataAtual.getFullYear(), dataAtual.getMonth() + 1, 0).getDate();
+  const [dadosLeituras, setLeituras] = useState([]);
+  const [cacheCarregado, setCacheCarregado] = useState(false);
+  const leituras = useMemo(
+    () => leiturasParaMes(dadosLeituras, mesReferencia),
+    [dadosLeituras, mesReferencia]
+  );
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -35,18 +48,20 @@ export const useLeituras = (onFeedback = () => {}) => {
     try {
       const cachedData = localStorage.getItem('condominios_cache');
       if (cachedData && isMounted) {
-        setLeituras(JSON.parse(cachedData));
+        setLeituras(aplicarMesAtual(JSON.parse(cachedData), mesReferencia));
       }
     } catch (e) {
       console.warn("Erro ao ler cache local de condominios", e);
     }
+    setCacheCarregado(true);
 
     // 2. BUSCA EM BACKGROUND NO SUPABASE (Silenciosa)
-    buscarCondominios()
+    buscarCondominios(mesReferencia)
       .then((dados) => {
         if (isMounted) {
-          setLeituras(dados);
-          localStorage.setItem('condominios_cache', JSON.stringify(dados));
+          const atuais = aplicarMesAtual(dados, mesReferencia);
+          setLeituras(atuais);
+          localStorage.setItem('condominios_cache', JSON.stringify(atuais));
         }
       })
       .catch((error) => {
@@ -62,7 +77,24 @@ export const useLeituras = (onFeedback = () => {}) => {
     return () => {
       isMounted = false;
     };
-  }, [onFeedback, reloadKey]);
+  }, [onFeedback, reloadKey, mesReferencia]);
+
+  useEffect(() => {
+    if (!cacheCarregado) return;
+    try {
+      const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
+      const porId = new Map(cache.map((item) => [String(item.id), item]));
+      // Persiste apenas a marcação mensal, preservando edições locais de outros campos.
+      const atualizados = leituras.map((item) => ({
+        ...(porId.get(String(item.id)) || item),
+        completo: item.completo,
+        mesReferencia: item.mesReferencia,
+      }));
+      localStorage.setItem('condominios_cache', JSON.stringify(atualizados));
+    } catch (error) {
+      console.warn('Erro ao salvar cache local de condomínios', error);
+    }
+  }, [leituras, cacheCarregado]);
 
   const adicionarLeitura = async (novaLeitura) => {
     try {
@@ -76,7 +108,9 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const toggleCompleto = async (id) => {
-    const leituraAnterior = leituras.find((item) => item.id === id);
+    // Fixa o mês do toque, mesmo que a resposta chegue depois da meia-noite.
+    const mesDoToque = getCurrentMonthKey();
+    const leituraAnterior = aplicarMesAtual(dadosLeituras, mesDoToque).find((item) => item.id === id);
     if (!leituraAnterior) {
       return;
     }
@@ -89,12 +123,13 @@ export const useLeituras = (onFeedback = () => {}) => {
 
     setLeituras((previous) =>
       previous.map((item) =>
-        item.id === id ? { ...item, completo: novoCompleto } : item
+        item.id === id && getCurrentMonthKey() === mesDoToque
+          ? { ...item, completo: novoCompleto, mesReferencia: mesDoToque } : item
       )
     );
 
     try {
-      await alternarStatusLeitura(id, undefined, leituraAnterior.completo);
+      await alternarStatusLeitura(id, mesDoToque, leituraAnterior.completo);
     } catch (error) {
       const mensagemErro = error?.message || '';
       const falhaDeRede = mensagemErro.includes('Failed to fetch') || !navigator.onLine;
@@ -106,7 +141,7 @@ export const useLeituras = (onFeedback = () => {}) => {
           pendencias.push({
             id,
             completo: novoCompleto,
-            mes_referencia: getCurrentMonthKey(),
+            mes_referencia: mesDoToque,
             data: new Date().toISOString(),
           });
           localStorage.setItem('pendencias_offline', JSON.stringify(pendencias));
@@ -117,7 +152,7 @@ export const useLeituras = (onFeedback = () => {}) => {
       }
 
       setLeituras((previous) =>
-        previous.map((item) => (item.id === id ? leituraAnterior : item))
+        previous.map((item) => (item.id === id && getCurrentMonthKey() === mesDoToque ? leituraAnterior : item))
       );
       onFeedback(error.message, 'error');
     }
@@ -211,14 +246,12 @@ export const useLeituras = (onFeedback = () => {}) => {
   }, [leituras.length, totalConcluidos]);
 
   const mesAnoFormatado = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return new Date(`${year}-${month}-01`).toLocaleDateString('pt-BR', {
+    const [year, month] = mesReferencia.split('-').map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', {
       month: 'long',
       year: 'numeric',
     });
-  }, []);
+  }, [mesReferencia]);
 
   const recarregarCondominios = () => {
     setReloadKey((previous) => previous + 1);
