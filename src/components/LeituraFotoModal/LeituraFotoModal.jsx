@@ -239,6 +239,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hydrationCounter, setHydrationCounter] = useState(0);
+  // OCR: imagem pré-carimbo (sem texto sobreposto) e contexto de isolamento
+  const [fotoParaOcr, setFotoParaOcr] = useState(null);
+  const [ocrContexto, setOcrContexto] = useState(null);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const servicosAtivos = useMemo(
@@ -1047,6 +1050,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 3. Sucesso parcial — fecha a câmera
       setCustomCameraOpen(false);
 
+      // OCR: guarda imagem ANTES do carimbo e gera captureId único por foto
+      // O captureId garante que resultado atrasado de foto anterior seja descartado.
+      const captureId = `${unidadeId}_${tipoMedicaoAtivo}_${Date.now()}`;
+      setFotoParaOcr(base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`);
+      setOcrContexto({
+        condominioId: String(leitura?.id || leitura?.condominio_id || ''),
+        unidadeId,
+        servico: tipoMedicaoAtivo,
+        captureId,
+      });
+
       // 4. Salva a FOTO BANCO (leve) apenas na Memória para a Interface
       // Isso exibe a miniatura, aguardando o usuário digitar o valor da leitura.
       setFotosCapturadas((prev) => ({
@@ -1169,6 +1183,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
         return novo;
       });
+
+      // OCR: descarta foto pré-carimbo e contexto da foto anterior
+      setFotoParaOcr(null);
+      setOcrContexto(null);
 
       // 5. Fecha o preview e abre a câmera customizada in-app para nova captura
       setIsPreviewOpen(false);
@@ -1907,13 +1925,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       <PreviewFotoModal
         key={`preview-${activeApto}-${tipoMedicaoAtivo}`}
         isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
+        onClose={() => { setIsPreviewOpen(false); setFotoParaOcr(null); setOcrContexto(null); }}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo] || ''}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
         leituraAnterior={todasLeiturasAnteriores[activeApto] ?? null}
+        imageParaOcr={fotoParaOcr}
+        ocrContexto={ocrContexto}
       />
 
       {/* 4. Feedback Toast */}

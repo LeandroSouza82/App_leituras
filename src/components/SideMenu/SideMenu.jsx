@@ -10,13 +10,15 @@ import {
   Star, 
   MessageSquare,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  ScanText
 } from 'lucide-react';
 import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
 import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
+import OcrIaModal from '../OcrIaModal/OcrIaModal';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
 import { SUPPORT_URL } from '../../config/publicUrls';
@@ -27,6 +29,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isOcrIaModalOpen, setOcrIaModalOpen] = useState(false);
 
   const handleForceSync = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -81,6 +84,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
       items: [
         { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
         { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
+        { id: 'ocr-ia', label: 'OCR + IA', icon: ScanText, onClick: () => setOcrIaModalOpen(true) },
       ]
     },
     {
@@ -216,6 +220,11 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
       <PrivacyTermsModal
         isOpen={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
+      />
+
+      <OcrIaModal
+        isOpen={isOcrIaModalOpen}
+        onClose={() => setOcrIaModalOpen(false)}
       />
     </>
   );
