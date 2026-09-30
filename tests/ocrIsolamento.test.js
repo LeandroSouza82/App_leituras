@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { create, act } from 'react-test-renderer';
-import { useOcrLeitura } from '../src/hooks/useOcrLeitura.js';
+import { useOcrLeitura, LIMITE_OCR_MS } from '../src/hooks/useOcrLeitura.js';
 import { setOcrAtivo } from '../src/utils/ocrConfig.js';
 
 const contexto = { condominioId: 'c1', unidadeId: '101', servico: 'agua', captureId: 'foto1' };
@@ -80,4 +80,27 @@ test('falha no reconhecimento não entrega número e permite continuar', async (
 test('desmontagem descarta resposta pendente', async () => {
   const h = await montar();
   await h.limpar(); await h.resolver(); assert.deepEqual(h.resultados, []);
+});
+
+ test('limite de espera encerra spinner e descarta resultado nativo atrasado', async () => {
+  const originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+  const timers = new Map(); let id = 0;
+  globalThis.setTimeout = (fn, ms) => { timers.set(++id, {fn, ms}); return id; };
+  globalThis.clearTimeout = id => timers.delete(id);
+  let h;
+  try {
+    h = await montar();
+    assert.equal(h.atual.status, 'processando');
+    const timer = [...timers.values()].find(t => t.ms === LIMITE_OCR_MS);
+    assert.ok(timer);
+    act(() => timer.fn());
+    assert.equal(h.atual.status, 'demorado');
+    await h.resolver();
+    assert.deepEqual(h.resultados, []);
+    assert.equal(h.atual.status, 'demorado');
+    assert.equal(timers.size, 0);
+  } finally {
+    if (h) await h.limpar();
+    globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;
+  }
 });

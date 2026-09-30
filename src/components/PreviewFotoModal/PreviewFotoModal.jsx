@@ -253,12 +253,14 @@ const PreviewFotoModal = ({
                 <span>✓ Sugestão do OCR · Confira o medidor antes de salvar</span>
               </div>
             )}
-            {ocrAtivo && ocrStatus === 'erro' && (
+            {ocrAtivo && (ocrStatus === 'erro' || ocrStatus === 'demorado') && (
               <div
                 className="ocr-status-indicator ocr-status-erro"
                 role="alert"
               >
-                <span>Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.</span>
+                <span>{ocrStatus === 'demorado'
+                  ? 'O reconhecimento demorou. Digite a leitura manualmente.'
+                  : 'Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.'}</span>
               </div>
             )}
 

@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { isOcrAtivo, observarOcr } from '../utils/ocrConfig.js';
 import { executarOcr } from '../utils/ocrService.js';
 
+export const LIMITE_OCR_MS = 5000;
+
 // O contexto deve representar a unidade/serviço exibidos, além da captura.
 export const chaveContextoOcr = (contexto) => contexto ? JSON.stringify([
   contexto.condominioId, contexto.unidadeId, contexto.servico, contexto.captureId,
@@ -31,11 +33,17 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
     const atual = sessao.current;
     if (!ativo || !isOpen || !image || !chave || atual.cancelado) return;
     let cancelado = false;
+    let timer;
     const valido = () => !cancelado && !atual.cancelado && sessao.current === atual && isOcrAtivo();
     // A primeira montagem descartada pelo StrictMode não chama o motor.
     Promise.resolve().then(async () => {
       if (!valido()) return;
       setStatus('processando');
+      timer = setTimeout(() => {
+        if (!valido()) return;
+        atual.cancelado = true;
+        setStatus('demorado');
+      }, LIMITE_OCR_MS);
       try {
         const resultado = await reconhecer(image, contexto);
         if (!valido()) return;
@@ -48,9 +56,11 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
         setStatus('concluido');
       } catch {
         if (valido()) setStatus('erro');
+      } finally {
+        clearTimeout(timer);
       }
     });
-    return () => { cancelado = true; };
+    return () => { cancelado = true; clearTimeout(timer); };
   }, [ativo, isOpen, image, chave, initialValue, reconhecer]);
 
   return { ativo, status, cancelar };
