@@ -8,6 +8,16 @@
  */
 
 const STORAGE_KEY = 'ocr_offline_ativo';
+const listeners = new Set();
+
+export const observarOcr = (listener) => {
+  listeners.add(listener);
+  globalThis.window?.addEventListener('storage', listener);
+  return () => {
+    listeners.delete(listener);
+    globalThis.window?.removeEventListener('storage', listener);
+  };
+};
 
 /**
  * Retorna true se o OCR offline estiver ativado pelo usuário.
@@ -28,7 +38,9 @@ export const isOcrAtivo = () => {
 export const setOcrAtivo = (ativo) => {
   try {
     localStorage.setItem(STORAGE_KEY, ativo ? 'true' : 'false');
+    for (const listener of listeners) listener();
+    return true;
   } catch {
-    // localStorage indisponível — ignora silenciosamente
+    return false;
   }
 };

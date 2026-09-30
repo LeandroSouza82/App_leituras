@@ -21,8 +21,7 @@ const OcrIaModal = ({ isOpen, onClose }) => {
 
   const handleToggle = () => {
     const novoValor = !ocrAtivo;
-    setOcrAtivoLocal(novoValor);
-    setOcrAtivo(novoValor);
+    if (setOcrAtivo(novoValor)) setOcrAtivoLocal(novoValor);
   };
 
   if (!isOpen) return null;
@@ -74,6 +73,7 @@ const OcrIaModal = ({ isOpen, onClose }) => {
             </div>
             <button
               type="button"
+              aria-label="Ativar OCR offline"
               role="switch"
               aria-checked={ocrAtivo}
               className={`ocr-toggle-btn ${ocrAtivo ? 'ocr-toggle-btn--on' : ''}`}

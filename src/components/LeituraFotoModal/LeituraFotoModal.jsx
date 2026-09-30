@@ -1,3 +1,4 @@
+import { isOcrAtivo } from '../../utils/ocrConfig';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -1052,8 +1053,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // OCR: guarda imagem ANTES do carimbo e gera captureId único por foto
       // O captureId garante que resultado atrasado de foto anterior seja descartado.
-      const captureId = `${unidadeId}_${tipoMedicaoAtivo}_${Date.now()}`;
-      setFotoParaOcr(base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`);
+      const captureId = crypto.randomUUID();
+      setFotoParaOcr(isOcrAtivo() ? (base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`) : null);
       setOcrContexto({
         condominioId: String(leitura?.id || leitura?.condominio_id || ''),
         unidadeId,
@@ -1933,7 +1934,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
         leituraAnterior={todasLeiturasAnteriores[activeApto] ?? null}
         imageParaOcr={fotoParaOcr}
-        ocrContexto={ocrContexto}
+        ocrContexto={ocrContexto && String(activeApto).trim() === ocrContexto.unidadeId
+          && tipoMedicaoAtivo === ocrContexto.servico
+          && String(leitura?.id || leitura?.condominio_id || '') === ocrContexto.condominioId
+          ? ocrContexto : null}
       />
 
       {/* 4. Feedback Toast */}

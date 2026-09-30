@@ -4,8 +4,7 @@ import { X, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
 import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
-import { isOcrAtivo } from '../../utils/ocrConfig';
-import { executarOcr } from '../../utils/ocrService';
+import { useOcrLeitura, chaveContextoOcr } from '../../hooks/useOcrLeitura';
 import './PreviewFotoModal.css';
 
 /**
@@ -34,15 +33,6 @@ const PreviewFotoModal = ({
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
 
-  // Estado OCR — não altera o campo se o usuário já tocou
-  const [ocrStatus, setOcrStatus] = useState('idle'); // 'idle' | 'processando' | 'concluido' | 'erro'
-  const [ocrAviso, setOcrAviso] = useState('');
-
-  // Proteção: guarda o captureId do contexto atual para descartar resultados atrasados
-  const contextoAtualRef = useRef(null);
-  // Flag: true se o usuário já editou/colou/apagou o campo — descarta OCR
-  const usuarioEditouRef = useRef(false);
-
   const inputRef = useRef(null);
 
   const validarLeitura = (valor) => {
@@ -63,11 +53,20 @@ const PreviewFotoModal = ({
     }
   };
 
+  const { ativo: ocrAtivo, status: ocrStatus, cancelar: cancelarOcr } = useOcrLeitura({
+    isOpen, image: imageParaOcr, contexto: ocrContexto, initialValue,
+    onResult: (valor) => {
+      const formatado = aplicarMascaraLeitura(valor);
+      if (!formatado) return;
+      setLeituraValor(formatado);
+      validarLeitura(formatado);
+    },
+  });
+  const fechar = () => { cancelarOcr(); onClose(); };
+  const refazer = () => { cancelarOcr(); onRetake(); };
+
   const handleInputChange = (e) => {
-    // Qualquer edição cancela o OCR pendente
-    usuarioEditouRef.current = true;
-    setOcrStatus('idle');
-    setOcrAviso('');
+    cancelarOcr();
 
     const raw = e.target.value;
     if (!raw) {
@@ -102,12 +101,7 @@ const PreviewFotoModal = ({
   };
 
   const handleKeyDown = (e) => {
-    // Qualquer tecla no campo (incluindo Backspace) cancela OCR pendente
-    if (!usuarioEditouRef.current) {
-      usuarioEditouRef.current = true;
-      setOcrStatus('idle');
-      setOcrAviso('');
-    }
+    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') cancelarOcr();
 
     if (e.key === 'Backspace') {
       const input = e.currentTarget;
@@ -137,10 +131,7 @@ const PreviewFotoModal = ({
   };
 
   const handlePaste = (e) => {
-    // Cola = edição manual — cancela OCR
-    usuarioEditouRef.current = true;
-    setOcrStatus('idle');
-    setOcrAviso('');
+    cancelarOcr();
 
     e.preventDefault();
     const pasted = e.clipboardData?.getData('text') || '';
@@ -162,109 +153,26 @@ const PreviewFotoModal = ({
   // Garante limpeza e estado pronto para digitação sempre que o modal abrir
   useEffect(() => {
     if (isOpen) {
-      // Reseta proteções para a nova foto/abertura
-      usuarioEditouRef.current = false;
-      contextoAtualRef.current = ocrContexto?.captureId ?? null;
-      setOcrStatus('idle');
-      setOcrAviso('');
-
       const formattedInitial = initialValue ? aplicarMascaraLeitura(initialValue) : '';
       setLeituraValor(formattedInitial);
       if (formattedInitial) {
         validarLeitura(formattedInitial);
-        // Leitura já existente: não sobrescrever com OCR
-        usuarioEditouRef.current = true;
       } else {
         setErroValidacao('');
       }
     }
-  }, [isOpen, initialValue, leituraAnterior]);
-
-  // Dispara OCR quando o modal abre com imagem disponível
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!imageParaOcr) return;
-    if (!isOcrAtivo()) return;
-    if (!ocrContexto) return;
-
-    // Guarda o captureId desta execução para checagem posterior
-    const captureIdDesta = ocrContexto.captureId;
-    contextoAtualRef.current = captureIdDesta;
-
-    let cancelado = false;
-
-    const rodar = async () => {
-      // Se o usuário já tem valor ou já editou, não preenche
-      if (usuarioEditouRef.current) return;
-
-      setOcrStatus('processando');
-      setOcrAviso('');
-
-      const resultado = await executarOcr(imageParaOcr, ocrContexto);
-
-      if (cancelado) return; // modal fechou ou foto foi refeita
-
-      // Descarta se o contexto mudou (unidade/serviço diferente, nova foto)
-      if (contextoAtualRef.current !== captureIdDesta) return;
-
-      // Descarta se o usuário editou enquanto processava
-      if (usuarioEditouRef.current) {
-        setOcrStatus('idle');
-        return;
-      }
-
-      // Descarta se já há leitura no campo
-      if (leituraValor) {
-        setOcrStatus('idle');
-        return;
-      }
-
-      if (!resultado.sucesso) {
-        setOcrStatus('erro');
-        setOcrAviso('Reconhecimento indisponível. Digite a leitura manualmente.');
-        return;
-      }
-
-      if (resultado.valor === null || resultado.confianca === 'baixa' || resultado.confianca === null) {
-        setOcrStatus('erro');
-        setOcrAviso('Não foi possível reconhecer a leitura com segurança. Verifique o medidor e digite manualmente.');
-        return;
-      }
-
-      // Aplica a formatação existente ao valor reconhecido
-      const valorFormatado = aplicarMascaraLeitura(resultado.valor);
-      if (!valorFormatado) {
-        setOcrStatus('erro');
-        setOcrAviso('Valor reconhecido é inválido. Digite manualmente.');
-        return;
-      }
-
-      // Preenche o campo uma única vez
-      setLeituraValor(valorFormatado);
-      validarLeitura(valorFormatado);
-      setOcrStatus('concluido');
-      setOcrAviso('');
-    };
-
-    rodar();
-
-    return () => {
-      cancelado = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, imageParaOcr, ocrContexto?.captureId]);
+  }, [isOpen, initialValue, leituraAnterior, imageParaOcr, chaveContextoOcr(ocrContexto)]);
 
   if (!isOpen || !imageUri) return null;
 
   const handleSave = async () => {
     if (!leituraValor || isSaving) return;
 
+    cancelarOcr();
     setIsSaving(true);
     try {
       await onSaveReading(leituraValor);
       setLeituraValor('');
-      setOcrStatus('idle');
-      setOcrAviso('');
       onClose();
     } catch (error) {
       await customAlert('Erro ao sincronizar leitura: ' + error.message);
@@ -274,11 +182,11 @@ const PreviewFotoModal = ({
   };
 
   return (
-    <div className="preview-foto-overlay" onClick={onClose}>
+    <div className="preview-foto-overlay" onClick={fechar}>
       <div className="preview-foto-container" onClick={(e) => e.stopPropagation()}>
         <header className="preview-foto-header">
           <h3>{unitInfo}</h3>
-          <button type="button" className="btn-close" onClick={onClose}><X size={20} /></button>
+          <button type="button" className="btn-close" onClick={fechar}><X size={20} /></button>
         </header>
 
         <div className="preview-foto-body">
@@ -293,7 +201,7 @@ const PreviewFotoModal = ({
               <button
                 type="button"
                 className="btn-floating btn-floating-retake"
-                onClick={onRetake}
+                onClick={refazer}
                 disabled={isSaving}
                 title="Refazer foto"
               >
@@ -326,7 +234,7 @@ const PreviewFotoModal = ({
             </div>
 
             {/* Indicador de status OCR — discreto, nunca bloqueia o campo */}
-            {isOcrAtivo() && ocrStatus === 'processando' && (
+            {ocrAtivo && ocrStatus === 'processando' && (
               <div
                 className="ocr-status-indicator ocr-status-processando"
                 role="status"
@@ -336,7 +244,7 @@ const PreviewFotoModal = ({
                 <span>Reconhecendo leitura…</span>
               </div>
             )}
-            {isOcrAtivo() && ocrStatus === 'concluido' && (
+            {ocrAtivo && ocrStatus === 'concluido' && (
               <div
                 className="ocr-status-indicator ocr-status-concluido"
                 role="status"
@@ -345,12 +253,12 @@ const PreviewFotoModal = ({
                 <span>✓ Sugestão do OCR · Confira o medidor antes de salvar</span>
               </div>
             )}
-            {isOcrAtivo() && ocrStatus === 'erro' && ocrAviso && (
+            {ocrAtivo && ocrStatus === 'erro' && (
               <div
                 className="ocr-status-indicator ocr-status-erro"
                 role="alert"
               >
-                <span>{ocrAviso}</span>
+                <span>Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.</span>
               </div>
             )}
 
@@ -361,6 +269,7 @@ const PreviewFotoModal = ({
               inputMode="numeric"
               pattern="[0-9]*"
               value={leituraValor}
+              onBeforeInput={cancelarOcr}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
