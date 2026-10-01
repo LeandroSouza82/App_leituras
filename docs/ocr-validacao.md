@@ -46,3 +46,20 @@ medição desta integração. Não removemos dependências nativas sem build e t
 
 Os testes automatizados usam um motor simulado para respostas atrasadas;
 não medem a precisão do ML Kit nem comprovam o funcionamento nativo.
+# Reconhecimento por cor — validação adicional
+
+O serviço agora usa as caixas dos elementos retornados pelo ML Kit e amostras
+dos pixels da foto original para interpretar linhas numéricas com parte preta
+seguida da vermelha, mesmo sem vírgula impressa. A máscara existente recebe
+um valor decimal explícito; cálculo e exportação não mudaram.
+
+Não há localização independente do visor: depende de o ML Kit reconhecer uma
+linha e separar os grupos preto/vermelho em elementos. Uma caixa única com cores
+misturadas, cor indefinida, múltiplos candidatos ou dígitos não reconhecidos é
+recusada. Fotos inclinadas, reflexos, pintura, transição mecânica e coordenadas
+da imagem nativa precisam de testes reais. Não representa confiança calibrada.
+
+Testes automatizados usam caixas e pixels sintéticos, não comprovam acerto nas
+fotos dos medidores. Validar no aparelho foto original versus caixas nativas,
+valor sugerido, casas decimais e tempo antes do merge. Não altera a câmera,
+não adiciona dependência e não envia fotos para serviços externos.

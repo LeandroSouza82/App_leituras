@@ -16,6 +16,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { reconhecerVisorPorCor } from './ocrVisor.js';
 
 // Importação dinâmica segura — o plugin existe apenas em contexto nativo.
 // O motor é carregado somente na primeira execução nativa.
@@ -165,7 +166,7 @@ export const executarOcr = async (imageDataUrl, contexto) => {
     const interpretacao = interpretarTextoMedidor(textoCompleto);
 
     resultado.sucesso = true;
-    resultado.valor = interpretacao.valor;
+    resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks);
   } catch (err) {
     resultado.erro = 'Não foi possível reconhecer a imagem.';
   } finally {
