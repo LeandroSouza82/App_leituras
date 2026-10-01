@@ -48,6 +48,16 @@ Os testes automatizados usam um motor simulado para respostas atrasadas;
 não medem a precisão do ML Kit nem comprovam o funcionamento nativo.
 # Reconhecimento por cor — validação adicional
 
+D3 físico em AP-102: motor reconheceu a linha `00 0 3 5 8 5 9`, com elementos
+`00 | 0 | 3 | 5 | 8 | 5 | 9`. A classificação do primeiro elemento `00` ficou
+indefinida. Não houve timeout (778 ms ao todo). D4 inclui uma margem pequena
+nas caixas para amostrar o fundo dos roletes, útil quando a caixa cobre dígitos
+brancos, e diagnostica todos os grupos mesmo se o primeiro for recusado.
+Amostras indefinidas ainda são recusadas: não presume zero, decimal ou cor.
+O painel também informa dimensões da foto e caixas ambíguas para verificar
+eventual diferença de coordenadas. Testes de geometria/contraste são sintéticos;
+é preciso repetir a captura no aparelho para confirmar a causa e a correção.
+
 Diagnóstico físico D2 após importação direta: AP-101, foto preparada em 184 ms,
 motor respondeu com texto em 458 ms, nenhuma sugestão em 787 ms e limpeza
 encerrada em 795 ms. Não há mais timeout nessa captura. Não foi comprovado

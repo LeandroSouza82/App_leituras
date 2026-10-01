@@ -111,7 +111,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     return resultado;
   }
 
-  registrar('Verificando plugin · D3');
+  registrar('Verificando plugin · D4');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
@@ -162,7 +162,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     resultado.sucesso = true;
     const detalhes = [];
     resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks, detalhe => {
-      if (diagnosticoAtivo && detalhes.length < 16) detalhes.push(detalhe);
+      if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
     });
     if (diagnosticoAtivo && detalhes.length) registrar(`Análise das cores:\n${detalhes.join('\n')}`);
     registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');

@@ -36,9 +36,13 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) =
       let inteiros = '';
       let decimais = '';
       let invalido = false;
-      for (const elemento of elementos) {
+      const cores = elementos.map(elemento => {
         const cor = corElemento(elemento);
         diagnosticar(`${elemento.text}: ${cor || 'cor indefinida'}`);
+        return cor;
+      });
+      for (const [indice, elemento] of elementos.entries()) {
+        const cor = cores[indice];
         if (cor === 'preto' && !decimais) inteiros += elemento.text;
         else if (cor === 'vermelho' && inteiros) decimais += elemento.text;
         else { invalido = true; break; }
@@ -54,6 +58,22 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) =
   return candidatos.length === 1 ? candidatos[0] : null;
 };
 
+// Inclui uma margem pequena para enxergar o fundo do rolete, inclusive quando
+// os números são brancos. A caixa do OCR pode cobrir apenas o traço do dígito.
+export const caixaAmostraVisor = (caixa, largura, altura) => {
+  if (!caixa || ![caixa.left, caixa.top, caixa.right, caixa.bottom].every(Number.isFinite)) return null;
+  const w = caixa.right - caixa.left;
+  const h = caixa.bottom - caixa.top;
+  if (w < 2 || h < 2 || caixa.left < 0 || caixa.top < 0 || caixa.right > largura || caixa.bottom > altura) return null;
+  const margemX = Math.max(1, Math.round(w * 0.08));
+  const margemY = Math.max(1, Math.round(h * 0.15));
+  const left = Math.max(0, Math.floor(caixa.left) - margemX);
+  const top = Math.max(0, Math.floor(caixa.top) - margemY);
+  const right = Math.min(largura, Math.ceil(caixa.right) + margemX);
+  const bottom = Math.min(altura, Math.ceil(caixa.bottom) + margemY);
+  return { left, top, right, bottom };
+};
+
 // Só aceita elementos com cor uniforme. Elementos mistos precisam de outro
 // reconhecimento: não divide uma caixa em posições inventadas para os dígitos.
 export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}) => {
@@ -64,13 +84,14 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
   const canvas = document.createElement('canvas');
   canvas.width = foto.naturalWidth;
   canvas.height = foto.naturalHeight;
+  diagnosticar(`Foto: ${canvas.width} × ${canvas.height}`);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   try {
     ctx.drawImage(foto, 0, 0);
     return interpretarVisor(blocks, elemento => {
-      const caixa = elemento.boundingBox;
-      if (!caixa) { diagnosticar('Elemento sem coordenadas'); return null; }
+      const caixa = caixaAmostraVisor(elemento.boundingBox, canvas.width, canvas.height);
+      if (!caixa) { diagnosticar('Coordenadas ausentes ou fora da foto'); return null; }
       const x = Math.floor(caixa.left);
       const y = Math.floor(caixa.top);
       const w = Math.ceil(caixa.right) - x;
@@ -85,7 +106,7 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
       const metade = Math.floor(w / 2);
       const a = classificarCorDigito(ctx.getImageData(x, y, metade, h).data);
       const b = classificarCorDigito(ctx.getImageData(x + metade, y, w - metade, h).data);
-      if (a !== b) diagnosticar(`Metades da caixa: ${a || '?'} / ${b || '?'}`);
+      if (!a || !b || a !== b) diagnosticar(`Caixa ${x},${y} ${w}×${h}: ${a || '?'} / ${b || '?'}`);
       return a === b ? a : null;
     }, diagnosticar);
   } finally {
