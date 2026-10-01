@@ -41,23 +41,37 @@ const elementosAlinhados = (elementos) => {
   return true;
 };
 
+// Só separa uma unidade reconhecida como elemento próprio no fim da linha.
+// "0035 859 m" mantém todos os dígitos; "74m" nunca vira "74".
+export const normalizarLinhaVisor = (linha) => {
+  let text = linha?.text?.trim() || '';
+  let elements = linha?.elements || [];
+  let unidade = null;
+  const ultimo = elements.at(-1)?.text;
+  if (/^(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
+    const partes = text.match(/^(.*?)\s+(\S+)$/);
+    if (!partes || partes[2] !== ultimo) return null;
+    text = partes[1].trim();
+    elements = elements.slice(0, -1);
+    unidade = ultimo;
+  }
+  if (!/^\d[\d\s]*$/.test(text) || !elements.length ||
+      elements.some(e => !/^\d+$/.test(e.text)) ||
+      elements.map(e => e.text).join('') !== text.replace(/\s/g, '')) return null;
+  return { text, elements, unidade };
+};
+
 export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) => {
   const candidatos = [];
   for (const block of blocks || []) {
     for (const linha of block.lines || []) {
-      if (!/^\d[\d\s]*$/.test(linha.text?.trim() || '')) {
-        if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: contém outros caracteres');
+      const normalizada = normalizarLinhaVisor(linha);
+      if (!normalizada) {
+        if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: texto e elementos não formam visor numérico');
         continue;
       }
-      const elementos = linha.elements || [];
-      if (!elementos.length || elementos.some(e => !/^\d+$/.test(e.text))) {
-        diagnosticar('Linha numérica sem elementos válidos');
-        continue;
-      }
-      if (elementos.map(e => e.text).join('') !== linha.text.replace(/\s/g, '')) {
-        diagnosticar('Elementos não correspondem à linha');
-        continue;
-      }
+      const elementos = normalizada.elements;
+      if (normalizada.unidade) diagnosticar(`Unidade separada: ${normalizada.unidade}`);
       let inteiros = '';
       let decimais = '';
       let invalido = false;

@@ -20,6 +20,14 @@ export const parseLeituraNumerica = (valor) => {
   return Number.isFinite(num) ? num : null;
 };
 
+// A mesma comparação de quatro casas usada na validação manual e no OCR.
+export const leituraEhMenorQueAnterior = (atual, anterior) => {
+  const valorAtual = parseLeituraNumerica(atual);
+  const valorAnterior = parseLeituraNumerica(anterior);
+  return valorAtual !== null && valorAnterior !== null &&
+    Math.round(valorAtual * 10000) < Math.round(valorAnterior * 10000);
+};
+
 export const formatarLeitura4Casas = (valor) => {
   const num = parseLeituraNumerica(valor);
   if (num === null) return '';

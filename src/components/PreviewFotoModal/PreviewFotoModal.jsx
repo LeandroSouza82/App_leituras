@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
-import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
+import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura, leituraEhMenorQueAnterior } from '../../utils/leituraNumerica';
 import { useOcrLeitura, chaveContextoOcr } from '../../hooks/useOcrLeitura';
 import './PreviewFotoModal.css';
 
@@ -36,25 +36,12 @@ const PreviewFotoModal = ({
   const inputRef = useRef(null);
 
   const validarLeitura = (valor) => {
-    if (leituraAnterior !== null && leituraAnterior !== undefined) {
-      const valorAtualFloat = parseLeituraNumerica(valor);
-      const valorAnteriorFloat = parseLeituraNumerica(leituraAnterior);
-      if (
-        valorAtualFloat !== null &&
-        valorAnteriorFloat !== null &&
-        Math.round(valorAtualFloat * 10000) < Math.round(valorAnteriorFloat * 10000)
-      ) {
-        setErroValidacao('A leitura não pode ser menor que o mês anterior');
-      } else {
-        setErroValidacao('');
-      }
-    } else {
-      setErroValidacao('');
-    }
+    setErroValidacao(leituraEhMenorQueAnterior(valor, leituraAnterior)
+      ? 'A leitura não pode ser menor que o mês anterior' : '');
   };
 
   const { ativo: ocrAtivo, status: ocrStatus, cancelar: cancelarOcr, diagnostico: ocrDiagnostico } = useOcrLeitura({
-    isOpen, image: imageParaOcr, contexto: ocrContexto, initialValue,
+    isOpen, image: imageParaOcr, contexto: ocrContexto, initialValue, leituraAnterior,
     onResult: (valor) => {
       const formatado = aplicarMascaraLeitura(valor);
       if (!formatado) return;
@@ -253,21 +240,23 @@ const PreviewFotoModal = ({
                 <span>✓ Sugestão do OCR · Confira o medidor antes de salvar</span>
               </div>
             )}
-            {ocrAtivo && (ocrStatus === 'erro' || ocrStatus === 'demorado') && (
+            {ocrAtivo && (ocrStatus === 'erro' || ocrStatus === 'demorado' || ocrStatus === 'inconsistente') && (
               <div
                 className="ocr-status-indicator ocr-status-erro"
                 role="alert"
               >
                 <span>{ocrStatus === 'demorado'
                   ? 'O reconhecimento demorou. Digite a leitura manualmente.'
+                  : ocrStatus === 'inconsistente'
+                  ? 'O OCR sugeriu um valor menor que a leitura anterior. Confira o medidor e digite manualmente.'
                   : 'Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.'}</span>
               </div>
             )}
 
             {import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && ocrAtivo &&
-              (ocrStatus === 'erro' || ocrStatus === 'demorado') && (
+              ocrStatus !== 'idle' && ocrStatus !== 'processando' && (
                 <details>
-                  <summary>Diagnóstico OCR · D7</summary>
+                  <summary>Diagnóstico OCR · D8</summary>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{ocrDiagnostico.join('\n')}</pre>
                 </details>
               )}

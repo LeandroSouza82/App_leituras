@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { caixaAmostraVisor, classificarCorDigito, interpretarVisor } from '../src/utils/ocrVisor.js';
+import { caixaAmostraVisor, classificarCorDigito, interpretarVisor, normalizarLinhaVisor } from '../src/utils/ocrVisor.js';
 import { aplicarMascaraLeitura, formatarLeitura4Casas, parseLeituraNumerica } from '../src/utils/leituraNumerica.js';
 
 const linha = (grupos) => ({ text: grupos.map(g => g.text).join(' '), elements: grupos });
@@ -133,4 +133,35 @@ test('prefixo por posição exige correspondência integral entre texto e elemen
 
 test('dois visores continuam ambíguos mesmo com prefixo validado por posição', () => {
   assert.equal(ler([linha(gruposD6()), linha([{ text: '00459', cor: 'preto' }, { text: '0320', cor: 'vermelho' }])]), null);
+});
+
+for (const unidade of ['m', 'm3', 'm³', 'kWh']) {
+  test(`unidade separada ${unidade} não entra nos dígitos nem define o separador`, () => {
+    const grupos = [{ text: '0035', cor: 'preto' }, { text: '859', cor: 'vermelho' }, { text: unidade }];
+    const classificados = [];
+    const valor = interpretarVisor([{ lines: [linha(grupos)] }], e => { classificados.push(e.text); return e.cor; });
+    assert.equal(valor, '0035,859');
+    assert.equal(aplicarMascaraLeitura(valor), '35,8590');
+    assert.deepEqual(classificados, ['0035', '859']);
+  });
+}
+
+test('unidade separada não corrige letras dentro dos números nem ignora outros rótulos', () => {
+  for (const grupos of [
+    [{ text: '0035', cor: 'preto' }, { text: '859m', cor: 'vermelho' }],
+    [{ text: '0035', cor: 'preto' }, { text: 'm' }, { text: '859', cor: 'vermelho' }],
+    [{ text: 'APTO' }, { text: '0035', cor: 'preto' }, { text: '859', cor: 'vermelho' }, { text: 'm' }],
+    [{ text: '0035', cor: 'preto' }, { text: '859', cor: 'vermelho' }, { text: 'A' }],
+    [{ text: 'OO35', cor: 'preto' }, { text: '859', cor: 'vermelho' }, { text: 'm' }],
+  ]) assert.equal(ler([linha(grupos)]), null);
+});
+
+test('unidade exige correspondência do texto e mantém a recusa por cor indefinida', () => {
+  const l = linha([{ text: '0035', cor: 'preto' }, { text: '859', cor: 'vermelho' }, { text: 'm³' }]);
+  assert.equal(normalizarLinhaVisor({ ...l, text: '0035 859 m3' }), null);
+  assert.equal(normalizarLinhaVisor({ ...l, text: '0035 859m³' }), null);
+  l.elements[0].cor = null;
+  assert.equal(ler([l]), null);
+  l.elements[0].cor = 'preto';
+  assert.equal(ler([l, l]), null);
 });

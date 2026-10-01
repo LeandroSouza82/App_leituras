@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calcularRecorteVisor, realcarContrasteOcr } from '../src/utils/ocrImagem.js';
+import { normalizarLinhaVisor } from '../src/utils/ocrVisor.js';
 
 const linha = { text: '00017', boundingBox: { left: 100, top: 200, right: 300, bottom: 240 } };
 
@@ -55,4 +56,16 @@ test('fundo escuro vira claro sem inventar pixels em imagem sem contraste', () =
   assert.equal(realcarContrasteOcr(uniforme), false);
   assert.deepEqual(uniforme, original);
   assert.equal(realcarContrasteOcr(new Uint8ClampedArray()), false);
+});
+
+test('linha com unidade usa todas as caixas numéricas e exclui a caixa de m3', () => {
+  const l = { text: '0035 859 m3', boundingBox: { left: 100, top: 200, right: 650, bottom: 240 }, elements: [
+    { text: '0035', boundingBox: { left: 100, top: 200, right: 280, bottom: 240 } },
+    { text: '859', boundingBox: { left: 290, top: 200, right: 450, bottom: 240 } },
+    { text: 'm3', boundingBox: { left: 550, top: 200, right: 650, bottom: 240 } },
+  ] };
+  const r = calcularRecorteVisor(normalizarLinhaVisor(l), 720, 1280);
+  assert.deepEqual(r.base, { left: 100, top: 200, right: 450, bottom: 240 });
+  assert.equal(r.right, 470);
+  assert.equal(l.elements.length, 3);
 });

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { isOcrAtivo, observarOcr } from '../utils/ocrConfig.js';
 import { executarOcr } from '../utils/ocrService.js';
+import { aplicarMascaraLeitura, formatarLeitura4Casas, leituraEhMenorQueAnterior } from '../utils/leituraNumerica.js';
 
 export const LIMITE_OCR_MS = 5000;
 
@@ -9,7 +10,7 @@ export const chaveContextoOcr = (contexto) => contexto ? JSON.stringify([
   contexto.condominioId, contexto.unidadeId, contexto.servico, contexto.captureId,
 ]) : '';
 
-export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult, reconhecer = executarOcr }) => {
+export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAnterior = null, onResult, reconhecer = executarOcr }) => {
   const ativo = useSyncExternalStore(observarOcr, isOcrAtivo, () => false);
   const chave = chaveContextoOcr(contexto);
   const sessao = useRef(null);
@@ -24,7 +25,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
     setStatus('idle');
     setDiagnostico([]);
     return () => { atual.cancelado = true; };
-  }, [isOpen, image, chave, initialValue]);
+  }, [isOpen, image, chave, initialValue, leituraAnterior]);
 
   const cancelar = () => {
     if (sessao.current) sessao.current.cancelado = true;
@@ -60,6 +61,19 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
           setStatus('erro');
           return;
         }
+        const sugestao = aplicarMascaraLeitura(resultado.valor);
+        if (!sugestao) {
+          registrar('Sugestão sem valor numérico utilizável');
+          setStatus('erro');
+          return;
+        }
+        registrar(`Sugestão: ${sugestao}; anterior: ${formatarLeitura4Casas(leituraAnterior) || 'ausente'}`);
+        if (leituraEhMenorQueAnterior(sugestao, leituraAnterior)) {
+          registrar('Sugestão descartada: menor que a leitura anterior');
+          atual.cancelado = true;
+          setStatus('inconsistente');
+          return;
+        }
         atual.cancelado = true; // Uma sugestão por sessão; nunca salva.
         callback.current(resultado.valor);
         setStatus('concluido');
@@ -70,7 +84,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
       }
     });
     return () => { cancelado = true; clearTimeout(timer); };
-  }, [ativo, isOpen, image, chave, initialValue, reconhecer]);
+  }, [ativo, isOpen, image, chave, initialValue, leituraAnterior, reconhecer]);
 
   return { ativo, status, cancelar, diagnostico };
 };

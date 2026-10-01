@@ -221,3 +221,20 @@ test('prefixo com caixa parcialmente fora da foto não recebe cor pela posição
   assert.equal(e.chamadas.length, 1);
   assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
 });
+
+test('regressão D7: linha 0035 859 m interpreta as cores antes de decidir pelo recorte', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: 'M02\n0035 859 m\n821R50832610 A', blocks: [{ lines: [
+    { text: 'M02', elements: [{ text: 'M02' }] },
+    { text: '0035 859 m', elements: [
+      { text: '0035', boundingBox: { left: 100, top: 40, right: 280, bottom: 80 } },
+      { text: '859', boundingBox: { left: 310, top: 40, right: 450, bottom: 80 } },
+      { text: 'm' },
+    ] },
+    { text: '821R50832610 A', elements: [] },
+  ] }] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '0035,859');
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});

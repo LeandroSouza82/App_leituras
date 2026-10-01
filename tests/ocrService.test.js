@@ -11,6 +11,15 @@ for (const valor of ['13,5950', '459,0320', '00013,5950', '459.0320']) {
     assert.equal(aplicarMascaraLeitura(r.valor), valor.includes('13') ? '13,5950' : '459,0320');
   });
 }
+
+test('separador explícito também aceita m separado e recusa outras unidades ou letras anexadas', () => {
+  for (const unidade of ['m', 'm3', 'm³', 'kWh']) {
+    assert.equal(interpretarTextoMedidor(`35,8590 ${unidade}`).valor, '35,8590');
+  }
+  for (const texto of ['35,8590m', '35,8590 m2', '35,8590 A', '35,8590 m m']) {
+    assert.equal(interpretarTextoMedidor(texto).valor, null);
+  }
+});
 for (const texto of ['', null, '13595\nm³', 'Serial 123456\n459,0320',
   '459,0320\n12345', '13,5950\n459,0320', '13,5950\n13,5950',
   '30/09/2026', '30.09.2026', '12345678901', 'ABC459,0320',

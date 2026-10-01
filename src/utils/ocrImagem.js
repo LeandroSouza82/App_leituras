@@ -1,4 +1,4 @@
-import { classificarCorDigito } from './ocrVisor.js';
+import { classificarCorDigito, normalizarLinhaVisor } from './ocrVisor.js';
 
 // Localiza uma faixa candidata a partir do texto já encontrado pelo motor.
 // A margem à direita inclui os decimais que a primeira passagem pode ter omitido.
@@ -89,10 +89,14 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
     // Letras podem ter sido anexadas a outro grupo da mesma linha ("0001 74m").
     // Um elemento puramente numérico pode localizar o recorte, mas não vira
     // uma leitura: a sugestão depende do novo reconhecimento do visor inteiro.
-    const faixas = blocks.flatMap(b => b.lines || []).flatMap(linha =>
-      /^\d[\d\s]*$/.test(linha.text?.trim() || '') ? [linha] :
-        (linha.elements || []).filter(e => /^\d+$/.test(e.text?.trim() || ''))
-          .map(e => ({ ...e, trecho: true })));
+    const faixas = blocks.flatMap(b => b.lines || []).flatMap(linha => {
+      if (/^\d[\d\s]*$/.test(linha.text?.trim() || '')) return [linha];
+      const normalizada = normalizarLinhaVisor(linha);
+      // A união das caixas numéricas exclui a unidade, inclusive o 3 de m³.
+      if (normalizada) return [normalizada];
+      return (linha.elements || []).filter(e => /^\d+$/.test(e.text?.trim() || ''))
+        .map(e => ({ ...e, trecho: true }));
+    });
     for (const linha of faixas) {
       const caixa = calcularRecorteVisor(linha, fonte.width, fonte.height);
       if (!caixa) { anotar(`${linha.text}: sem caixa numérica utilizável`); continue; }

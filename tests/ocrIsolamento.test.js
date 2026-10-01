@@ -7,7 +7,7 @@ import { setOcrAtivo } from '../src/utils/ocrConfig.js';
 
 const contexto = { condominioId: 'c1', unidadeId: '101', servico: 'agua', captureId: 'foto1' };
 
-async function montar({ initialValue = '', ativo = true } = {}) {
+async function montar({ initialValue = '', ativo = true, leituraAnterior = null } = {}) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const dados = new Map();
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
@@ -17,7 +17,7 @@ async function montar({ initialValue = '', ativo = true } = {}) {
   const requests = [], resultados = [];
   const reconhecer = (_image, _contexto, registrar, sessaoAtiva) => new Promise((resolve, reject) => requests.push({resolve, reject, registrar, sessaoAtiva}));
   let atual, renderer;
-  let props = { isOpen: true, image: 'imagem1', contexto, initialValue, reconhecer,
+  let props = { isOpen: true, image: 'imagem1', contexto, initialValue, leituraAnterior, reconhecer,
     onResult: v => resultados.push(v) };
   function View(p) { atual = useOcrLeitura(p); return null; }
   await act(async () => { renderer = create(React.createElement(View, props)); });
@@ -25,7 +25,7 @@ async function montar({ initialValue = '', ativo = true } = {}) {
     requests, resultados,
     get atual() { return atual; },
     async mudar(novos) { props = {...props, ...novos}; await act(async () => renderer.update(React.createElement(View, props))); },
-    async resolver(index = 0) { await act(async () => requests[index].resolve({sucesso: true, valor: '459,0320'})); },
+    async resolver(index = 0, valor = '459,0320') { await act(async () => requests[index].resolve({sucesso: true, valor})); },
     async limpar() {
       await act(async () => renderer.unmount());
       if (original) Object.defineProperty(globalThis, 'localStorage', original);
@@ -55,6 +55,7 @@ for (const novos of [
   { isOpen: false }, { image: 'imagem2', contexto: {...contexto, captureId: 'foto2'} },
   { contexto: {...contexto, unidadeId: '102'} }, { contexto: {...contexto, servico: 'gas'} },
   { contexto: {...contexto, condominioId: 'c2'} }, { initialValue: '1,0000' },
+  { leituraAnterior: '500,0000' },
 ]) {
   test(`mudança de sessão descarta resposta: ${JSON.stringify(novos)}`, async () => {
     const h = await montar();
@@ -130,3 +131,30 @@ test('diagnóstico de captura anterior não aparece em nova captura', async () =
     assert.deepEqual(h.atual.diagnostico, anterior);
   } finally { await h.limpar(); }
 });
+
+for (const valor of ['1,7490', '17490']) {
+  test(`sugestão ${valor} menor que 17,2970 após a máscara não preenche nem sinaliza sucesso`, async () => {
+    const h = await montar({ leituraAnterior: '17,2970' });
+    try {
+      await h.resolver(0, valor);
+      assert.deepEqual(h.resultados, []);
+      assert.equal(h.atual.status, 'inconsistente');
+      assert.match(h.atual.diagnostico.at(-2), /Sugestão: 1,7490; anterior: 17,2970/);
+      assert.match(h.atual.diagnostico.at(-1), /descartada: menor/);
+      assert.equal(h.requests[0].sessaoAtiva(), false);
+      act(() => h.atual.cancelar());
+      assert.equal(h.atual.status, 'idle');
+    } finally { await h.limpar(); }
+  });
+}
+
+for (const valor of ['17,2970', '17,4400']) {
+  test(`sugestão ${valor} igual ou maior que a anterior continua preenchendo para conferência manual`, async () => {
+    const h = await montar({ leituraAnterior: '17,2970' });
+    try {
+      await h.resolver(0, valor);
+      assert.deepEqual(h.resultados, [valor]);
+      assert.equal(h.atual.status, 'concluido');
+    } finally { await h.limpar(); }
+  });
+}

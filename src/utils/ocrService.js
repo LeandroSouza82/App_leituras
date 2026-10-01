@@ -78,7 +78,7 @@ export const interpretarTextoMedidor = (texto) => {
     const tokens = linha.match(/[\p{L}\p{N}.,/:-]+/gu) || [];
     for (const token of tokens) {
       if (!/\d/.test(token) || /^(?:m3|m³)$/i.test(token)) continue;
-      const visor = linha.match(/^(\d{1,6}[.,]\d{1,4})\s*(?:m³|m3|kWh)?$/i);
+      const visor = linha.match(/^(\d{1,6}[.,]\d{1,4})\s*(?:m(?:³|3)?|kWh)?$/i);
       if (!visor || token !== visor[1]) return vazio;
       candidatos.push(visor[1]);
     }
@@ -96,11 +96,13 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
   }
   registrar(`Interpretando ${origem.toLowerCase()}`);
   const interpretacao = interpretarTextoMedidor(resposta?.text || '');
+  if (interpretacao.valor) registrar(`${origem} — separador explícito: ${interpretacao.valor}`);
   const detalhes = [];
   const valor = interpretacao.valor || await reconhecerVisorPorCor(imagem, resposta?.blocks, detalhe => {
     if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
   });
   if (diagnosticoAtivo && detalhes.length) registrar(`${origem} — análise das cores:\n${detalhes.join('\n')}`);
+  if (valor && !interpretacao.valor) registrar(`${origem} — divisão por cor/posição: ${valor}`);
   return valor;
 };
 
@@ -133,7 +135,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
     return resultado;
   }
 
-  registrar('Verificando plugin · D7');
+  registrar('Verificando plugin · D8');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;

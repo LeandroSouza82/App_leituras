@@ -67,6 +67,31 @@ O serviço usa uma só chamada ao motor e solicita a limpeza do temporário.
 Nenhum dígito é criado ou alterado. O diagnóstico informa quando o prefixo foi
 aceito pela posição. É necessário testar as caixas reais e a sugestão no celular.
 
+## Correção D8: unidade separada e sugestão incompatível
+
+No novo teste físico D7, o motor respondeu em 475 ms com `0035 859 m`.
+O parser recusou a linha inteira antes de classificar as cores, por conter `m`.
+A limpeza terminou em 811 ms. D8 separa somente um elemento final de unidade
+(`m`, `m3`, `m³` ou `kWh`) quando ele corresponde ao texto da linha. Os números
+continuam completos e sua divisão depende das cores; `74m`, letras internas,
+seriais e outros rótulos não são convertidos em números. O recorte usa a mesma
+normalização e a união das caixas numéricas, excluindo a caixa da unidade.
+
+Outra captura D7 sugeriu `1,7490` para uma leitura anterior `17,2970`. O bloqueio
+manual impediu o salvamento, mas o OCR foi apresentado como concluído. D8 aplica
+a mesma comparação de quatro casas antes de preencher: se a sugestão formatada
+for inferior à anterior, o campo permanece disponível para digitação e aparece
+um aviso específico. A comparação foi extraída da validação existente e é
+compartilhada; formato, máscara, consumo e regra de igualdade não mudaram.
+Não multiplica o valor por dez nem o ajusta para ficar acima da leitura anterior.
+
+O diagnóstico D8 também pode ser aberto após uma sugestão. Registra o valor,
+a leitura anterior e se a divisão veio de separador explícito ou de cor/posição.
+Esse registro é necessário para identificar a origem do `1,7490`: a captura
+enviada não contém o resultado bruto e as caixas dessa sugestão. O descarte
+protege esse caso, mas não comprova que a divisão decimal ou os roletes em
+transição foram reconhecidos corretamente. A conferência manual continua.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -78,7 +103,7 @@ um modelo especializado em transições mecânicas.
 O preparo do recorte foi exercitado na foto enviada, com caixas delimitadas
 manualmente, usando Canvas real no ambiente de desenvolvimento. Isso comprova
 apenas o processamento dos pixels, não as caixas nem a leitura do ML Kit Android.
-A precisão e o tempo total de D7 ainda precisam do teste físico.
+A precisão e o tempo total de D8 ainda precisam do teste físico.
 
 A interpretação continua conservadora. Usa um único valor decimal explícito ou
 uma linha numérica com divisão preta/vermelha confirmada. Um prefixo inteiro
@@ -107,9 +132,13 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D7” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D8” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
+Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
+`35,8590`. Uma sugestão `1,7490` com anterior `17,2970` deve ser descartada antes
+do preenchimento. Igualdade continua permitida. Quando surgir uma sugestão
+errada, abrir o diagnóstico também no estado concluído, antes de editar.
 
 Também verificar digitação antes da resposta, refazer, fechar, trocar unidade ou
 serviço, leitura existente e salvamento manual. Com OCR desligado, repetir foto,
@@ -118,7 +147,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D7.
+Um build normal não exibe o painel. Não houve merge nem release de D8.
 
 ## Dependência Android e peso
 
