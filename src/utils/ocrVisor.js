@@ -16,19 +16,29 @@ export const classificarCorDigito = (pixels) => {
   return null;
 };
 
-export const interpretarVisor = (blocks, corElemento) => {
+export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) => {
   const candidatos = [];
   for (const block of blocks || []) {
     for (const linha of block.lines || []) {
-      if (!/^\d[\d\s]*$/.test(linha.text?.trim() || '')) continue;
+      if (!/^\d[\d\s]*$/.test(linha.text?.trim() || '')) {
+        if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: contém outros caracteres');
+        continue;
+      }
       const elementos = linha.elements || [];
-      if (!elementos.length || elementos.some(e => !/^\d+$/.test(e.text))) continue;
-      if (elementos.map(e => e.text).join('') !== linha.text.replace(/\s/g, '')) continue;
+      if (!elementos.length || elementos.some(e => !/^\d+$/.test(e.text))) {
+        diagnosticar('Linha numérica sem elementos válidos');
+        continue;
+      }
+      if (elementos.map(e => e.text).join('') !== linha.text.replace(/\s/g, '')) {
+        diagnosticar('Elementos não correspondem à linha');
+        continue;
+      }
       let inteiros = '';
       let decimais = '';
       let invalido = false;
       for (const elemento of elementos) {
         const cor = corElemento(elemento);
+        diagnosticar(`${elemento.text}: ${cor || 'cor indefinida'}`);
         if (cor === 'preto' && !decimais) inteiros += elemento.text;
         else if (cor === 'vermelho' && inteiros) decimais += elemento.text;
         else { invalido = true; break; }
@@ -37,14 +47,16 @@ export const interpretarVisor = (blocks, corElemento) => {
           decimais.length >= 1 && decimais.length <= 4) {
         candidatos.push(`${inteiros},${decimais}`);
       }
+      else diagnosticar('Linha recusada: divisão preta/vermelha não confirmada');
     }
   }
+  diagnosticar(`${candidatos.length} candidato(s) por cor`);
   return candidatos.length === 1 ? candidatos[0] : null;
 };
 
 // Só aceita elementos com cor uniforme. Elementos mistos precisam de outro
 // reconhecimento: não divide uma caixa em posições inventadas para os dígitos.
-export const reconhecerVisorPorCor = async (imagem, blocks) => {
+export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
   foto.src = imagem;
@@ -58,20 +70,24 @@ export const reconhecerVisorPorCor = async (imagem, blocks) => {
     ctx.drawImage(foto, 0, 0);
     return interpretarVisor(blocks, elemento => {
       const caixa = elemento.boundingBox;
-      if (!caixa) return null;
+      if (!caixa) { diagnosticar('Elemento sem coordenadas'); return null; }
       const x = Math.floor(caixa.left);
       const y = Math.floor(caixa.top);
       const w = Math.ceil(caixa.right) - x;
       const h = Math.ceil(caixa.bottom) - y;
       if (x < 0 || y < 0 || w <= 0 || h <= 0 ||
-          x + w > canvas.width || y + h > canvas.height) return null;
+          x + w > canvas.width || y + h > canvas.height) {
+        diagnosticar('Coordenadas fora da foto');
+        return null;
+      }
       // Amostras das duas metades evitam aceitar uma caixa preto/vermelho mista.
       if (w < 2) return null;
       const metade = Math.floor(w / 2);
       const a = classificarCorDigito(ctx.getImageData(x, y, metade, h).data);
       const b = classificarCorDigito(ctx.getImageData(x + metade, y, w - metade, h).data);
+      if (a !== b) diagnosticar(`Metades da caixa: ${a || '?'} / ${b || '?'}`);
       return a === b ? a : null;
-    });
+    }, diagnosticar);
   } finally {
     canvas.width = canvas.height = 0;
   }

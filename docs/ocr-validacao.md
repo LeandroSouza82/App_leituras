@@ -48,6 +48,17 @@ Os testes automatizados usam um motor simulado para respostas atrasadas;
 não medem a precisão do ML Kit nem comprovam o funcionamento nativo.
 # Reconhecimento por cor — validação adicional
 
+Diagnóstico físico D2 após importação direta: AP-101, foto preparada em 184 ms,
+motor respondeu com texto em 458 ms, nenhuma sugestão em 787 ms e limpeza
+encerrada em 795 ms. Não há mais timeout nessa captura. Não foi comprovado
+que os dígitos do visor, especificamente, foram lidos pelo motor.
+
+D3 inclui até oito linhas contendo números e seus elementos, além dos motivos
+de recusa e classificação das cores. Esses dados são texto da foto e podem
+incluir placa e serial; permanecem na sessão local e só são exibidos em build
+com `VITE_OCR_DIAGNOSTICO=true`. Não são enviados para um servidor. Capturar
+o painel completo e a foto original usada para reproduzir a interpretação.
+
 Diagnóstico físico D1: em AP-102 o processamento ficou em “Carregando plugin”
 de 12 ms até o limite de 5001 ms, antes da preparação da foto. D2 substitui
 o import dinâmico pelo proxy importado diretamente no bundle principal e

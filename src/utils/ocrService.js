@@ -111,7 +111,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     return resultado;
   }
 
-  registrar('Verificando plugin · D2');
+  registrar('Verificando plugin · D3');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
@@ -147,13 +147,24 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     console.debug(`[OCR] Tempo de reconhecimento: ${duracao}ms`);
 
     const textoCompleto = ocrResult?.text || '';
+    const diagnosticoAtivo = import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true';
+    if (diagnosticoAtivo) {
+      const linhas = (ocrResult?.blocks || []).flatMap(b => b.lines || []);
+      const trechos = linhas.filter(l => /\d/.test(l.text || '')).slice(0, 8)
+        .map(l => `${String(l.text).slice(0, 60)} [${(l.elements || []).map(e => String(e.text).slice(0, 20)).join(' | ')}]`);
+      registrar(`Linhas com números recebidas:\n${trechos.join('\n').slice(0, 600) || 'Nenhuma'}`);
+    }
 
     // 4. Interpreta o texto
     registrar('Interpretando texto e cores');
     const interpretacao = interpretarTextoMedidor(textoCompleto);
 
     resultado.sucesso = true;
-    resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks);
+    const detalhes = [];
+    resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks, detalhe => {
+      if (diagnosticoAtivo && detalhes.length < 16) detalhes.push(detalhe);
+    });
+    if (diagnosticoAtivo && detalhes.length) registrar(`Análise das cores:\n${detalhes.join('\n')}`);
     registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');
   } catch (err) {
     registrar('Falha no processamento');
