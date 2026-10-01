@@ -15,12 +15,14 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
   const sessao = useRef(null);
   const callback = useRef(onResult);
   const [status, setStatus] = useState('idle');
+  const [diagnostico, setDiagnostico] = useState([]);
 
   useLayoutEffect(() => { callback.current = onResult; });
   useLayoutEffect(() => {
     const atual = { cancelado: Boolean(initialValue), chave };
     sessao.current = atual;
     setStatus('idle');
+    setDiagnostico([]);
     return () => { atual.cancelado = true; };
   }, [isOpen, image, chave, initialValue]);
 
@@ -39,13 +41,20 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
     Promise.resolve().then(async () => {
       if (!valido()) return;
       setStatus('processando');
+      const inicio = Date.now();
+      const registrar = (etapa) => {
+        if (!valido()) return;
+        setDiagnostico(anterior => [...anterior, `${Date.now() - inicio} ms · ${etapa}`].slice(-12));
+      };
+      registrar('Início');
       timer = setTimeout(() => {
         if (!valido()) return;
+        registrar('Limite de espera atingido');
         atual.cancelado = true;
         setStatus('demorado');
       }, LIMITE_OCR_MS);
       try {
-        const resultado = await reconhecer(image, contexto);
+        const resultado = await reconhecer(image, contexto, registrar);
         if (!valido()) return;
         if (!resultado.sucesso || !resultado.valor) {
           setStatus('erro');
@@ -55,7 +64,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
         callback.current(resultado.valor);
         setStatus('concluido');
       } catch {
-        if (valido()) setStatus('erro');
+        if (valido()) { registrar('Falha inesperada'); setStatus('erro'); }
       } finally {
         clearTimeout(timer);
       }
@@ -63,5 +72,5 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
     return () => { cancelado = true; clearTimeout(timer); };
   }, [ativo, isOpen, image, chave, initialValue, reconhecer]);
 
-  return { ativo, status, cancelar };
+  return { ativo, status, cancelar, diagnostico };
 };

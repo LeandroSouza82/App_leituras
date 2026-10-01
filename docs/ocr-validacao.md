@@ -48,6 +48,21 @@ Os testes automatizados usam um motor simulado para respostas atrasadas;
 não medem a precisão do ML Kit nem comprovam o funcionamento nativo.
 # Reconhecimento por cor — validação adicional
 
+## Diagnóstico D1 de demora
+
+Para o APK de teste, definir `VITE_OCR_DIAGNOSTICO=true` antes de `npm run build`,
+depois executar `npx cap sync android` e `assembleDebug`. No PowerShell:
+`$env:VITE_OCR_DIAGNOSTICO="true"`; remover a variável depois do build com
+`Remove-Item Env:VITE_OCR_DIAGNOSTICO`.
+
+Após erro ou timeout, abrir “Diagnóstico OCR · D1” no modal e capturar a tela.
+Mostra somente marcos de etapas e milissegundos desde o início. Não inclui foto,
+texto reconhecido, caminho do arquivo ou identificadores de conta/unidade.
+O diagnóstico congela ao atingir 5 segundos e não recebe eventos de outra
+captura. A última etapa antes do limite identifica a operação ainda pendente;
+não é prova de que o motor nativo foi cancelado. O plugin não oferece cancelamento.
+Build normal não exibe o painel. Validar no aparelho antes do merge.
+
 O serviço agora usa as caixas dos elementos retornados pelo ML Kit e amostras
 dos pixels da foto original para interpretar linhas numéricas com parte preta
 seguida da vermelha, mesmo sem vírgula impressa. A máscara existente recebe

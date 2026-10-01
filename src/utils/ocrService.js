@@ -120,7 +120,7 @@ export const interpretarTextoMedidor = (texto) => {
  *   contexto: object
  * }>}
  */
-export const executarOcr = async (imageDataUrl, contexto) => {
+export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) => {
   const resultado = {
     sucesso: false,
     valor: null,
@@ -133,9 +133,11 @@ export const executarOcr = async (imageDataUrl, contexto) => {
     return resultado;
   }
 
+  registrar('Carregando plugin');
   const plugin = await carregarPlugin();
 
   if (!plugin) {
+    registrar('Plugin indisponível');
     resultado.erro = 'OCR não disponível neste ambiente.';
     return resultado;
   }
@@ -144,8 +146,10 @@ export const executarOcr = async (imageDataUrl, contexto) => {
 
   try {
     // 1. Salva imagem em arquivo temporário (ML Kit exige caminho)
+    registrar('Preparando arquivo da foto');
     const temp = await salvarImagemTemporaria(imageDataUrl);
     if (!temp) {
+      registrar('Falha ao preparar foto');
       resultado.erro = 'Não foi possível preparar a imagem para reconhecimento.';
       return resultado;
     }
@@ -153,7 +157,9 @@ export const executarOcr = async (imageDataUrl, contexto) => {
 
     // 2. Chama o ML Kit
     const tsInicio = Date.now();
+    registrar('Aguardando motor ML Kit');
     const ocrResult = await plugin.processImage({ path: temp.uri });
+    registrar(ocrResult?.text?.trim() ? 'Motor respondeu com texto' : 'Motor respondeu sem texto');
     const duracao = Date.now() - tsInicio;
 
     // Log de performance sem dados sensíveis
@@ -163,15 +169,20 @@ export const executarOcr = async (imageDataUrl, contexto) => {
     const textoCompleto = ocrResult?.text || '';
 
     // 4. Interpreta o texto
+    registrar('Interpretando texto e cores');
     const interpretacao = interpretarTextoMedidor(textoCompleto);
 
     resultado.sucesso = true;
     resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks);
+    registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');
   } catch (err) {
+    registrar('Falha no processamento');
     resultado.erro = 'Não foi possível reconhecer a imagem.';
   } finally {
     // 5. Limpeza da imagem temporária (sempre, mesmo em erro)
+    registrar('Limpando arquivo temporário');
     await limparImagemTemporaria(nomeArquivoTemp);
+    registrar('Limpeza encerrada');
   }
 
   return resultado;

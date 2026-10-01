@@ -15,7 +15,7 @@ async function montar({ initialValue = '', ativo = true } = {}) {
   }});
   setOcrAtivo(ativo);
   const requests = [], resultados = [];
-  const reconhecer = () => new Promise((resolve, reject) => requests.push({resolve, reject}));
+  const reconhecer = (_image, _contexto, registrar) => new Promise((resolve, reject) => requests.push({resolve, reject, registrar}));
   let atual, renderer;
   let props = { isOpen: true, image: 'imagem1', contexto, initialValue, reconhecer,
     onResult: v => resultados.push(v) };
@@ -93,8 +93,14 @@ test('desmontagem descarta resposta pendente', async () => {
     assert.equal(h.atual.status, 'processando');
     const timer = [...timers.values()].find(t => t.ms === LIMITE_OCR_MS);
     assert.ok(timer);
+    act(() => h.requests[0].registrar('Aguardando motor ML Kit'));
     act(() => timer.fn());
     assert.equal(h.atual.status, 'demorado');
+    assert.match(h.atual.diagnostico.at(-2), /Aguardando motor ML Kit/);
+    assert.match(h.atual.diagnostico.at(-1), /Limite de espera atingido/);
+    const congelado = [...h.atual.diagnostico];
+    act(() => h.requests[0].registrar('Resposta atrasada'));
+    assert.deepEqual(h.atual.diagnostico, congelado);
     await h.resolver();
     assert.deepEqual(h.resultados, []);
     assert.equal(h.atual.status, 'demorado');
@@ -103,4 +109,18 @@ test('desmontagem descarta resposta pendente', async () => {
     if (h) await h.limpar();
     globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear;
   }
+});
+
+test('diagnóstico de captura anterior não aparece em nova captura', async () => {
+  const h = await montar();
+  try {
+    act(() => h.requests[0].registrar('Etapa antiga'));
+    await h.mudar({ image: 'imagem2', contexto: {...contexto, captureId: 'foto2'} });
+    act(() => h.requests[0].registrar('Resposta antiga'));
+    assert.equal(h.atual.diagnostico.some(l => /antiga/.test(l)), false);
+    act(() => h.atual.cancelar());
+    const anterior = [...h.atual.diagnostico];
+    act(() => h.requests[1].registrar('Depois da edição'));
+    assert.deepEqual(h.atual.diagnostico, anterior);
+  } finally { await h.limpar(); }
 });

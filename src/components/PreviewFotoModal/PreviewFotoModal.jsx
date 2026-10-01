@@ -53,7 +53,7 @@ const PreviewFotoModal = ({
     }
   };
 
-  const { ativo: ocrAtivo, status: ocrStatus, cancelar: cancelarOcr } = useOcrLeitura({
+  const { ativo: ocrAtivo, status: ocrStatus, cancelar: cancelarOcr, diagnostico: ocrDiagnostico } = useOcrLeitura({
     isOpen, image: imageParaOcr, contexto: ocrContexto, initialValue,
     onResult: (valor) => {
       const formatado = aplicarMascaraLeitura(valor);
@@ -263,6 +263,14 @@ const PreviewFotoModal = ({
                   : 'Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.'}</span>
               </div>
             )}
+
+            {import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && ocrAtivo &&
+              (ocrStatus === 'erro' || ocrStatus === 'demorado') && (
+                <details>
+                  <summary>Diagnóstico OCR · D1</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{ocrDiagnostico.join('\n')}</pre>
+                </details>
+              )}
 
             <input
               ref={inputRef}
