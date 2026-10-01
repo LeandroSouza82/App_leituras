@@ -23,7 +23,10 @@ export const calcularRecorteVisor = (linha, largura, altura) => {
   const w = base.right - base.left;
   const h = base.bottom - base.top;
   if (h < 8 || w / h < 2 || w / h > 30) return null;
-  const margemDireita = digitos.length <= 6 ? w / digitos.length * 4 : h * 0.25;
+  // A caixa de um trecho termina no traço do último dígito, antes do espaço
+  // do próximo rolete. Usa os intervalos entre dígitos para não cortar a cauda.
+  const intervalos = linha.trecho ? digitos.length - 1 : digitos.length;
+  const margemDireita = digitos.length <= 6 ? w / intervalos * 4 : h * 0.25;
   return {
     base,
     left: Math.max(0, Math.floor(base.left - h * 0.25)),
@@ -81,9 +84,18 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
     if (!ctx) return null;
     ctx.drawImage(foto, 0, 0);
     const candidatos = [];
-    for (const linha of blocks.flatMap(b => b.lines || [])) {
+    const detalhes = [];
+    const anotar = detalhe => { if (detalhes.length < 8) detalhes.push(detalhe); };
+    // Letras podem ter sido anexadas a outro grupo da mesma linha ("0001 74m").
+    // Um elemento puramente numérico pode localizar o recorte, mas não vira
+    // uma leitura: a sugestão depende do novo reconhecimento do visor inteiro.
+    const faixas = blocks.flatMap(b => b.lines || []).flatMap(linha =>
+      /^\d[\d\s]*$/.test(linha.text?.trim() || '') ? [linha] :
+        (linha.elements || []).filter(e => /^\d+$/.test(e.text?.trim() || ''))
+          .map(e => ({ ...e, trecho: true })));
+    for (const linha of faixas) {
       const caixa = calcularRecorteVisor(linha, fonte.width, fonte.height);
-      if (!caixa) continue;
+      if (!caixa) { anotar(`${linha.text}: sem caixa numérica utilizável`); continue; }
       const { base } = caixa;
       const x = Math.floor(base.left);
       const y = Math.floor(base.top);
@@ -91,11 +103,14 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
       const h = Math.max(1, Math.floor(base.bottom - base.top));
       // Exige evidência visual da faixa preta seguida da vermelha. Isso evita
       // recortar a placa do apartamento ou um serial só pelo comprimento.
-      if (classificarCorDigito(ctx.getImageData(x, y, w, h).data) !== 'preto') continue;
+      const esquerda = classificarCorDigito(ctx.getImageData(x, y, w, h).data);
       const direita = x + w;
-      if (classificarCorDigito(ctx.getImageData(direita, y, caixa.right - direita, h).data) !== 'vermelho') continue;
+      const corDireita = classificarCorDigito(ctx.getImageData(direita, y, caixa.right - direita, h).data);
+      anotar(`${linha.text}: ${esquerda || '?'} / ${corDireita || '?'}; caixa ${x},${y} ${Math.round(base.right - base.left)}×${h}`);
+      if (esquerda !== 'preto' || corDireita !== 'vermelho') continue;
       candidatos.push(caixa);
     }
+    if (detalhes.length) diagnosticar(`Trechos examinados para recorte:\n${detalhes.join('\n')}`);
     diagnosticar(`${candidatos.length} faixa(s) candidata(s) ao recorte`);
     if (candidatos.length !== 1) return null;
     const caixa = candidatos[0];

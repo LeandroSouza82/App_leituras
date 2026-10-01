@@ -13,6 +13,11 @@ test('uma linha já completa tem só margem pequena à direita', () => {
   const r = calcularRecorteVisor({ ...linha, text: '00017 439' }, 720, 1280);
   assert.equal(r.right, 320);
 });
+test('trecho parcial mantém margem entre roletes para alcançar a cauda do visor', () => {
+  const trecho = { text: '0001', trecho: true, boundingBox: { left: 100, top: 200, right: 280, bottom: 240 } };
+  assert.equal(calcularRecorteVisor(trecho, 720, 1280).right, 530);
+  assert.equal(calcularRecorteVisor({ ...trecho, trecho: false }, 720, 1280).right, 470);
+});
 test('recorte respeita limites e aceita a união das caixas dos elementos', () => {
   const r = calcularRecorteVisor({ text: '00017', elements: [
     { boundingBox: { left: 0, top: 0, right: 80, bottom: 40 } },

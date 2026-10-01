@@ -139,3 +139,34 @@ test('escrita que falha após criar o recorte também solicita limpeza', async t
   assert.equal(e.chamadas.length, 1);
   assert.deepEqual(new Set(e.excluidos), new Set(e.escritas.map(o => o.path)));
 });
+
+const linhaMista = { text: '0001 74m', boundingBox: { left: 100, top: 40, right: 450, bottom: 80 },
+  elements: [
+    { text: '0001', boundingBox: { left: 100, top: 40, right: 280, bottom: 80 } },
+    { text: '74m', boundingBox: { left: 280, top: 40, right: 450, bottom: 80 } },
+  ],
+};
+test('regressão D5: trecho 0001 em linha 0001 74m habilita o recorte validado', async t => {
+  const e = preparar(t);
+  e.respostas[0] = { text: linhaMista.text, blocks: [{ lines: [linhaMista] }] };
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, '00017,440'); // Resposta simulada da segunda chamada.
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('trecho para localizar não preenche campo quando novo resultado contém letras', async t => {
+  const e = preparar(t);
+  e.respostas = [0, 1].map(() => ({ text: linhaMista.text, blocks: [{ lines: [linhaMista] }] }));
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('linha sem nenhum elemento puramente numérico não cria âncora artificial', async t => {
+  const e = preparar(t);
+  const elementos = linhaMista.elements.map(el => ({ ...el, text: 'O001m' }));
+  e.respostas[0] = { text: 'O001m 74m', blocks: [{ lines: [{ ...linhaMista, text: 'O001m 74m', elements: elementos }] }] };
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 1);
+  assert.equal(r.valor, null);
+});

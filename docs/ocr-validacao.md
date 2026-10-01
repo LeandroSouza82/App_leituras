@@ -25,6 +25,25 @@ resultado atrasado é descartado. A limpeza dos temporários é solicitada no
 finally e também quando uma escrita falha após possivelmente criar parte do
 arquivo. A falha da limpeza nativa continua sem bloquear o fluxo manual.
 
+## Correção D6: localizar a partir de um trecho numérico
+
+D5 físico terminou em 733 ms sem segunda chamada: a linha do visor veio como
+`0001 74m` (`0001 | 74m`) e o localizador exigia que a linha inteira fosse
+numérica. O resultado foi zero faixas candidatas, antes do contraste.
+
+D6 também examina elementos puramente numéricos de uma linha mista. O trecho
+`0001` pode localizar o recorte com sua própria caixa; `74m` não é transformado
+em número. Para trechos parciais, a margem usa os intervalos entre os dígitos
+para não cortar a cauda do visor. A validação visual preta/vermelha, a recusa de
+múltiplos candidatos, o limite de chamadas e o parser da leitura não mudaram.
+O trecho inicial nunca preenche o campo; é preciso novo resultado utilizável.
+
+O diagnóstico D6 inclui até oito trechos examinados, suas amostras de cor e
+coordenadas, para distinguir ausência de caixa de recusa por cor. A regressão
+com `0001 74m` está coberta por testes da ponte simulada. O preparo de D6 também
+foi exercitado nos pixels da foto enviada com caixas delimitadas manualmente;
+as caixas reais do ML Kit e a precisão no celular continuam pendentes.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -36,7 +55,7 @@ um modelo especializado em transições mecânicas.
 O preparo do recorte foi exercitado na foto enviada, com caixas delimitadas
 manualmente, usando Canvas real no ambiente de desenvolvimento. Isso comprova
 apenas o processamento dos pixels, não as caixas nem a leitura do ML Kit Android.
-A precisão e o tempo total de D5 ainda precisam do teste físico.
+A precisão e o tempo total de D6 ainda precisam do teste físico.
 
 A interpretação continua conservadora. Usa um único valor decimal explícito ou
 uma linha numérica com grupos pretos seguidos de vermelhos. Caixa única com cores
@@ -64,7 +83,7 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D5” e registrar o painel, especialmente “Recorte — linhas com
+“Diagnóstico OCR · D6” e registrar o painel, especialmente “Recorte — linhas com
 números”. Anotar tempo total, correção necessária e resultado ao salvar.
 
 Também verificar digitação antes da resposta, refazer, fechar, trocar unidade ou
@@ -74,7 +93,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D5.
+Um build normal não exibe o painel. Não houve merge nem release de D6.
 
 ## Dependência Android e peso
 
