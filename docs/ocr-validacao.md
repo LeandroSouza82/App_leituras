@@ -92,6 +92,23 @@ enviada não contém o resultado bruto e as caixas dessa sugestão. O descarte
 protege esse caso, mas não comprova que a divisão decimal ou os roletes em
 transição foram reconhecidos corretamente. A conferência manual continua.
 
+## Correção D9: localizar caixa com caractere desconhecido
+
+O diagnóstico físico D8 devolveu `0001?4`: texto incompleto com um caractere
+desconhecido. A limpeza terminou em 852 ms, sem segunda chamada, porque o
+localizador descartou a caixa junto com o texto. D9 permite que uma faixa com
+até dois `?` e pelo menos quatro dígitos reconhecidos localize um recorte.
+Letras e outros símbolos continuam recusados. A caixa precisa ser válida,
+horizontal e apresentar evidência visual preta seguida da vermelha.
+
+Essa permissão é exclusiva da localização. Não transforma `?` em dígito, não
+remove a dúvida para preencher e não muda o parser da leitura. A sugestão depende
+do resultado utilizável da segunda chamada. Um segundo resultado com dúvida
+termina sem preenchimento e sem terceira tentativa. O limite de cinco segundos,
+cancelamento, comparação com a anterior e limpeza dos temporários permanecem.
+Os testes usam texto observado e caixas/pixels simulados. Precisão e caixas reais
+no celular continuam pendentes.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -103,7 +120,7 @@ um modelo especializado em transições mecânicas.
 O preparo do recorte foi exercitado na foto enviada, com caixas delimitadas
 manualmente, usando Canvas real no ambiente de desenvolvimento. Isso comprova
 apenas o processamento dos pixels, não as caixas nem a leitura do ML Kit Android.
-A precisão e o tempo total de D8 ainda precisam do teste físico.
+A precisão e o tempo total de D9 ainda precisam do teste físico.
 
 A interpretação continua conservadora. Usa um único valor decimal explícito ou
 uma linha numérica com divisão preta/vermelha confirmada. Um prefixo inteiro
@@ -132,7 +149,7 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D8” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D9” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
 Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
@@ -147,7 +164,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D8.
+Um build normal não exibe o painel. Não houve merge nem release de D9.
 
 ## Dependência Android e peso
 

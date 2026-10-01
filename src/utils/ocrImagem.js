@@ -1,13 +1,19 @@
 import { classificarCorDigito, normalizarLinhaVisor } from './ocrVisor.js';
 
+// Uma dúvida do motor pode localizar pixels, mas nunca define uma leitura.
+const TEXTO_LOCALIZAVEL = /^\d[\d?\s]*$/;
+
 // Localiza uma faixa candidata a partir do texto já encontrado pelo motor.
 // A margem à direita inclui os decimais que a primeira passagem pode ter omitido.
 export const calcularRecorteVisor = (linha, largura, altura) => {
   const texto = linha?.text?.trim() || '';
-  if (!/^\d[\d\s]*$/.test(texto)) return null;
-  const digitos = texto.replace(/\s/g, '');
-  if (digitos.length < 3 || digitos.length > 10 ||
-      (digitos.length === 3 && !digitos.startsWith('0'))) return null;
+  if (!TEXTO_LOCALIZAVEL.test(texto)) return null;
+  const posicoes = texto.replace(/\s/g, '');
+  const duvidas = (posicoes.match(/\?/g) || []).length;
+  const reconhecidos = posicoes.length - duvidas;
+  if (posicoes.length < 3 || posicoes.length > 10 || duvidas > 2 ||
+      (duvidas && reconhecidos < 4) ||
+      (posicoes.length === 3 && !posicoes.startsWith('0'))) return null;
   const caixas = linha.boundingBox ? [linha.boundingBox] :
     (linha.elements || []).map(e => e.boundingBox);
   if (!caixas.length || caixas.some(c => !c ||
@@ -25,8 +31,8 @@ export const calcularRecorteVisor = (linha, largura, altura) => {
   if (h < 8 || w / h < 2 || w / h > 30) return null;
   // A caixa de um trecho termina no traço do último dígito, antes do espaço
   // do próximo rolete. Usa os intervalos entre dígitos para não cortar a cauda.
-  const intervalos = linha.trecho ? digitos.length - 1 : digitos.length;
-  const margemDireita = digitos.length <= 6 ? w / intervalos * 4 : h * 0.25;
+  const intervalos = linha.trecho ? posicoes.length - 1 : posicoes.length;
+  const margemDireita = posicoes.length <= 6 ? w / intervalos * 4 : h * 0.25;
   return {
     base,
     left: Math.max(0, Math.floor(base.left - h * 0.25)),
@@ -87,14 +93,14 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
     const detalhes = [];
     const anotar = detalhe => { if (detalhes.length < 8) detalhes.push(detalhe); };
     // Letras podem ter sido anexadas a outro grupo da mesma linha ("0001 74m").
-    // Um elemento puramente numérico pode localizar o recorte, mas não vira
-    // uma leitura: a sugestão depende do novo reconhecimento do visor inteiro.
+    // Um trecho numérico, inclusive com "?", pode localizar o recorte. A
+    // sugestão continua dependendo do novo reconhecimento do visor inteiro.
     const faixas = blocks.flatMap(b => b.lines || []).flatMap(linha => {
-      if (/^\d[\d\s]*$/.test(linha.text?.trim() || '')) return [linha];
+      if (TEXTO_LOCALIZAVEL.test(linha.text?.trim() || '')) return [linha];
       const normalizada = normalizarLinhaVisor(linha);
       // A união das caixas numéricas exclui a unidade, inclusive o 3 de m³.
       if (normalizada) return [normalizada];
-      return (linha.elements || []).filter(e => /^\d+$/.test(e.text?.trim() || ''))
+      return (linha.elements || []).filter(e => TEXTO_LOCALIZAVEL.test(e.text?.trim() || ''))
         .map(e => ({ ...e, trecho: true }));
     });
     for (const linha of faixas) {

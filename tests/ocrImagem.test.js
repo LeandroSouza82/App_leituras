@@ -69,3 +69,18 @@ test('linha com unidade usa todas as caixas numéricas e exclui a caixa de m3', 
   assert.equal(r.right, 470);
   assert.equal(l.elements.length, 3);
 });
+
+test('caixa com dúvida 0001?4 localiza pixels sem corrigir ou apagar o texto', () => {
+  const l = { ...linha, text: '0001?4' };
+  const r = calcularRecorteVisor(l, 720, 1280);
+  assert.deepEqual(r.base, linha.boundingBox);
+  assert.ok(r.right > linha.boundingBox.right);
+  assert.ok(r.right <= 720);
+  assert.equal(l.text, '0001?4');
+});
+
+test('dúvidas sem trecho suficiente, letras e excesso de caracteres não localizam visor', () => {
+  for (const text of ['??????', '0???4', '0001???4', '?00014', '0001A4', '0001?412345']) {
+    assert.equal(calcularRecorteVisor({ ...linha, text }, 720, 1280), null);
+  }
+});

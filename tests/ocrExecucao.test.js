@@ -238,3 +238,41 @@ test('regressão D7: linha 0035 859 m interpreta as cores antes de decidir pelo 
   assert.equal(e.chamadas.length, 1);
   assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
 });
+
+const respostaD8 = () => {
+  const visor = { ...parcial.blocks[0].lines[0], text: '0001?4',
+    elements: [{ ...parcial.blocks[0].lines[0].elements[0], text: '0001?4' }] };
+  return { text: '101\n0001?4\nB21A9003125D An 01', blocks: [{ lines: [
+    { text: '101', elements: [{ text: '101' }] },
+    visor,
+    { text: 'B21A9003125D An 01', elements: [{ text: 'B21A9003125D' }, { text: 'An' }, { text: '01' }] },
+  ] }] };
+};
+
+test('regressão D8: caixa 0001?4 permite uma tentativa com contraste e limpa ambos os temporários', async t => {
+  const e = preparar(t);
+  e.respostas[0] = respostaD8();
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, '00017,440'); // Somente a resposta simulada da segunda chamada.
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('segunda resposta com dúvida não preenche e não inicia uma terceira tentativa', async t => {
+  const e = preparar(t);
+  e.respostas = [respostaD8(), respostaD8()];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('caixa com dúvida sem evidência vermelha não habilita recorte', async t => {
+  const e = preparar(t);
+  e.respostas = [respostaD8()];
+  e.corPixel = () => [30, 30, 30];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 1);
+  assert.equal(r.valor, null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
