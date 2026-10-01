@@ -54,7 +54,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, onResult,
         setStatus('demorado');
       }, LIMITE_OCR_MS);
       try {
-        const resultado = await reconhecer(image, contexto, registrar);
+        const resultado = await reconhecer(image, contexto, registrar, valido);
         if (!valido()) return;
         if (!resultado.sucesso || !resultado.valor) {
           setStatus('erro');

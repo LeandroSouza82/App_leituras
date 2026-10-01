@@ -18,6 +18,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { reconhecerVisorPorCor } from './ocrVisor.js';
+import { prepararRecorteVisor } from './ocrImagem.js';
 
 /**
  * Salva uma imagem base64 em arquivo temporário para o ML Kit processar.
@@ -27,12 +28,11 @@ import { reconhecerVisorPorCor } from './ocrVisor.js';
  * @param {string} base64DataUrl - "data:image/jpeg;base64,..."
  */
 const salvarImagemTemporaria = async (base64DataUrl) => {
+  const nomeArquivo = `ocr_temp_${globalThis.crypto.randomUUID()}.jpg`;
   try {
     const base64 = base64DataUrl.startsWith('data:')
       ? base64DataUrl.split(',')[1]
       : base64DataUrl;
-
-    const nomeArquivo = `ocr_temp_${globalThis.crypto.randomUUID()}.jpg`;
 
     const arquivo = await Filesystem.writeFile({
       path: nomeArquivo,
@@ -42,6 +42,8 @@ const salvarImagemTemporaria = async (base64DataUrl) => {
 
     return { uri: arquivo.uri, nomeArquivo };
   } catch {
+    // A escrita nativa pode falhar depois de criar parte do arquivo.
+    await limparImagemTemporaria(nomeArquivo);
     return null;
   }
 };
@@ -84,12 +86,32 @@ export const interpretarTextoMedidor = (texto) => {
   return candidatos.length === 1 ? { valor: candidatos[0] } : vazio;
 };
 
+const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
+  const diagnosticoAtivo = import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true';
+  if (diagnosticoAtivo) {
+    const linhas = (resposta?.blocks || []).flatMap(b => b.lines || []);
+    const trechos = linhas.filter(l => /\d/.test(l.text || '')).slice(0, 8)
+      .map(l => `${String(l.text).slice(0, 60)} [${(l.elements || []).map(e => String(e.text).slice(0, 20)).join(' | ')}]`);
+    registrar(`${origem} — linhas com números:\n${trechos.join('\n').slice(0, 600) || 'Nenhuma'}`);
+  }
+  registrar(`Interpretando ${origem.toLowerCase()}`);
+  const interpretacao = interpretarTextoMedidor(resposta?.text || '');
+  const detalhes = [];
+  const valor = interpretacao.valor || await reconhecerVisorPorCor(imagem, resposta?.blocks, detalhe => {
+    if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
+  });
+  if (diagnosticoAtivo && detalhes.length) registrar(`${origem} — análise das cores:\n${detalhes.join('\n')}`);
+  return valor;
+};
+
 /**
  * Executa o OCR na imagem fornecida.
  *
  * @param {string} imageDataUrl - "data:image/jpeg;base64,..."
  * @param {{ condominioId: string, unidadeId: string, servico: string, captureId: string }} contexto
  *   Contexto de isolamento: permite descartar resultado se contexto mudar.
+ * @param {function(string): void} registrar - Diagnóstico local da sessão.
+ * @param {function(): boolean} sessaoAtiva - Impede novas chamadas após cancelamento.
  *
  * @returns {Promise<{
  *   sucesso: boolean,
@@ -98,7 +120,7 @@ export const interpretarTextoMedidor = (texto) => {
  *   contexto: object
  * }>}
  */
-export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) => {
+export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, sessaoAtiva = () => true) => {
   const resultado = {
     sucesso: false,
     valor: null,
@@ -111,7 +133,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     return resultado;
   }
 
-  registrar('Verificando plugin · D4');
+  registrar('Verificando plugin · D5');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
@@ -122,7 +144,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     return resultado;
   }
 
-  let nomeArquivoTemp = null;
+  const temporarios = [];
 
   try {
     // 1. Salva imagem em arquivo temporário (ML Kit exige caminho)
@@ -133,7 +155,8 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
       resultado.erro = 'Não foi possível preparar a imagem para reconhecimento.';
       return resultado;
     }
-    nomeArquivoTemp = temp.nomeArquivo;
+    temporarios.push(temp.nomeArquivo);
+    if (!sessaoAtiva()) return resultado;
 
     // 2. Chama o ML Kit
     const tsInicio = Date.now();
@@ -146,33 +169,38 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     // eslint-disable-next-line no-console
     console.debug(`[OCR] Tempo de reconhecimento: ${duracao}ms`);
 
-    const textoCompleto = ocrResult?.text || '';
-    const diagnosticoAtivo = import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true';
-    if (diagnosticoAtivo) {
-      const linhas = (ocrResult?.blocks || []).flatMap(b => b.lines || []);
-      const trechos = linhas.filter(l => /\d/.test(l.text || '')).slice(0, 8)
-        .map(l => `${String(l.text).slice(0, 60)} [${(l.elements || []).map(e => String(e.text).slice(0, 20)).join(' | ')}]`);
-      registrar(`Linhas com números recebidas:\n${trechos.join('\n').slice(0, 600) || 'Nenhuma'}`);
-    }
-
-    // 4. Interpreta o texto
-    registrar('Interpretando texto e cores');
-    const interpretacao = interpretarTextoMedidor(textoCompleto);
-
+    if (!sessaoAtiva()) return resultado;
     resultado.sucesso = true;
-    const detalhes = [];
-    resultado.valor = interpretacao.valor || await reconhecerVisorPorCor(imageDataUrl, ocrResult?.blocks, detalhe => {
-      if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
-    });
-    if (diagnosticoAtivo && detalhes.length) registrar(`Análise das cores:\n${detalhes.join('\n')}`);
+    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, 'Foto', registrar);
+    // Uma única tentativa adicional, somente num recorte visualmente validado.
+    // Edição, fechamento e timeout impedem iniciar outra chamada ao motor.
+    if (!resultado.valor && sessaoAtiva()) {
+      registrar('Preparando recorte do visor');
+      const recorte = await prepararRecorteVisor(imageDataUrl, ocrResult?.blocks, detalhe => {
+        if (import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true') registrar(detalhe);
+      });
+      if (recorte && sessaoAtiva()) {
+        const tempRecorte = await salvarImagemTemporaria(recorte.contraste);
+        if (!tempRecorte) throw new Error('Falha ao preparar recorte');
+        temporarios.push(tempRecorte.nomeArquivo);
+        if (!sessaoAtiva()) return resultado;
+        registrar('Reconhecendo recorte com contraste');
+        const respostaRecorte = await plugin.processImage({ path: tempRecorte.uri });
+        if (!sessaoAtiva()) return resultado;
+        // As cores vêm da cópia colorida, com as mesmas coordenadas do recorte.
+        resultado.valor = await interpretarRespostaOcr(recorte.original, respostaRecorte, 'Recorte', registrar);
+      }
+    }
     registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');
-  } catch (err) {
+  } catch {
     registrar('Falha no processamento');
+    resultado.sucesso = false;
+    resultado.valor = null;
     resultado.erro = 'Não foi possível reconhecer a imagem.';
   } finally {
-    // 5. Limpeza da imagem temporária (sempre, mesmo em erro)
+    // Limpeza das duas imagens temporárias, inclusive em caso de erro.
     registrar('Limpando arquivo temporário');
-    await limparImagemTemporaria(nomeArquivoTemp);
+    await Promise.all(temporarios.map(limparImagemTemporaria));
     registrar('Limpeza encerrada');
   }
 

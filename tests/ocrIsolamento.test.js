@@ -15,7 +15,7 @@ async function montar({ initialValue = '', ativo = true } = {}) {
   }});
   setOcrAtivo(ativo);
   const requests = [], resultados = [];
-  const reconhecer = (_image, _contexto, registrar) => new Promise((resolve, reject) => requests.push({resolve, reject, registrar}));
+  const reconhecer = (_image, _contexto, registrar, sessaoAtiva) => new Promise((resolve, reject) => requests.push({resolve, reject, registrar, sessaoAtiva}));
   let atual, renderer;
   let props = { isOpen: true, image: 'imagem1', contexto, initialValue, reconhecer,
     onResult: v => resultados.push(v) };
@@ -42,7 +42,12 @@ test('sugestão única preenche e não salva', async () => {
 for (const motivo of ['edição', 'refazer', 'fechar', 'salvar']) {
   test(`cancelamento síncrono ao ${motivo} descarta resposta`, async () => {
     const h = await montar();
-    try { act(() => h.atual.cancelar()); await h.resolver(); assert.deepEqual(h.resultados, []); }
+    try {
+      assert.equal(h.requests[0].sessaoAtiva(), true);
+      act(() => h.atual.cancelar());
+      assert.equal(h.requests[0].sessaoAtiva(), false);
+      await h.resolver(); assert.deepEqual(h.resultados, []);
+    }
     finally { await h.limpar(); }
   });
 }
@@ -95,6 +100,7 @@ test('desmontagem descarta resposta pendente', async () => {
     assert.ok(timer);
     act(() => h.requests[0].registrar('Aguardando motor ML Kit'));
     act(() => timer.fn());
+    assert.equal(h.requests[0].sessaoAtiva(), false);
     assert.equal(h.atual.status, 'demorado');
     assert.match(h.atual.diagnostico.at(-2), /Aguardando motor ML Kit/);
     assert.match(h.atual.diagnostico.at(-1), /Limite de espera atingido/);
