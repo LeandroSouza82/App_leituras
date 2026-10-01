@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { caixaAmostraVisor, classificarCorDigito, interpretarVisor } from '../src/utils/ocrVisor.js';
-import { aplicarMascaraLeitura } from '../src/utils/leituraNumerica.js';
+import { aplicarMascaraLeitura, formatarLeitura4Casas, parseLeituraNumerica } from '../src/utils/leituraNumerica.js';
 
 const linha = (grupos) => ({ text: grupos.map(g => g.text).join(' '), elements: grupos });
 const ler = (linhas) => interpretarVisor([{ lines: linhas }], e => e.cor);
@@ -58,4 +58,79 @@ test('diagnóstico classifica todos os elementos mesmo quando o primeiro é inde
   const grupos = [{text:'00035',cor:null},{text:'859',cor:'vermelho'}];
   assert.equal(interpretarVisor([{lines:[linha(grupos)]}], e => {cores.push(e.text);return e.cor;}),null);
   assert.deepEqual(cores,['00035','859']);
+});
+
+// Texto e cores observados no D6; as caixas abaixo são uma fixture de alinhamento.
+const gruposD6 = () => [
+  { text: '0003', cor: null, boundingBox: { left: 100, top: 100, right: 260, bottom: 180 } },
+  { text: '5', cor: 'preto', boundingBox: { left: 266, top: 101, right: 306, bottom: 179 } },
+  { text: '85', cor: 'vermelho', boundingBox: { left: 312, top: 100, right: 392, bottom: 180 } },
+  { text: '9', cor: 'vermelho', boundingBox: { left: 398, top: 102, right: 438, bottom: 182 } },
+];
+
+test('regressão D6: prefixo indefinido alinhado antes do preto conserva os oito dígitos', () => {
+  const diagnostico = [];
+  const valor = interpretarVisor([{ lines: [linha(gruposD6())] }], e => e.cor, d => diagnostico.push(d));
+  assert.equal(valor, '00035,859');
+  assert.equal(aplicarMascaraLeitura(valor), '35,8590');
+  assert.equal(formatarLeitura4Casas(parseLeituraNumerica(valor) - parseLeituraNumerica('35,5670')), '0,2920');
+  assert.ok(diagnostico.includes('Prefixo inteiro confirmado pela posição antes do preto'));
+});
+
+test('posição também conserva grupo indefinido entre dois grupos inteiros pretos', () => {
+  const grupos = gruposD6();
+  grupos[0] = { text: '00', cor: 'preto', boundingBox: { left: 100, top: 100, right: 180, bottom: 180 } };
+  grupos.splice(1, 0, { text: '03', cor: null, boundingBox: { left: 186, top: 100, right: 260, bottom: 180 } });
+  assert.equal(ler([linha(grupos)]), '00035,859');
+});
+
+test('prefixo indefinido não entra sem caixas válidas para todos os grupos', () => {
+  for (const indice of [0, 1, 2, 3]) {
+    for (const caixa of [undefined, { left: NaN, top: 100, right: 260, bottom: 180 },
+      { left: -10, top: 100, right: 260, bottom: 180 }, { left: 100, top: 100, right: 260, bottom: 100 }]) {
+      const grupos = gruposD6();
+      grupos[indice].boundingBox = caixa;
+      assert.equal(ler([linha(grupos)]), null);
+    }
+  }
+});
+
+test('prefixo afastado, fora da linha, sobreposto ou em ordem invertida é recusado', () => {
+  for (const caixa of [
+    { left: 0, top: 100, right: 160, bottom: 180 }, // Afastado dos demais.
+    { left: 100, top: 10, right: 260, bottom: 90 }, // Outra linha.
+    { left: 100, top: 100, right: 300, bottom: 180 }, // Sobreposição excessiva.
+    { left: 450, top: 100, right: 610, bottom: 180 }, // Ordem invertida.
+    { left: 100, top: 10, right: 260, bottom: 200 }, // Altura incompatível.
+  ]) {
+    const grupos = gruposD6();
+    grupos[0].boundingBox = caixa;
+    assert.equal(ler([linha(grupos)]), null);
+  }
+});
+
+test('cor indefinida na fronteira decimal ou na cauda continua sem sugestão', () => {
+  for (const cores of [
+    ['preto', null, 'vermelho', 'vermelho'],
+    [null, null, 'vermelho', 'vermelho'],
+    [null, 'preto', null, 'vermelho'],
+    [null, 'preto', 'vermelho', null],
+    [null, 'preto', 'vermelho', 'preto'],
+    ['misto', 'preto', 'vermelho', 'vermelho'],
+  ]) {
+    const grupos = gruposD6().map((g, i) => ({ ...g, cor: cores[i] }));
+    assert.equal(ler([linha(grupos)]), null);
+  }
+});
+
+test('prefixo por posição exige correspondência integral entre texto e elementos', () => {
+  const l = linha(gruposD6());
+  l.text += ' 0';
+  assert.equal(ler([l]), null);
+  l.text = '0003 5 85 9m';
+  assert.equal(ler([l]), null);
+});
+
+test('dois visores continuam ambíguos mesmo com prefixo validado por posição', () => {
+  assert.equal(ler([linha(gruposD6()), linha([{ text: '00459', cor: 'preto' }, { text: '0320', cor: 'vermelho' }])]), null);
 });

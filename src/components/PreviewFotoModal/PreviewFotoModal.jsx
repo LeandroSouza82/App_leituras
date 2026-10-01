@@ -267,7 +267,7 @@ const PreviewFotoModal = ({
             {import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && ocrAtivo &&
               (ocrStatus === 'erro' || ocrStatus === 'demorado') && (
                 <details>
-                  <summary>Diagnóstico OCR · D6</summary>
+                  <summary>Diagnóstico OCR · D7</summary>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{ocrDiagnostico.join('\n')}</pre>
                 </details>
               )}

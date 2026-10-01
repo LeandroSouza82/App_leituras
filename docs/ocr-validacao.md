@@ -44,6 +44,29 @@ com `0001 74m` está coberta por testes da ponte simulada. O preparo de D6 tamb�
 foi exercitado nos pixels da foto enviada com caixas delimitadas manualmente;
 as caixas reais do ML Kit e a precisão no celular continuam pendentes.
 
+## Correção D7: preservar prefixo inteiro com cor indefinida
+
+O novo teste físico D6 terminou em 734 ms. O motor reconheceu `0003 5 85 9`,
+mas a interpretação recusou `0003` por cor indefinida. O grupo `5` foi classificado
+como preto e os grupos `85` e `9` como vermelhos. O localizador também recusou
+a primeira amostra indefinida e não houve segunda chamada.
+
+D7 permite usar a posição de um grupo indefinido antes de um grupo preto
+confirmado. Todos os grupos precisam ter caixas válidas, alinhamento vertical,
+altura compatível, ordem horizontal e distâncias curtas. O último grupo inteiro
+precisa ser preto e todos os grupos decimais precisam ser vermelhos. Não aceita
+cor indefinida na fronteira decimal, na cauda ou sem uma âncora preta posterior.
+Uma caixa com uma metade preta e outra vermelha continua sendo recusada,
+mesmo antes da âncora; não é tratada como simples ausência de cor.
+Os limites de comprimento e a recusa de múltiplos visores continuam em vigor.
+
+Na fixture que reproduz o texto e as cores do diagnóstico, com caixas sintéticas
+alinhadas, `0003 | 5 | 85 | 9` produz `00035,859`. A máscara existente apresenta
+`35,8590`; com leitura anterior `35,5670`, o cálculo existente produz `0,2920`.
+O serviço usa uma só chamada ao motor e solicita a limpeza do temporário.
+Nenhum dígito é criado ou alterado. O diagnóstico informa quando o prefixo foi
+aceito pela posição. É necessário testar as caixas reais e a sugestão no celular.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -55,11 +78,12 @@ um modelo especializado em transições mecânicas.
 O preparo do recorte foi exercitado na foto enviada, com caixas delimitadas
 manualmente, usando Canvas real no ambiente de desenvolvimento. Isso comprova
 apenas o processamento dos pixels, não as caixas nem a leitura do ML Kit Android.
-A precisão e o tempo total de D6 ainda precisam do teste físico.
+A precisão e o tempo total de D7 ainda precisam do teste físico.
 
 A interpretação continua conservadora. Usa um único valor decimal explícito ou
-uma linha numérica com grupos pretos seguidos de vermelhos. Caixa única com cores
-misturadas, cor indefinida, múltiplos candidatos e dígitos não reconhecidos podem
+uma linha numérica com divisão preta/vermelha confirmada. Um prefixo inteiro
+indefinido pode usar a posição nas condições de D7. Caixa única com cores
+misturadas, múltiplos candidatos e dígitos não reconhecidos podem
 ser recusados. Não inventa dígitos nem aplica uma regra de somar 1. O recorte
 depende de alguma faixa numérica inicialmente reconhecida e atualmente procura
 faixas horizontais. Reflexos, inclinação, rotação e transições precisam de testes.
@@ -83,8 +107,9 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D6” e registrar o painel, especialmente “Recorte — linhas com
-números”. Anotar tempo total, correção necessária e resultado ao salvar.
+“Diagnóstico OCR · D7” e registrar o painel, especialmente a análise das cores e,
+se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
+correção necessária e resultado ao salvar.
 
 Também verificar digitação antes da resposta, refazer, fechar, trocar unidade ou
 serviço, leitura existente e salvamento manual. Com OCR desligado, repetir foto,
@@ -93,7 +118,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D6.
+Um build normal não exibe o painel. Não houve merge nem release de D7.
 
 ## Dependência Android e peso
 

@@ -16,6 +16,31 @@ export const classificarCorDigito = (pixels) => {
   return null;
 };
 
+// A cor pode falhar num trecho do inteiro. Só usa sua posição se todas as
+// caixas formam uma faixa contínua, na ordem dos dígitos reconhecidos.
+const elementosAlinhados = (elementos) => {
+  const caixas = elementos.map(e => e.boundingBox);
+  if (caixas.some(c => !c || ![c.left, c.top, c.right, c.bottom].every(Number.isFinite) ||
+      c.left < 0 || c.top < 0 || c.right - c.left < 2 || c.bottom - c.top < 2)) return false;
+  const alturas = caixas.map(c => c.bottom - c.top);
+  const menorAltura = Math.min(...alturas);
+  if (Math.max(...alturas) > menorAltura * 2) return false;
+  const sobreposicaoVertical = Math.min(...caixas.map(c => c.bottom)) - Math.max(...caixas.map(c => c.top));
+  if (sobreposicaoVertical < menorAltura * 0.5) return false;
+  for (let i = 1; i < caixas.length; i++) {
+    const anterior = caixas[i - 1];
+    const atual = caixas[i];
+    const larguraDigito = Math.max(
+      (anterior.right - anterior.left) / elementos[i - 1].text.length,
+      (atual.right - atual.left) / elementos[i].text.length,
+    );
+    const intervalo = atual.left - anterior.right;
+    if (atual.left <= anterior.left || atual.right <= anterior.right ||
+        intervalo < -larguraDigito * 0.25 || intervalo > larguraDigito * 1.5) return false;
+  }
+  return true;
+};
+
 export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) => {
   const candidatos = [];
   for (const block of blocks || []) {
@@ -41,14 +66,22 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) =
         diagnosticar(`${elemento.text}: ${cor || 'cor indefinida'}`);
         return cor;
       });
+      const inicioDecimais = cores.indexOf('vermelho');
+      const prefixoIndefinido = inicioDecimais > 0 && cores[inicioDecimais - 1] === 'preto' &&
+        cores.slice(0, inicioDecimais).some(c => c == null) &&
+        cores.slice(0, inicioDecimais).every(c => c === 'preto' || c == null) &&
+        cores.slice(inicioDecimais).every(c => c === 'vermelho');
+      const prefixoPorPosicao = prefixoIndefinido && elementosAlinhados(elementos);
+      if (prefixoIndefinido && !prefixoPorPosicao) diagnosticar('Prefixo recusado: caixas não alinhadas');
       for (const [indice, elemento] of elementos.entries()) {
         const cor = cores[indice];
-        if (cor === 'preto' && !decimais) inteiros += elemento.text;
+        if (!decimais && (cor === 'preto' || (cor == null && prefixoPorPosicao && indice < inicioDecimais))) inteiros += elemento.text;
         else if (cor === 'vermelho' && inteiros) decimais += elemento.text;
         else { invalido = true; break; }
       }
       if (!invalido && inteiros.length >= 3 && inteiros.length <= 6 &&
           decimais.length >= 1 && decimais.length <= 4) {
+        if (prefixoPorPosicao) diagnosticar('Prefixo inteiro confirmado pela posição antes do preto');
         candidatos.push(`${inteiros},${decimais}`);
       }
       else diagnosticar('Linha recusada: divisão preta/vermelha não confirmada');
@@ -74,8 +107,8 @@ export const caixaAmostraVisor = (caixa, largura, altura) => {
   return { left, top, right, bottom };
 };
 
-// Só aceita elementos com cor uniforme. Elementos mistos precisam de outro
-// reconhecimento: não divide uma caixa em posições inventadas para os dígitos.
+// Cor confirmada exige amostras uniformes. Um prefixo indefinido só entra pela
+// posição antes de uma âncora preta; nunca divide uma caixa para inventar dígitos.
 export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
@@ -91,7 +124,7 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
     ctx.drawImage(foto, 0, 0);
     return interpretarVisor(blocks, elemento => {
       const caixa = caixaAmostraVisor(elemento.boundingBox, canvas.width, canvas.height);
-      if (!caixa) { diagnosticar('Coordenadas ausentes ou fora da foto'); return null; }
+      if (!caixa) { diagnosticar('Coordenadas ausentes ou fora da foto'); return 'invalido'; }
       const x = Math.floor(caixa.left);
       const y = Math.floor(caixa.top);
       const w = Math.ceil(caixa.right) - x;
@@ -99,14 +132,15 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
       if (x < 0 || y < 0 || w <= 0 || h <= 0 ||
           x + w > canvas.width || y + h > canvas.height) {
         diagnosticar('Coordenadas fora da foto');
-        return null;
+        return 'invalido';
       }
       // Amostras das duas metades evitam aceitar uma caixa preto/vermelho mista.
-      if (w < 2) return null;
+      if (w < 2) return 'invalido';
       const metade = Math.floor(w / 2);
       const a = classificarCorDigito(ctx.getImageData(x, y, metade, h).data);
       const b = classificarCorDigito(ctx.getImageData(x + metade, y, w - metade, h).data);
       if (!a || !b || a !== b) diagnosticar(`Caixa ${x},${y} ${w}×${h}: ${a || '?'} / ${b || '?'}`);
+      if (a && b && a !== b) return 'misto';
       return a === b ? a : null;
     }, diagnosticar);
   } finally {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 // Ponte nativa simulada: exercita os proxies reais do Capacitor e a limpeza.
-// Não simula a precisão do ML Kit. Os pixels sintéticos apenas habilitam o recorte.
+// Não simula a precisão do ML Kit. Os pixels sintéticos exercitam cor e recorte.
 let estado;
 globalThis.androidBridge = {};
 globalThis.Capacitor = {
@@ -53,9 +53,11 @@ function preparar(t) {
         const data = new Uint8ClampedArray(w * h * 4);
         for (let i = 0; i < w * h; i++) {
           const p = i * 4;
-          const vermelho = x + i % w >= 300;
-          data[p] = vermelho ? 180 : 30;
-          data[p + 1] = data[p + 2] = vermelho ? 50 : 30;
+          const posicao = x + i % w;
+          const cor = estado.corPixel?.(posicao) || (posicao >= 300 ? [180, 50, 50] : [30, 30, 30]);
+          data[p] = cor[0];
+          data[p + 1] = cor[1];
+          data[p + 2] = cor[2];
           data[p + 3] = 255;
         }
         return { data };
@@ -169,4 +171,53 @@ test('linha sem nenhum elemento puramente numérico não cria âncora artificial
   const r = await executarOcr('data:image/jpeg;base64,eA==', {});
   assert.equal(e.chamadas.length, 1);
   assert.equal(r.valor, null);
+});
+
+const respostaD6 = () => ({ text: '1021\n0003 5 85 9\n85 9m\n62100n3261D Au', blocks: [{ lines: [
+    { text: '1021', elements: [{ text: '1021', boundingBox: { left: 20, top: 10, right: 80, bottom: 30 } }] },
+    { text: '0003 5 85 9', elements: [
+      { text: '0003', boundingBox: { left: 100, top: 40, right: 220, bottom: 80 } },
+      { text: '5', boundingBox: { left: 226, top: 40, right: 256, bottom: 80 } },
+      { text: '85', boundingBox: { left: 264, top: 40, right: 324, bottom: 80 } },
+      { text: '9', boundingBox: { left: 330, top: 40, right: 360, bottom: 80 } },
+    ] },
+    { text: '85 9m', elements: [{ text: '85' }, { text: '9m' }] },
+    { text: '62100n3261D Au', elements: [] },
+  ] }] });
+
+test('prefixo indefinido alinhado aproveita a primeira resposta e limpa seu único temporário', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x < 223 ? [255, 255, 255] : x < 260 ? [30, 30, 30] : [180, 50, 50];
+  e.respostas = [respostaD6()];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00035,859');
+  assert.equal(r.sucesso, true);
+  assert.equal(e.chamadas.length, 1);
+  assert.equal(e.escritas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('caixa preta/vermelha mista não vira prefixo inteiro pela posição', async t => {
+  const e = preparar(t);
+  e.corPixel = x => (x >= 160 && x < 223) || x >= 260 ? [180, 50, 50] : [30, 30, 30];
+  e.respostas = [respostaD6()];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('prefixo com caixa parcialmente fora da foto não recebe cor pela posição', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x < 223 ? [255, 255, 255] : x < 260 ? [30, 30, 30] : [180, 50, 50];
+  const resposta = respostaD6();
+  for (const [i, elemento] of resposta.blocks[0].lines[1].elements.entries()) {
+    elemento.boundingBox.top = 1230;
+    elemento.boundingBox.bottom = i === 0 ? 1290 : 1270; // Foto com 1280 px de altura.
+  }
+  e.respostas = [resposta];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
 });
