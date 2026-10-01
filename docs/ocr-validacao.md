@@ -4,6 +4,65 @@ O OCR permanece opcional e desligado por padrão. Não há IA online nesta etapa
 Máscara numérica, cálculo de consumo, validações, salvamento e exportação usam
 os fluxos existentes. O leiturista confere e salva manualmente.
 
+## D12: dígitos individuais e transições com evidência visual
+
+O teste físico D11 do APTO-102 sugeriu `35,8590` em 956 ms e calculou
+`0,2920 m³` sobre a anterior `35,5670`. No APTO-101, o recorte juntou `74`
+como vermelho, sugeriu `1,7400` em 1051 ms e a comparação com `17,2970`
+descartou o resultado. O segundo resultado não comprova leitura correta.
+
+O SDK Android ML Kit já fornece `Text.Symbol`, caixas e escores individuais.
+O plugin 8.2.1 omitia esses dados na ponte. Um patch pequeno, aplicado pelo
+`postinstall` já existente, acrescenta `symbols` a cada elemento. A versão do
+plugin foi fixada em 8.2.1 para preservar esse contrato. Nenhum motor, modelo,
+dependência ou chamada ao OCR foi adicionado. Para instalar esse patch após
+atualizar a branch, executar `npm ci` antes do build e do `cap run android`.
+
+A interpretação usa somente as caixas individuais devolvidas pelo motor;
+não divide palavras por uma largura presumida. O grupo `74` pode ter seu `7`
+preto e `4` vermelho analisados separadamente. Se um payload que contém símbolos
+está incompleto, diverge do texto, não tem caixas válidas ou está fora de ordem,
+a linha é recusada. Sem esse contrato (por exemplo, iOS ou APK sem o patch), a
+análise anterior por grupos permanece disponível e aparece no diagnóstico.
+
+A regra pedida para transição exige dois dígitos reconhecidos, consecutivos no
+ciclo 0–9, em caixas verticalmente separadas da mesma coluna, com larguras e
+alturas compatíveis, a mesma cor confirmada e escore nativo de pelo menos 0,85
+nos dois símbolos. `3` e `4` nessa condição sugerem `4`; `9` e `0` sugerem `0`.
+Um dígito isolado permanece igual. Não acrescenta um ao valor inteiro, não faz
+transporte para outro rolete e não usa a leitura anterior para escolher números.
+Pares não consecutivos, mais de um parceiro, escore ausente ou cor ambígua
+recusam a linha. O escore é um filtro inicial, não probabilidade calibrada de
+acerto ou garantia de transição mecânica. Essas condições ainda precisam de
+validação física com fotos reais, inclusive inclinação e reflexos.
+
+Se há outros símbolos vermelhos próximos depois da cauda, em outra linha,
+a sugestão parcial também é recusada. Não anexa esses números por suposição.
+Essa proteção cobre a resposta observada no APTO-101 com caixas sintéticas.
+Ela não garante detectar um dígito que o motor omitiu completamente.
+
+As amostras de cor são reutilizadas na mesma interpretação. Continuam duas
+chamadas no máximo, limite de cinco segundos, descarte após edição ou mudança
+de contexto, limpeza dos temporários e confirmação manual. Máscara, consumo,
+regra de leitura igual ou maior que a anterior e exportação permanecem iguais.
+
+Referência do SDK: https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+e https://developers.google.com/android/reference/com/google/mlkit/vision/text/Text.Symbol.
+
+Validação local: os testes usam caixas, escores e pixels sintéticos, sem simular
+a precisão nativa. O patch foi aplicado e seu conteúdo conferido em uma cópia
+isolada do plugin. Build Gradle e reconhecimento físico D12 pendentes: este
+ambiente não possui Android SDK. Não considerar o APTO-101 resolvido nem fazer
+merge com base somente nos testes de regras e no build web.
+Os 129 testes passaram sem falhas, cancelamentos ou testes ignorados; o build
+web de diagnóstico passou em 8,69 s, com o aviso de tamanho de chunk já existente.
+
+No celular, verificar no painel D12 `Analisando ... dígitos individuais` e, quando
+o motor encontrar um par, `Transição visual: 3 → 4` (ou o par correspondente).
+Repetir o APTO-102, testar o APTO-101, um `3` estável, transições reais 3→4 e
+9→0, e conferir os valores completos antes de salvar. Ausência de um dos
+dígitos ou leitura parcial continua exigindo digitação manual.
+
 ## Ajuste D5: recorte e contraste
 
 Quando a primeira passagem não produz uma sugestão, o serviço procura uma única

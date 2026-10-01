@@ -8,8 +8,8 @@
  *
  * Limitações documentadas:
  *   - Dígitos em transição (ex: 3→4 virando): o ML Kit genérico não
- *     detecta transição mecânica com confiança. Quando ambíguo, o
- *     campo permanece editável e o leiturista confirma manualmente.
+ *     pode omitir um dos dígitos. Só trata o próximo quando há um par
+ *     consecutivo visualmente alinhado; dúvidas exigem conferência manual.
  *   - O modelo latino está incluído no APK (sem download).
  *   - Esta camada não toca em estado React nem em localStorage.
  */
@@ -135,7 +135,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
     return resultado;
   }
 
-  registrar('Verificando plugin · D11');
+  registrar('Verificando plugin · D12');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;

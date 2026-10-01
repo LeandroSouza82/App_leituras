@@ -1,3 +1,5 @@
+import { expandirSimbolosVisor, resolverTransicoesVisor } from './ocrSimbolos.js';
+
 // Usa as caixas do ML Kit e a cor dos pixels, sem presumir casas decimais.
 export const classificarCorDigito = (pixels) => {
   let vermelho = 0;
@@ -63,43 +65,58 @@ export const normalizarLinhaVisor = (linha) => {
 
 export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) => {
   const candidatos = [];
-  for (const block of blocks || []) {
-    for (const linha of block.lines || []) {
-      const normalizada = normalizarLinhaVisor(linha);
-      if (!normalizada) {
-        if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: texto e elementos não formam visor numérico');
-        continue;
-      }
-      const elementos = normalizada.elements;
-      if (normalizada.unidade) diagnosticar(`Unidade separada: ${normalizada.unidade}`);
-      let inteiros = '';
-      let decimais = '';
-      let invalido = false;
-      const cores = elementos.map(elemento => {
-        const cor = corElemento(elemento);
-        diagnosticar(`${elemento.text}: ${cor || 'cor indefinida'}`);
-        return cor;
-      });
-      const inicioDecimais = cores.indexOf('vermelho');
-      const prefixoIndefinido = inicioDecimais > 0 && cores[inicioDecimais - 1] === 'preto' &&
-        cores.slice(0, inicioDecimais).some(c => c == null) &&
-        cores.slice(0, inicioDecimais).every(c => c === 'preto' || c == null) &&
-        cores.slice(inicioDecimais).every(c => c === 'vermelho');
-      const prefixoPorPosicao = prefixoIndefinido && elementosAlinhados(elementos);
-      if (prefixoIndefinido && !prefixoPorPosicao) diagnosticar('Prefixo recusado: caixas não alinhadas');
-      for (const [indice, elemento] of elementos.entries()) {
-        const cor = cores[indice];
-        if (!decimais && (cor === 'preto' || (cor == null && prefixoPorPosicao && indice < inicioDecimais))) inteiros += elemento.text;
-        else if (cor === 'vermelho' && inteiros) decimais += elemento.text;
-        else { invalido = true; break; }
-      }
-      if (!invalido && inteiros.length >= 3 && inteiros.length <= 6 &&
-          decimais.length >= 1 && decimais.length <= 4) {
-        if (prefixoPorPosicao) diagnosticar('Prefixo inteiro confirmado pela posição antes do preto');
-        candidatos.push(`${inteiros},${decimais}`);
-      }
-      else diagnosticar('Linha recusada: divisão preta/vermelha não confirmada');
+  const amostras = new Map();
+  const corDoElemento = elemento => {
+    if (!amostras.has(elemento)) amostras.set(elemento, corElemento(elemento));
+    return amostras.get(elemento);
+  };
+  const linhas = (blocks || []).flatMap(b => b.lines || []).map(linha => {
+    const normalizada = normalizarLinhaVisor(linha);
+    const expandida = normalizada && expandirSimbolosVisor(normalizada.elements);
+    return { linha, normalizada, expandida };
+  });
+  for (const { linha, normalizada, expandida } of linhas) {
+    if (!normalizada) {
+      if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: texto e elementos não formam visor numérico');
+      continue;
     }
+    if (!expandida) { diagnosticar('Linha recusada: símbolos incompletos ou caixas inválidas'); continue; }
+    let elementos = expandida.elementos;
+    if (expandida.individuais) {
+      diagnosticar(`Analisando ${elementos.length} dígitos individuais`);
+      const outros = linhas.filter(l => l.linha !== linha && l.expandida?.individuais)
+        .flatMap(l => l.expandida.elementos);
+      elementos = resolverTransicoesVisor(elementos, outros, corDoElemento, diagnosticar);
+      if (!elementos) continue;
+    } else diagnosticar('Símbolos individuais indisponíveis: análise por grupos');
+    if (normalizada.unidade) diagnosticar(`Unidade separada: ${normalizada.unidade}`);
+    let inteiros = '';
+    let decimais = '';
+    let invalido = false;
+    const cores = elementos.map(elemento => {
+      const cor = corDoElemento(elemento);
+      diagnosticar(`${elemento.text}: ${cor || 'cor indefinida'}`);
+      return cor;
+    });
+    const inicioDecimais = cores.indexOf('vermelho');
+    const prefixoIndefinido = inicioDecimais > 0 && cores[inicioDecimais - 1] === 'preto' &&
+      cores.slice(0, inicioDecimais).some(c => c == null) &&
+      cores.slice(0, inicioDecimais).every(c => c === 'preto' || c == null) &&
+      cores.slice(inicioDecimais).every(c => c === 'vermelho');
+    const prefixoPorPosicao = prefixoIndefinido && elementosAlinhados(elementos);
+    if (prefixoIndefinido && !prefixoPorPosicao) diagnosticar('Prefixo recusado: caixas não alinhadas');
+    for (const [indice, elemento] of elementos.entries()) {
+      const cor = cores[indice];
+      if (!decimais && (cor === 'preto' || (cor == null && prefixoPorPosicao && indice < inicioDecimais))) inteiros += elemento.text;
+      else if (cor === 'vermelho' && inteiros) decimais += elemento.text;
+      else { invalido = true; break; }
+    }
+    if (!invalido && inteiros.length >= 3 && inteiros.length <= 6 &&
+        decimais.length >= 1 && decimais.length <= 4) {
+      if (prefixoPorPosicao) diagnosticar('Prefixo inteiro confirmado pela posição antes do preto');
+      candidatos.push(`${inteiros},${decimais}`);
+    }
+    else diagnosticar('Linha recusada: divisão preta/vermelha não confirmada');
   }
   diagnosticar(`${candidatos.length} candidato(s) por cor`);
   return candidatos.length === 1 ? candidatos[0] : null;

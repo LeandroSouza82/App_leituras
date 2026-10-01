@@ -361,3 +361,49 @@ test('dois prefixos neutros candidatos não são selecionados arbitrariamente', 
   assert.equal(r.valor, null);
   assert.equal(e.chamadas.length, 1);
 });
+
+// Contrato adicional do patch nativo D12. Todas as caixas e cores são sintéticas.
+const simboloD12 = (text, x, top = 40, bottom = 80) => ({ text, confidence: 0.95,
+  boundingBox: { left: x, top, right: x + 25, bottom } });
+const grupoD12 = symbols => ({ text: symbols.map(s => s.text).join(''), symbols,
+  boundingBox: { left: Math.min(...symbols.map(s => s.boundingBox.left)),
+    top: Math.min(...symbols.map(s => s.boundingBox.top)),
+    right: Math.max(...symbols.map(s => s.boundingBox.right)),
+    bottom: Math.max(...symbols.map(s => s.boundingBox.bottom)) } });
+const linhaD12 = elements => ({ text: elements.map(e => e.text).join(' '), elements });
+
+test('ponte D12: grupo 7450 misto separa o 7 preto sem nova chamada ao motor', async t => {
+  const e = preparar(t);
+  const grupos = [grupoD12([...'0001'].map((d, i) => simboloD12(d, 100 + i * 40))),
+    grupoD12([simboloD12('7', 260), simboloD12('4', 320), simboloD12('5', 370), simboloD12('0', 420)])];
+  const l = linhaD12(grupos);
+  e.respostas = [{ text: l.text, blocks: [{ lines: [l] }] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00017,450');
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D12: transição reconhecida de 3 para 4 usa pixels da mesma coluna', async t => {
+  const e = preparar(t);
+  const l = linhaD12([grupoD12([...'00017'].map((d, i) => simboloD12(d, 100 + i * 40))),
+    grupoD12([simboloD12('3', 320, 40, 60), simboloD12('5', 370), simboloD12('0', 420)])]);
+  const outra = linhaD12([grupoD12([simboloD12('4', 320, 61, 81)])]);
+  e.respostas = [{ text: l.text + '\n' + outra.text, blocks: [{ lines: [l, outra] }] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00017,450');
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D12: símbolos vazios exigem novo reconhecimento, sem aproveitar a palavra', async t => {
+  const e = preparar(t);
+  const l = linhaD12([grupoD12([...'00017'].map((d, i) => simboloD12(d, 100 + i * 40))),
+    grupoD12([simboloD12('4', 320), simboloD12('5', 370), simboloD12('0', 420)])]);
+  l.elements[1].symbols = [];
+  e.respostas = [{ text: l.text, blocks: [{ lines: [l] }] }, { text: '', blocks: [] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
