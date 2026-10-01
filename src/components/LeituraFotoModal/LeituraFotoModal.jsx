@@ -996,18 +996,25 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  // Dispara a Câmera Nativa do Sistema Operacional (Sem recortes e sem PWA UI)
+  // A galeria fica disponível só no diagnóstico com OCR ativo.
   const handleDispararCamera = async (aptoAlvo) => {
     const apto = aptoAlvo || activeApto;
     if (!apto || isProcessing) return;
     setActiveApto(apto);
 
     try {
+      const diagnosticoOcr = import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && isOcrAtivo();
       const photo = await Camera.getPhoto({
         quality: 30, // Compressão máxima para otimizar disco e banda (reduz a foto severamente)
         allowEditing: false,
         resultType: CameraResultType.DataUrl, // <-- GARANTE BASE64 NO CAPACITOR
-        source: CameraSource.Camera, // <-- FORÇA ABRIR O APLICATIVO NATIVO DE CÂMERA
+        source: diagnosticoOcr ? CameraSource.Prompt : CameraSource.Camera,
+        ...(diagnosticoOcr ? {
+          promptLabelHeader: 'Teste do OCR',
+          promptLabelPhoto: 'Escolher foto da galeria',
+          promptLabelPicture: 'Tirar foto',
+          promptLabelCancel: 'Cancelar'
+        } : {}),
         correctOrientation: true
       });
 

@@ -109,6 +109,34 @@ cancelamento, comparação com a anterior e limpeza dos temporários permanecem.
 Os testes usam texto observado e caixas/pixels simulados. Precisão e caixas reais
 no celular continuam pendentes.
 
+## Diagnóstico D10: testar a foto da galeria
+
+O teste físico D9 localizou uma faixa, executou a segunda chamada e terminou em
+924 ms. O recorte devolveu `000 1 74`; o grupo `1` teve cor indefinida e a linha
+foi recusada. Isso comprova a execução do recorte nessa sessão, mas o resultado
+continua incompleto e não confirma a divisão decimal. O parser não foi relaxado.
+
+A foto enviada para comparação tem 720 × 1280 pixels. A captura usada pelo D9
+tem 2304 × 4096, portanto não é possível reproduzir suas caixas nessa foto apenas
+mudando a escala. Na imagem enviada, a parte inteira é `00017`, o primeiro
+vermelho é `4` e os dois roletes seguintes estão em transição. Não foi estabelecida
+uma referência decimal completa para teste automatizado dessa imagem.
+
+D10 acrescenta escolha entre câmera e galeria somente com
+`VITE_OCR_DIAGNOSTICO=true` e OCR ativo. A foto da galeria passa pela mesma opção
+de qualidade 30, orientação, carimbo, preview e processamento existentes; não é
+um teste dos bytes JPEG sem recompressão. Permite testar a imagem enviada sem
+fotografar sua exibição numa tela. Com OCR desligado ou build normal, a origem
+continua `CameraSource.Camera` e não aparece o seletor. Não há alteração no
+reconhecimento, máscara, consumo, validação ou salvamento manual.
+
+O novo seletor precisa de validação Android. Os testes e o build web não executam
+o seletor nativo nem medem a precisão do ML Kit nessa foto.
+Os 107 testes existentes passaram. Os builds normal e de diagnóstico passaram;
+nos assets gerados, o texto do seletor apareceu somente no diagnóstico. O código
+Android da versão instalada confirma o suporte a `CameraSource.Prompt` e aos
+rótulos usados, mas sua abertura no aparelho ainda precisa ser conferida.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -120,7 +148,7 @@ um modelo especializado em transições mecânicas.
 O preparo do recorte foi exercitado na foto enviada, com caixas delimitadas
 manualmente, usando Canvas real no ambiente de desenvolvimento. Isso comprova
 apenas o processamento dos pixels, não as caixas nem a leitura do ML Kit Android.
-A precisão e o tempo total de D9 ainda precisam do teste físico.
+A precisão continua pendente; o teste D9 acima mediu somente uma sessão.
 
 A interpretação continua conservadora. Usa um único valor decimal explícito ou
 uma linha numérica com divisão preta/vermelha confirmada. Um prefixo inteiro
@@ -149,13 +177,20 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D9” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D10” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
 Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
 `35,8590`. Uma sugestão `1,7490` com anterior `17,2970` deve ser descartada antes
 do preenchimento. Igualdade continua permitida. Quando surgir uma sugestão
 errada, abrir o diagnóstico também no estado concluído, antes de editar.
+
+No build D10 com OCR ativo, tocar no botão de foto e selecionar
+“Escolher foto da galeria”. Usar o arquivo do medidor, não o print do diagnóstico.
+Registrar a miniatura e o painel completo, incluindo o texto da foto e do recorte.
+Para confirmar o fluxo original, repetir com OCR desligado e em build sem a flag:
+o botão deve abrir diretamente a câmera. Cancelar o seletor deve encerrar a
+tentativa sem iniciar OCR ou mudar a foto da unidade.
 
 Também verificar digitação antes da resposta, refazer, fechar, trocar unidade ou
 serviço, leitura existente e salvamento manual. Com OCR desligado, repetir foto,
@@ -164,7 +199,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D9.
+Um build normal não exibe o painel. Não houve merge nem release de D10.
 
 ## Dependência Android e peso
 
