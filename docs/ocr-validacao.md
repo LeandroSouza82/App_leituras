@@ -16,7 +16,18 @@ O plugin 8.2.1 omitia esses dados na ponte. Um patch pequeno, aplicado pelo
 `postinstall` já existente, acrescenta `symbols` a cada elemento. A versão do
 plugin foi fixada em 8.2.1 para preservar esse contrato. Nenhum motor, modelo,
 dependência ou chamada ao OCR foi adicionado. Para instalar esse patch após
-atualizar a branch, executar `npm ci` antes do build e do `cap run android`.
+atualizar a branch, executar `npm ci --legacy-peer-deps` antes do build e do
+`cap run android`. O plugin Google Auth existente declara peer de Capacitor 6,
+enquanto o projeto usa Capacitor 8. Sem esse parâmetro, a instalação pode falhar
+com `ERESOLVE` antes de executar o `postinstall`. O comando mantém as versões
+do lockfile; não migra o login nem altera sua implementação. Essa opção não
+comprova compatibilidade nativa de plugins: os testes no aparelho continuam.
+
+Só continuar com o build após a instalação concluir e mostrar a aplicação de
+`@capacitor-mlkit/text-recognition@8.2.1` pelo `patch-package`. Build Vite e
+Gradle bem-sucedidos após um `npm ci` que falhou podem usar dependências antigas,
+sem os símbolos individuais, mesmo quando o painel já está identificado como
+D12. Se a instalação falhar, interromper os próximos comandos e enviar o erro.
 
 A interpretação usa somente as caixas individuais devolvidas pelo motor;
 não divide palavras por uma largura presumida. O grupo `74` pode ter seu `7`
