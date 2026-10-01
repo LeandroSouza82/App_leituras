@@ -30,7 +30,7 @@ test('recorte respeita limites e aceita a união das caixas dos elementos', () =
 test('placa 101, serial, mistura de letras e caixas inválidas não viram visor', () => {
   for (const l of [
     { ...linha, text: '101' }, { ...linha, text: 'B21A9003125D' },
-    { ...linha, text: '12345678901' }, { ...linha, text: '0001O' },
+    { ...linha, text: '12345678901' }, { ...linha, text: '00O17' },
     { ...linha, boundingBox: { ...linha.boundingBox, right: 900 } },
     { ...linha, boundingBox: { ...linha.boundingBox, left: NaN } },
     { ...linha, boundingBox: { left: 100, top: 200, right: 101, bottom: 240 } },
@@ -80,7 +80,16 @@ test('caixa com dúvida 0001?4 localiza pixels sem corrigir ou apagar o texto', 
 });
 
 test('dúvidas sem trecho suficiente, letras e excesso de caracteres não localizam visor', () => {
-  for (const text of ['??????', '0???4', '0001???4', '?00014', '0001A4', '0001?412345']) {
+  for (const text of ['??????', '0???4', '0001???4', '?00014', '0001A4', '0001?412345', '001i', '0001iii', '0001?ii']) {
     assert.equal(calcularRecorteVisor({ ...linha, text }, 720, 1280), null);
+  }
+});
+
+test('regressão D10: letra final em 0001742i localiza a caixa sem alterar o texto', () => {
+  for (const text of ['0001742i', '0001O', '00017ll']) {
+    const l = { ...linha, text };
+    const r = calcularRecorteVisor(l, 720, 1280);
+    assert.deepEqual(r.base, linha.boundingBox);
+    assert.equal(l.text, text);
   }
 });

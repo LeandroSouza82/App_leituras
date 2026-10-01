@@ -137,6 +137,43 @@ nos assets gerados, o texto do seletor apareceu somente no diagnóstico. O códi
 Android da versão instalada confirma o suporte a `CameraSource.Prompt` e aos
 rótulos usados, mas sua abertura no aparelho ainda precisa ser conferida.
 
+## Correção D11: permitir a tentativa com contraste nos casos D10
+
+Os novos diagnósticos físicos D10 terminaram em 811 ms (APTO-101) e 1011 ms
+(APTO-102), sem segunda chamada. O APTO-101 devolveu `0001742i`; a letra final
+impediu tanto a interpretação quanto a localização do recorte. O APTO-102
+devolveu `003 5 8 5 9`, mas `003` e o primeiro `5` ficaram com cor indefinida.
+A amostra inicial do localizador também ficou indefinida, bloqueando o recorte.
+A foto de referência do APTO-102 mostra `00035,859`: na máscara existente,
+`35,8590`. Isso não comprova a leitura das imagens efetivamente usadas no D10.
+
+D11 muda somente a localização dos pixels para uma tentativa adicional:
+
+- Uma faixa com até duas dúvidas, incluindo no máximo duas letras finais,
+  pode localizar sua caixa se tiver pelo menos quatro dígitos reconhecidos.
+  Letras internas, rótulos e excesso de caracteres continuam recusados.
+  Não troca `i` por número, não remove a letra para preencher e não altera o
+  parser da leitura. Uma unidade separada continua usando a normalização D8.
+- A amostra inicial indefinida pode localizar uma faixa começando por zero,
+  com pelo menos quatro dígitos, caixa válida e evidência vermelha à direita.
+  Isso não atribui cor preta ao prefixo nem confirma sua posição decimal.
+  Múltiplas faixas, início vermelho ou ausência da região vermelha continuam
+  sem recorte. O reconhecimento do recorte precisa produzir uma leitura que
+  passe pela interpretação existente.
+
+Continuam no máximo duas chamadas por sessão. Cancelamento, limite de cinco
+segundos, comparação com a anterior e limpeza dos temporários não mudaram.
+Uma segunda resposta com letra ou divisão indefinida continua sem sugestão.
+Máscara, cálculo de consumo, dados e salvamento não foram alterados.
+
+As novas regressões usam os textos e classificações observados, a caixa da
+linha do APTO-102 e outras caixas/pixels sintéticos. O Canvas simulado passou a
+considerar a origem horizontal do recorte. Os testes verificam a tentativa e
+o descarte, não a capacidade real do ML Kit de ler esses roletes.
+A precisão da segunda passagem D11 ainda depende do celular.
+Os 114 testes passaram, incluindo as regressões D10 e as proteções existentes.
+O build web de diagnóstico D11 passou; não foi gerado APK neste ambiente.
+
 ## Evidência e limites
 
 No diagnóstico físico D4, o motor respondeu com texto em 605 ms e a limpeza
@@ -177,7 +214,7 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D10” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D11” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
 Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
@@ -185,12 +222,18 @@ Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
 do preenchimento. Igualdade continua permitida. Quando surgir uma sugestão
 errada, abrir o diagnóstico também no estado concluído, antes de editar.
 
-No build D10 com OCR ativo, tocar no botão de foto e selecionar
+No build D11 com OCR ativo, tocar no botão de foto e selecionar
 “Escolher foto da galeria”. Usar o arquivo do medidor, não o print do diagnóstico.
 Registrar a miniatura e o painel completo, incluindo o texto da foto e do recorte.
 Para confirmar o fluxo original, repetir com OCR desligado e em build sem a flag:
 o botão deve abrir diretamente a câmera. Cancelar o seletor deve encerrar a
 tentativa sem iniciar OCR ou mudar a foto da unidade.
+
+Nos casos D10 acima, conferir se o painel D11 chega a
+“Reconhecendo recorte com contraste” e registrar “Recorte — linhas com números”.
+A localização não garante uma sugestão: conferir todos os dígitos e decimais
+antes de salvar. Não usar a imagem com roletes em transição como referência
+decimal completa sem conferência no medidor.
 
 Também verificar digitação antes da resposta, refazer, fechar, trocar unidade ou
 serviço, leitura existente e salvamento manual. Com OCR desligado, repetir foto,
@@ -199,7 +242,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D10.
+Um build normal não exibe o painel. Não houve merge nem release de D11.
 
 ## Dependência Android e peso
 

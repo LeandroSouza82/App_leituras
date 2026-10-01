@@ -41,28 +41,32 @@ function preparar(t) {
   const documentAnterior = globalThis.document;
   const imageAnterior = globalThis.Image;
   globalThis.Image = class {
-    naturalWidth = 720;
-    naturalHeight = 1280;
+    naturalWidth = estado.largura || 720;
+    naturalHeight = estado.altura || 1280;
     async decode() {}
   };
   globalThis.document = { createElement: () => ({ width: 1, height: 1,
     toDataURL: () => 'data:image/jpeg;base64,eA==',
-    getContext: () => ({
-      drawImage() {}, putImageData() {},
-      getImageData(x, _y, w, h) {
-        const data = new Uint8ClampedArray(w * h * 4);
-        for (let i = 0; i < w * h; i++) {
-          const p = i * 4;
-          const posicao = x + i % w;
-          const cor = estado.corPixel?.(posicao) || (posicao >= 300 ? [180, 50, 50] : [30, 30, 30]);
-          data[p] = cor[0];
-          data[p + 1] = cor[1];
-          data[p + 2] = cor[2];
-          data[p + 3] = 255;
-        }
-        return { data };
-      },
-    }),
+    getContext: () => {
+      let deslocamentoX = 0;
+      return {
+        drawImage(...args) { deslocamentoX = args.length === 9 ? args[1] - args[5] : 0; },
+        putImageData() {},
+        getImageData(x, _y, w, h) {
+          const data = new Uint8ClampedArray(w * h * 4);
+          for (let i = 0; i < w * h; i++) {
+            const p = i * 4;
+            const posicao = deslocamentoX + x + i % w;
+            const cor = estado.corPixel?.(posicao) || (posicao >= 300 ? [180, 50, 50] : [30, 30, 30]);
+            data[p] = cor[0];
+            data[p + 1] = cor[1];
+            data[p + 2] = cor[2];
+            data[p + 3] = 255;
+          }
+          return { data };
+        },
+      };
+    },
   }) };
   t.after(() => {
     if (documentAnterior === undefined) delete globalThis.document;
@@ -275,4 +279,85 @@ test('caixa com dúvida sem evidência vermelha não habilita recorte', async t 
   assert.equal(e.chamadas.length, 1);
   assert.equal(r.valor, null);
   assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+const respostaD10_101 = () => {
+  const visor = structuredClone(parcial.blocks[0].lines[0]);
+  visor.text = visor.elements[0].text = '0001742i';
+  return { text: '101\n0001742i', blocks: [{ lines: [
+    { text: '101', elements: [{ text: '101' }] }, visor,
+  ] }] };
+};
+
+test('regressão D10 APTO-101: letra final permite recorte sem converter a primeira resposta', async t => {
+  const e = preparar(t);
+  e.respostas = [respostaD10_101(), { text: '', blocks: [] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('letra final que persiste após o recorte termina sem valor e sem terceira chamada', async t => {
+  const e = preparar(t);
+  e.respostas = [respostaD10_101(), respostaD10_101()];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+// Texto, caixa da linha e duas amostras observados no D10. As demais caixas
+// e os pixels são fixtures; não reproduzem a precisão nativa ou a fotografia.
+const respostaD10_102 = () => ({ text: '003 5 8 5 9', blocks: [{ lines: [{
+  text: '003 5 8 5 9', boundingBox: { left: 436, top: 1569, right: 1873, bottom: 1779 },
+  elements: [
+    { text: '003', boundingBox: { left: 436, top: 1570, right: 946, bottom: 1739 } },
+    { text: '5', boundingBox: { left: 1076, top: 1597, right: 1166, bottom: 1748 } },
+    { text: '8', boundingBox: { left: 1310, top: 1585, right: 1425, bottom: 1760 } },
+    { text: '5', boundingBox: { left: 1530, top: 1585, right: 1645, bottom: 1760 } },
+    { text: '9', boundingBox: { left: 1758, top: 1585, right: 1869, bottom: 1779 } },
+  ],
+}] }] });
+
+test('regressão D10 APTO-102: prefixo neutro e fronteira indefinida habilitam somente o recorte', async t => {
+  const e = preparar(t);
+  e.largura = 2304;
+  e.altura = 4096;
+  e.corPixel = x => x >= 1270 || (x >= 1069 && x < 1121) ? [180, 50, 50] : [255, 255, 255];
+  e.respostas = [respostaD10_102(), { text: '', blocks: [] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(r.valor, null); // A posição não confirma que o primeiro 5 é inteiro.
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('prefixo neutro sem região vermelha continua sem recorte ou sugestão', async t => {
+  const e = preparar(t);
+  e.corPixel = () => [255, 255, 255];
+  e.respostas = [parcial];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('prefixo neutro sem zero inicial não ganha recorte apenas por um vizinho vermelho', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x >= 300 ? [180, 50, 50] : [255, 255, 255];
+  const resposta = structuredClone(parcial);
+  resposta.text = resposta.blocks[0].lines[0].text = resposta.blocks[0].lines[0].elements[0].text = '12345';
+  e.respostas = [resposta];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 1);
+});
+
+test('dois prefixos neutros candidatos não são selecionados arbitrariamente', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x >= 300 ? [180, 50, 50] : [255, 255, 255];
+  e.respostas = [{ text: parcial.text, blocks: [{ lines: [parcial.blocks[0].lines[0], parcial.blocks[0].lines[0]] }] }];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 1);
 });

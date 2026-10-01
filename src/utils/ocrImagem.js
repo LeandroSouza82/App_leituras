@@ -1,7 +1,7 @@
 import { classificarCorDigito, normalizarLinhaVisor } from './ocrVisor.js';
 
 // Uma dúvida do motor pode localizar pixels, mas nunca define uma leitura.
-const TEXTO_LOCALIZAVEL = /^\d[\d?\s]*$/;
+const TEXTO_LOCALIZAVEL = /^\d[\d?\s]*(?:[a-z]{1,2})?$/i;
 
 // Localiza uma faixa candidata a partir do texto já encontrado pelo motor.
 // A margem à direita inclui os decimais que a primeira passagem pode ter omitido.
@@ -9,7 +9,7 @@ export const calcularRecorteVisor = (linha, largura, altura) => {
   const texto = linha?.text?.trim() || '';
   if (!TEXTO_LOCALIZAVEL.test(texto)) return null;
   const posicoes = texto.replace(/\s/g, '');
-  const duvidas = (posicoes.match(/\?/g) || []).length;
+  const duvidas = (posicoes.match(/\D/g) || []).length;
   const reconhecidos = posicoes.length - duvidas;
   if (posicoes.length < 3 || posicoes.length > 10 || duvidas > 2 ||
       (duvidas && reconhecidos < 4) ||
@@ -93,10 +93,10 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
     const detalhes = [];
     const anotar = detalhe => { if (detalhes.length < 8) detalhes.push(detalhe); };
     // Letras podem ter sido anexadas a outro grupo da mesma linha ("0001 74m").
-    // Um trecho numérico, inclusive com "?", pode localizar o recorte. A
-    // sugestão continua dependendo do novo reconhecimento do visor inteiro.
+    // Uma dúvida ou letra final pode localizar pixels, sem convertê-la em
+    // número. A leitura continua dependendo do novo reconhecimento do visor.
     const faixas = blocks.flatMap(b => b.lines || []).flatMap(linha => {
-      if (TEXTO_LOCALIZAVEL.test(linha.text?.trim() || '')) return [linha];
+      if (/^\d[\d?\s]*$/.test(linha.text?.trim() || '')) return [linha];
       const normalizada = normalizarLinhaVisor(linha);
       // A união das caixas numéricas exclui a unidade, inclusive o 3 de m³.
       if (normalizada) return [normalizada];
@@ -111,13 +111,16 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
       const y = Math.floor(base.top);
       const w = Math.max(1, Math.floor((base.right - base.left) / 3));
       const h = Math.max(1, Math.floor(base.bottom - base.top));
-      // Exige evidência visual da faixa preta seguida da vermelha. Isso evita
-      // recortar a placa do apartamento ou um serial só pelo comprimento.
+      // A cor neutra de um prefixo começando com zero pode falhar por reflexo.
+      // Isso permite só recortar; não confirma a divisão decimal da leitura.
       const esquerda = classificarCorDigito(ctx.getImageData(x, y, w, h).data);
       const direita = x + w;
       const corDireita = classificarCorDigito(ctx.getImageData(direita, y, caixa.right - direita, h).data);
       anotar(`${linha.text}: ${esquerda || '?'} / ${corDireita || '?'}; caixa ${x},${y} ${Math.round(base.right - base.left)}×${h}`);
-      if (esquerda !== 'preto' || corDireita !== 'vermelho') continue;
+      const prefixoNeutro = esquerda == null && /^\s*0/.test(linha.text) &&
+        (linha.text.match(/\d/g) || []).length >= 4;
+      if ((esquerda !== 'preto' && !prefixoNeutro) || corDireita !== 'vermelho') continue;
+      if (prefixoNeutro) anotar('Prefixo neutro usado somente para localizar o recorte');
       candidatos.push(caixa);
     }
     if (detalhes.length) diagnosticar(`Trechos examinados para recorte:\n${detalhes.join('\n')}`);

@@ -135,7 +135,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
     return resultado;
   }
 
-  registrar('Verificando plugin · D10');
+  registrar('Verificando plugin · D11');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
