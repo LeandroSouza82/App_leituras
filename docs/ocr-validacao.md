@@ -48,6 +48,14 @@ Os testes automatizados usam um motor simulado para respostas atrasadas;
 não medem a precisão do ML Kit nem comprovam o funcionamento nativo.
 # Reconhecimento por cor — validação adicional
 
+Diagnóstico físico D1: em AP-102 o processamento ficou em “Carregando plugin”
+de 12 ms até o limite de 5001 ms, antes da preparação da foto. D2 substitui
+o import dinâmico pelo proxy importado diretamente no bundle principal e
+verifica o registro nativo antes da chamada. O modelo nativo continua sendo
+executado somente quando OCR está ativo. Validar no celular se D2 avança para
+“Preparando arquivo da foto” e “Aguardando motor ML Kit”. A causa interna de
+o import dinâmico não resolver ainda não foi comprovada por logs da WebView.
+
 ## Diagnóstico D1 de demora
 
 Para o APK de teste, definir `VITE_OCR_DIAGNOSTICO=true` antes de `npm run build`,

@@ -16,30 +16,8 @@
 
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { reconhecerVisorPorCor } from './ocrVisor.js';
-
-// Importação dinâmica segura — o plugin existe apenas em contexto nativo.
-// O motor é carregado somente na primeira execução nativa.
-let TextRecognition;
-
-const carregarPlugin = async () => {
-  if (TextRecognition) return TextRecognition;
-
-  if (!Capacitor.isNativePlatform()) {
-    // Reconhecimento indisponível no navegador.
-    TextRecognition = null;
-    return null;
-  }
-
-  try {
-    const mod = await import('@capacitor-mlkit/text-recognition');
-    TextRecognition = mod.TextRecognition;
-    return TextRecognition;
-  } catch {
-    TextRecognition = null;
-    return null;
-  }
-};
 
 /**
  * Salva uma imagem base64 em arquivo temporário para o ML Kit processar.
@@ -133,8 +111,10 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}) 
     return resultado;
   }
 
-  registrar('Carregando plugin');
-  const plugin = await carregarPlugin();
+  registrar('Verificando plugin · D2');
+  // Importar o proxy não executa o motor. A chamada permanece só no nativo.
+  const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
+    ? TextRecognition : null;
 
   if (!plugin) {
     registrar('Plugin indisponível');
