@@ -4,6 +4,49 @@ O OCR permanece opcional e desligado por padrão. Não há IA online nesta etapa
 Máscara numérica, cálculo de consumo, validações, salvamento e exportação usam
 os fluxos existentes. O leiturista confere e salva manualmente.
 
+## D13: unidade anexada no recorte do APTO-103
+
+Os painéis físicos D12 enviados em 01/10/2026 confirmam a chegada de símbolos
+individuais. APTO-101 terminou sem sugestão em 1497 ms: o recorte distinguiu
+`7` preto e `4` vermelho, mas retornou `90 01 7 4`, com prefixo desalinhado e
+decimais omitidos. APTO-103 terminou sem sugestão em 1105 ms: a foto retornou
+`0007293m` e o recorte `0007 2933m`; a unidade anexada impedia interpretar a linha.
+O print do APTO-102 exibe `35,8590` e consumo `0,2920 m³`, mas não contém painel
+que permita atribuir esse preenchimento ao OCR nessa sessão.
+
+A separação de unidade anexada fica restrita à resposta do recorte. A foto
+inteira continua exigindo essa segunda passagem; remover o `m` do primeiro
+texto observado aceitaria uma sequência que omitiu um decimal. O recorte mantém
+seu preparo anterior e não reduz a caixa para excluir a unidade antes da nova
+chamada. O limite continua sendo duas chamadas por sessão.
+
+No recorte, aceita somente sufixos `m`, `m3`, `m³` ou `kWh`, com correspondência
+integral entre o texto e os símbolos nativos. Cada caractere deve ter uma caixa
+válida contida no elemento. A letra inicial da unidade precisa estar separada
+à direita dos dígitos e alinhada verticalmente ao último; os símbolos da unidade
+precisam estar em ordem, ter cor preta confirmada dentro da foto e escore de
+pelo menos 0,85. Esse escore é um filtro, não uma probabilidade calibrada.
+O expoente da unidade nunca entra na leitura.
+
+Depois da separação, exige uma faixa de dígitos contínua e conserva as regras de
+cor, contexto e leitura anterior. Não substitui letras por números. Sem símbolos
+completos, `74m` continua recusado. A resposta completa `0007 2933m`, nas condições
+acima, gera `00072,933`, formatado pela máscara existente como `72,9330`.
+
+Os testes de regras e da ponte usam caixas, escores e pixels sintéticos. Não
+comprovam que as caixas e escores reais do APTO-103 atenderão às condições.
+Os 142 testes passaram sem falhas, cancelamentos ou testes ignorados. Build
+web de diagnóstico passou em 8,32 s, com o aviso de chunk grande já existente.
+Não houve build Android neste ambiente; validação física D13 permanece pendente.
+O APTO-101 continua sem solução de reconhecimento dos roletes omitidos. Não
+considerar OCR preciso em todas as fotos nem fazer merge com base nesses testes.
+
+No aparelho, primeiro repetir o APTO-103 com a foto original. Conferir o painel
+`Diagnóstico OCR · D13`, a mensagem `Unidade separada por símbolos: m`, todos os
+dígitos sugeridos e o consumo antes de salvar. Se recusar, registrar a análise
+do recorte, que agora diferencia unidade não confirmada de faixa descontínua.
+Repetir APTO-102, OCR desligado, digitação durante OCR e salvamento manual.
+
 ## D12: dígitos individuais e transições com evidência visual
 
 O teste físico D11 do APTO-102 sugeriu `35,8590` em 956 ms e calculou
@@ -284,7 +327,7 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D11” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D13” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
 Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
@@ -292,14 +335,14 @@ Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
 do preenchimento. Igualdade continua permitida. Quando surgir uma sugestão
 errada, abrir o diagnóstico também no estado concluído, antes de editar.
 
-No build D11 com OCR ativo, tocar no botão de foto e selecionar
+No build D13 com OCR ativo, tocar no botão de foto e selecionar
 “Escolher foto da galeria”. Usar o arquivo do medidor, não o print do diagnóstico.
 Registrar a miniatura e o painel completo, incluindo o texto da foto e do recorte.
 Para confirmar o fluxo original, repetir com OCR desligado e em build sem a flag:
 o botão deve abrir diretamente a câmera. Cancelar o seletor deve encerrar a
 tentativa sem iniciar OCR ou mudar a foto da unidade.
 
-Nos casos D10 acima, conferir se o painel D11 chega a
+Nos casos D10 acima, conferir se o painel D13 chega a
 “Reconhecendo recorte com contraste” e registrar “Recorte — linhas com números”.
 A localização não garante uma sugestão: conferir todos os dígitos e decimais
 antes de salvar. Não usar a imagem com roletes em transição como referência
@@ -312,7 +355,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D11.
+Um build normal não exibe o painel. Não houve merge nem release de D13.
 
 ## Dependência Android e peso
 

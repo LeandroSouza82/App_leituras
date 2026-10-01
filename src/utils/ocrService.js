@@ -7,7 +7,7 @@
  *   3. Limpar o arquivo temporário e devolver uma sugestão sem salvar a leitura.
  *
  * Limitações documentadas:
- *   - Dígitos em transição (ex: 3→4 virando): o ML Kit genérico não
+ *   - Dígitos em transição (ex: 3→4 virando): o ML Kit genérico
  *     pode omitir um dos dígitos. Só trata o próximo quando há um par
  *     consecutivo visualmente alinhado; dúvidas exigem conferência manual.
  *   - O modelo latino está incluído no APK (sem download).
@@ -98,9 +98,11 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
   const interpretacao = interpretarTextoMedidor(resposta?.text || '');
   if (interpretacao.valor) registrar(`${origem} — separador explícito: ${interpretacao.valor}`);
   const detalhes = [];
+  // A foto pode omitir dígitos antes de uma unidade anexada; só permite
+  // separar esse sufixo após reconhecer novamente o recorte validado.
   const valor = interpretacao.valor || await reconhecerVisorPorCor(imagem, resposta?.blocks, detalhe => {
     if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
-  });
+  }, origem === 'Recorte');
   if (diagnosticoAtivo && detalhes.length) registrar(`${origem} — análise das cores:\n${detalhes.join('\n')}`);
   if (valor && !interpretacao.valor) registrar(`${origem} — divisão por cor/posição: ${valor}`);
   return valor;
@@ -135,7 +137,7 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
     return resultado;
   }
 
-  registrar('Verificando plugin · D12');
+  registrar('Verificando plugin · D13');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;

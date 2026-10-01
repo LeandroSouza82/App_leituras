@@ -407,3 +407,62 @@ test('ponte D12: símbolos vazios exigem novo reconhecimento, sem aproveitar a p
   assert.equal(e.chamadas.length, 2);
   assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
 });
+
+// Textos do D12 APTO-103; caixas e pixels sintéticos, não a foto nem o motor.
+const resposta103 = completa => {
+  const digitos = [...'00072933'].map((d, i) => simboloD12(d, i < 5 ? 100 + i * 40 : 320 + (i - 5) * 40));
+  if (!completa) digitos.splice(6, 1);
+  const m = simboloD12('m', 490);
+  const elements = completa ? [grupoD12(digitos.slice(0, 4)), grupoD12([...digitos.slice(4), m])]
+    : [grupoD12([...digitos, m])];
+  const l = linhaD12(elements);
+  return { text: l.text, blocks: [{ lines: [l] }] };
+};
+
+test('ponte D13 APTO-103: foto 0007293m exige recorte; 0007 2933m preserva todos os decimais', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x < 300 || x >= 470 ? [30, 30, 30] : [180, 50, 50];
+  e.respostas = [resposta103(false), resposta103(true)];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00072,933');
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D13: unidade válida na foto inteira também precisa da confirmação no recorte', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x < 300 || x >= 470 ? [30, 30, 30] : [180, 50, 50];
+  e.respostas = [resposta103(true), resposta103(true)];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00072,933');
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D13: unidade sem símbolos confiáveis após recorte termina sem valor e sem terceira chamada', async t => {
+  const e = preparar(t);
+  e.corPixel = x => x < 300 || x >= 470 ? [30, 30, 30] : [180, 50, 50];
+  const segunda = resposta103(true);
+  segunda.blocks[0].lines[0].elements[1].symbols.at(-1).confidence = 0.8;
+  e.respostas = [resposta103(false), segunda];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D13: caixa da unidade fora da imagem não valida os dígitos internos', async t => {
+  const e = preparar(t);
+  e.corPixel = x => (e.chamadas.length < 2 ? x >= 300 && x < 470 : x >= 550 && x < 720)
+    ? [180, 50, 50] : [30, 30, 30];
+  const segunda = resposta103(true);
+  const l = segunda.blocks[0].lines[0];
+  l.elements = l.elements.map(g => grupoD12(g.symbols.map(s => ({ ...s,
+    boundingBox: { ...s.boundingBox, left: s.boundingBox.left + 250, right: s.boundingBox.right + 250 },
+  }))));
+  e.respostas = [resposta103(false), segunda];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});

@@ -3,22 +3,58 @@
 const caixaValida = c => c && [c.left, c.top, c.right, c.bottom].every(Number.isFinite) &&
   c.left >= 0 && c.top >= 0 && c.right - c.left >= 2 && c.bottom - c.top >= 2;
 
+const simbolosDoElemento = elemento => {
+  const simbolos = elemento?.symbols;
+  if (!Array.isArray(simbolos) || !simbolos.length ||
+      simbolos.map(s => s?.text || '').join('') !== elemento.text ||
+      simbolos.some(s => typeof s?.text !== 'string' || s.text.length !== 1 || !caixaValida(s.boundingBox))) return null;
+  if (elemento.boundingBox && (!caixaValida(elemento.boundingBox) || simbolos.some(s => {
+    const c = s.boundingBox;
+    const p = elemento.boundingBox;
+    return c.left < p.left - 2 || c.top < p.top - 2 || c.right > p.right + 2 || c.bottom > p.bottom + 2;
+  }))) return null;
+  return simbolos;
+};
+
 export const expandirSimbolosVisor = elementos => {
   if (!elementos.some(e => Object.hasOwn(e, 'symbols'))) return { elementos, individuais: false };
   const digitos = [];
   for (const elemento of elementos) {
-    const simbolos = elemento.symbols;
-    if (!Array.isArray(simbolos) || !simbolos.length ||
-        simbolos.map(s => s?.text || '').join('') !== elemento.text ||
-        simbolos.some(s => !/^\d$/.test(s.text) || !caixaValida(s.boundingBox))) return null;
-    if (elemento.boundingBox && (!caixaValida(elemento.boundingBox) || simbolos.some(s => {
-      const c = s.boundingBox;
-      const p = elemento.boundingBox;
-      return c.left < p.left - 2 || c.top < p.top - 2 || c.right > p.right + 2 || c.bottom > p.bottom + 2;
-    }))) return null;
+    const simbolos = simbolosDoElemento(elemento);
+    if (!simbolos || simbolos.some(s => !/^\d$/.test(s.text))) return null;
     digitos.push(...simbolos);
   }
   return { elementos: digitos, individuais: true };
+};
+
+// Uma unidade anexada no texto só é removida quando o motor entregou todos
+// os caracteres e a caixa da letra está separada à direita do último dígito.
+export const separarUnidadeSimbolos = elemento => {
+  const partes = elemento?.text?.match(/^(\d+)(m(?:3|³)?|kWh)$/i);
+  const simbolos = partes && simbolosDoElemento(elemento);
+  if (!simbolos) return null;
+  const digitos = simbolos.slice(0, partes[1].length);
+  const unidade = simbolos.slice(partes[1].length);
+  const ultimo = digitos.at(-1).boundingBox;
+  const letra = unidade[0].boundingBox;
+  const altura = ultimo.bottom - ultimo.top;
+  const intervalo = letra.left - Math.max(...digitos.map(s => s.boundingBox.right));
+  const sobreposicao = Math.min(ultimo.bottom, letra.bottom) - Math.max(ultimo.top, letra.top);
+  if (intervalo < Math.max(2, (ultimo.right - ultimo.left) * 0.25) || intervalo > altura * 3 ||
+      sobreposicao < Math.min(altura, letra.bottom - letra.top) * 0.5 ||
+      unidade.some((s, i) => !Number.isFinite(s.confidence) || s.confidence < 0.85 || s.confidence > 1 ||
+        (i && (s.boundingBox.left <= unidade[i - 1].boundingBox.left ||
+          s.boundingBox.right <= unidade[i - 1].boundingBox.right ||
+          s.boundingBox.left - unidade[i - 1].boundingBox.right > altura)))) return null;
+  return { unidade: partes[2], elemento: {
+    text: partes[1], symbols: digitos,
+    boundingBox: {
+      left: Math.min(...digitos.map(s => s.boundingBox.left)),
+      top: Math.min(...digitos.map(s => s.boundingBox.top)),
+      right: Math.max(...digitos.map(s => s.boundingBox.right)),
+      bottom: Math.max(...digitos.map(s => s.boundingBox.bottom)),
+    },
+  } };
 };
 
 // Duas caixas devem ocupar a mesma coluna e mostrar partes diferentes do

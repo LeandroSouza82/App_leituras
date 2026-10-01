@@ -1,4 +1,4 @@
-import { expandirSimbolosVisor, resolverTransicoesVisor } from './ocrSimbolos.js';
+import { expandirSimbolosVisor, resolverTransicoesVisor, separarUnidadeSimbolos } from './ocrSimbolos.js';
 
 // Usa as caixas do ML Kit e a cor dos pixels, sem presumir casas decimais.
 export const classificarCorDigito = (pixels) => {
@@ -43,12 +43,13 @@ const elementosAlinhados = (elementos) => {
   return true;
 };
 
-// Só separa uma unidade reconhecida como elemento próprio no fim da linha.
-// "0035 859 m" mantém todos os dígitos; "74m" nunca vira "74".
-export const normalizarLinhaVisor = (linha) => {
+// Na foto inteira, só separa a unidade como elemento próprio. No recorte,
+// permite separação pelas caixas reais dos símbolos; nunca apaga letras às cegas.
+export const normalizarLinhaVisor = (linha, permitirUnidadeAnexada = false) => {
   let text = linha?.text?.trim() || '';
   let elements = linha?.elements || [];
   let unidade = null;
+  let unidadeAnexada = false;
   const ultimo = elements.at(-1)?.text;
   if (/^(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
     const partes = text.match(/^(.*?)\s+(\S+)$/);
@@ -56,14 +57,21 @@ export const normalizarLinhaVisor = (linha) => {
     text = partes[1].trim();
     elements = elements.slice(0, -1);
     unidade = ultimo;
+  } else if (permitirUnidadeAnexada && /\d(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
+    const separada = separarUnidadeSimbolos(elements.at(-1));
+    if (!separada || !text.endsWith(separada.unidade)) return null;
+    text = text.slice(0, -separada.unidade.length).trim();
+    elements = [...elements.slice(0, -1), separada.elemento];
+    unidade = separada.unidade;
+    unidadeAnexada = true;
   }
   if (!/^\d[\d\s]*$/.test(text) || !elements.length ||
       elements.some(e => !/^\d+$/.test(e.text)) ||
       elements.map(e => e.text).join('') !== text.replace(/\s/g, '')) return null;
-  return { text, elements, unidade };
+  return { text, elements, unidade, unidadeAnexada };
 };
 
-export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) => {
+export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, permitirUnidadeAnexada = false) => {
   const candidatos = [];
   const amostras = new Map();
   const corDoElemento = elemento => {
@@ -71,13 +79,15 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) =
     return amostras.get(elemento);
   };
   const linhas = (blocks || []).flatMap(b => b.lines || []).map(linha => {
-    const normalizada = normalizarLinhaVisor(linha);
+    const normalizada = normalizarLinhaVisor(linha, permitirUnidadeAnexada);
     const expandida = normalizada && expandirSimbolosVisor(normalizada.elements);
     return { linha, normalizada, expandida };
   });
   for (const { linha, normalizada, expandida } of linhas) {
     if (!normalizada) {
-      if (/\d/.test(linha.text || '')) diagnosticar('Linha recusada: texto e elementos não formam visor numérico');
+      if (/\d/.test(linha.text || '')) diagnosticar(permitirUnidadeAnexada && /\d(?:m(?:3|³)?|kWh)$/i.test(linha.elements?.at(-1)?.text || '')
+        ? 'Linha recusada: unidade anexada sem separação confirmada por símbolos'
+        : 'Linha recusada: texto e elementos não formam visor numérico');
       continue;
     }
     if (!expandida) { diagnosticar('Linha recusada: símbolos incompletos ou caixas inválidas'); continue; }
@@ -89,7 +99,16 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}) =
       elementos = resolverTransicoesVisor(elementos, outros, corDoElemento, diagnosticar);
       if (!elementos) continue;
     } else diagnosticar('Símbolos individuais indisponíveis: análise por grupos');
-    if (normalizada.unidade) diagnosticar(`Unidade separada: ${normalizada.unidade}`);
+    if (normalizada.unidadeAnexada && !elementosAlinhados(elementos)) {
+      diagnosticar('Linha recusada: faixa de dígitos descontínua antes da unidade anexada');
+      continue;
+    }
+    if (normalizada.unidadeAnexada && linha.elements.at(-1).symbols.slice(-normalizada.unidade.length)
+      .some(s => corDoElemento(s) !== 'preto')) {
+      diagnosticar('Linha recusada: unidade anexada fora da foto ou com cor não confirmada');
+      continue;
+    }
+    if (normalizada.unidade) diagnosticar(`Unidade separada${normalizada.unidadeAnexada ? ' por símbolos' : ''}: ${normalizada.unidade}`);
     let inteiros = '';
     let decimais = '';
     let invalido = false;
@@ -140,7 +159,7 @@ export const caixaAmostraVisor = (caixa, largura, altura) => {
 
 // Cor confirmada exige amostras uniformes. Um prefixo indefinido só entra pela
 // posição antes de uma âncora preta; nunca divide uma caixa para inventar dígitos.
-export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}) => {
+export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}, permitirUnidadeAnexada = false) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
   foto.src = imagem;
@@ -173,7 +192,7 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
       if (!a || !b || a !== b) diagnosticar(`Caixa ${x},${y} ${w}×${h}: ${a || '?'} / ${b || '?'}`);
       if (a && b && a !== b) return 'misto';
       return a === b ? a : null;
-    }, diagnosticar);
+    }, diagnosticar, permitirUnidadeAnexada);
   } finally {
     canvas.width = canvas.height = 0;
   }
