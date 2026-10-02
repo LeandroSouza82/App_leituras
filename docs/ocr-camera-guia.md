@@ -24,6 +24,8 @@ O campo, a máscara com quatro casas, o cálculo de consumo, a validação contr
 - `ocrService` e `useOcrLeitura`: reconhecimento, descarte de resultados antigos e limpeza.
 - Patch do `camera-preview@8.0.2`: informa as dimensões orientadas da prévia e traduz as coordenadas dos toques para a área real da câmera. `patch-package` aplica esse ajuste no `postinstall`.
 
+O patch também troca `proguard-android.txt` por `proguard-android-optimize.txt` no Gradle do plugin, corrigindo o bloqueio de configuração reportado no Windows com AGP 9. Não altera `minifyEnabled`, a versão do Gradle ou o fluxo de leitura. A aplicação do patch em uma instalação limpa e sua reaplicação foram verificadas; a compilação Android completa continua dependendo do teste no computador com SDK.
+
 O Android usa `@capacitor-community/camera-preview@8.0.2`. Sem tamanho explícito, o plugin escolhe a proporção da prévia e uma foto de até aproximadamente 2 MP. O tamanho efetivo depende do aparelho. O patch e a correspondência entre guia e câmera precisam de teste físico; o build web não compila o código Java.
 
 ## Verificação nesta entrega
@@ -53,6 +55,8 @@ Usar a branch de teste `feat/ocr-camera-guia`. Estes comandos pressupõem que os
 cd C:\Src\App_Genciador_Leituras
 npm ci --legacy-peer-deps
 if ($LASTEXITCODE -ne 0) { throw 'A instalação falhou. Não prossiga.' }
+npx patch-package --error-on-fail
+if ($LASTEXITCODE -ne 0) { throw 'A aplicação dos patches falhou. Não prossiga.' }
 
 $env:VITE_OCR_DIAGNOSTICO = 'true'
 try {

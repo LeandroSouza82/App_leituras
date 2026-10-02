@@ -1,3 +1,15 @@
+diff --git a/node_modules/@capacitor-community/camera-preview/android/build.gradle b/node_modules/@capacitor-community/camera-preview/android/build.gradle
+--- a/node_modules/@capacitor-community/camera-preview/android/build.gradle
++++ b/node_modules/@capacitor-community/camera-preview/android/build.gradle
+@@ -36,7 +36,7 @@
+     buildTypes {
+         release {
+             minifyEnabled = false
+-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
++            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+         }
+     }
+
 diff --git a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
 --- a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
 +++ b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
