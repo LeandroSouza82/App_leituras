@@ -20,7 +20,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAn
 
   useLayoutEffect(() => { callback.current = onResult; });
   useLayoutEffect(() => {
-    const atual = { cancelado: Boolean(initialValue), chave };
+    const atual = { cancelado: Boolean(initialValue), chave, image, isOpen };
     sessao.current = atual;
     setStatus('idle');
     setDiagnostico([]);
@@ -29,18 +29,24 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAn
 
   const cancelar = () => {
     if (sessao.current) sessao.current.cancelado = true;
+    image?.liberar?.();
     setStatus('idle');
   };
 
   useEffect(() => {
     const atual = sessao.current;
-    if (!ativo || !isOpen || !image || !chave || atual.cancelado) return;
+    if (!ativo || !isOpen || !image || !chave || atual.cancelado) {
+      image?.liberar?.();
+      return;
+    }
     let cancelado = false;
+    let iniciou = false;
     let timer;
     const valido = () => !cancelado && !atual.cancelado && sessao.current === atual && isOcrAtivo();
     // A primeira montagem descartada pelo StrictMode não chama o motor.
     Promise.resolve().then(async () => {
       if (!valido()) return;
+      iniciou = true;
       setStatus('processando');
       const inicio = Date.now();
       const registrar = (etapa) => {
@@ -52,6 +58,7 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAn
         if (!valido()) return;
         registrar('Limite de espera atingido');
         atual.cancelado = true;
+        image?.liberar?.();
         setStatus('demorado');
       }, LIMITE_OCR_MS);
       try {
@@ -81,9 +88,15 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAn
         if (valido()) { registrar('Falha inesperada'); setStatus('erro'); }
       } finally {
         clearTimeout(timer);
+        image?.liberar?.();
       }
     });
-    return () => { cancelado = true; clearTimeout(timer); };
+    return () => {
+      cancelado = true; clearTimeout(timer);
+      const proxima = sessao.current;
+      const reutilizada = proxima !== atual && proxima.image === image && proxima.isOpen && !proxima.cancelado;
+      if (iniciou && !reutilizada) image?.liberar?.();
+    };
   }, [ativo, isOpen, image, chave, initialValue, leituraAnterior, reconhecer]);
 
   return { ativo, status, cancelar, diagnostico };

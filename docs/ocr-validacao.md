@@ -4,6 +4,36 @@ O OCR permanece opcional e desligado por padrão. Não há IA online nesta etapa
 Máscara numérica, cálculo de consumo, validações, salvamento e exportação usam
 os fluxos existentes. O leiturista confere e salva manualmente.
 
+## D14: traço extra no texto da linha do recorte
+
+O painel físico D13 do APTO-103 terminou sem sugestão em 1074 ms. A foto
+reconheceu oito dígitos, mas a cor do `2` na fronteira decimal ficou indefinida.
+O recorte retornou `0007 2933-` na linha e somente `0007` e `2933` nos elementos.
+A divergência causada pelo traço interrompia a análise antes das cores do recorte.
+O print D13 do APTO-101 está cortado e não permite avaliar a segunda passagem.
+
+Só na resposta do recorte, ignora um único traço ASCII final quando todos os
+elementos têm símbolos individuais completos, exclusivamente numéricos e com
+caixas válidas. Depois exige correspondência integral entre os dígitos da linha,
+dos elementos e dos símbolos, além de uma faixa contínua. Um traço presente
+nos elementos/símbolos, sinal interno ou inicial, rótulo, dígito ausente ou payload
+incompleto continua recusado. A resposta original do motor não é modificada.
+
+Esse ajuste permite analisar as cores do recorte `0007 2933-`. Com a divisão
+confirmada, a sugestão é `72,9330` pela máscara existente. Se o `2` continuar
+indefinido na fronteira decimal, a sugestão permanece vazia. Não presume o
+`2` preto, completa dígitos ou avança um rolete sem o par visual exigido em D12.
+Não altera câmera, consumo, validações, salvamento, exportação ou dependências.
+Continuam duas chamadas no máximo, timeout, descarte por edição e limpeza.
+
+Os testes usam respostas, caixas e pixels sintéticos. A validação física D14
+permanece pendente; este ambiente não possui Android SDK. Os 151 testes passaram
+sem falhas, cancelamentos ou testes ignorados. O build web de diagnóstico passou
+em 8,25 s, com o aviso de chunk grande já existente. No aparelho, repetir
+APTO-103 e registrar o painel D14 completo, em especial a análise das cores do
+recorte. Para APTO-101, registrar também a parte inferior do diagnóstico.
+Não fazer merge enquanto o reconhecimento completo estiver pendente.
+
 ## D13: unidade anexada no recorte do APTO-103
 
 Os painéis físicos D12 enviados em 01/10/2026 confirmam a chegada de símbolos
@@ -327,7 +357,7 @@ npx cap run android
 
 OCR ativo: fotografar o visor inteiro com foco, comparar a leitura real com a
 sugestão e confirmar que os decimais estão completos. Se recusar, abrir
-“Diagnóstico OCR · D13” e registrar o painel, especialmente a análise das cores e,
+“Diagnóstico OCR · D14” e registrar o painel, especialmente a análise das cores e,
 se houver segunda chamada, “Recorte — linhas com números”. Anotar tempo total,
 correção necessária e resultado ao salvar.
 Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
@@ -335,14 +365,14 @@ Para a linha `0035 859 m`, a sugestão esperada com divisão confirmada é
 do preenchimento. Igualdade continua permitida. Quando surgir uma sugestão
 errada, abrir o diagnóstico também no estado concluído, antes de editar.
 
-No build D13 com OCR ativo, tocar no botão de foto e selecionar
+No build D14 com OCR ativo, tocar no botão de foto e selecionar
 “Escolher foto da galeria”. Usar o arquivo do medidor, não o print do diagnóstico.
 Registrar a miniatura e o painel completo, incluindo o texto da foto e do recorte.
 Para confirmar o fluxo original, repetir com OCR desligado e em build sem a flag:
 o botão deve abrir diretamente a câmera. Cancelar o seletor deve encerrar a
 tentativa sem iniciar OCR ou mudar a foto da unidade.
 
-Nos casos D10 acima, conferir se o painel D13 chega a
+Nos casos D10 acima, conferir se o painel D14 chega a
 “Reconhecendo recorte com contraste” e registrar “Recorte — linhas com números”.
 A localização não garante uma sugestão: conferir todos os dígitos e decimais
 antes de salvar. Não usar a imagem com roletes em transição como referência
@@ -355,7 +385,7 @@ modelo está disponível desde a instalação.
 
 O painel existe apenas com `VITE_OCR_DIAGNOSTICO=true`. Pode mostrar texto da
 foto, placa e serial; permanece na sessão local e não é enviado para um servidor.
-Um build normal não exibe o painel. Não houve merge nem release de D13.
+Um build normal não exibe o painel. Não houve merge nem release de D14.
 
 ## Dependência Android e peso
 

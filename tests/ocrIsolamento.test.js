@@ -4,10 +4,11 @@ import React from 'react';
 import { create, act } from 'react-test-renderer';
 import { useOcrLeitura, LIMITE_OCR_MS } from '../src/hooks/useOcrLeitura.js';
 import { setOcrAtivo } from '../src/utils/ocrConfig.js';
+import { criarImagemTemporariaOcr } from '../src/utils/ocrEnquadramento.js';
 
 const contexto = { condominioId: 'c1', unidadeId: '101', servico: 'agua', captureId: 'foto1' };
 
-async function montar({ initialValue = '', ativo = true, leituraAnterior = null } = {}) {
+async function montar({ initialValue = '', ativo = true, leituraAnterior = null, image = 'imagem1' } = {}) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   const dados = new Map();
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
@@ -17,7 +18,7 @@ async function montar({ initialValue = '', ativo = true, leituraAnterior = null 
   const requests = [], resultados = [];
   const reconhecer = (_image, _contexto, registrar, sessaoAtiva) => new Promise((resolve, reject) => requests.push({resolve, reject, registrar, sessaoAtiva}));
   let atual, renderer;
-  let props = { isOpen: true, image: 'imagem1', contexto, initialValue, leituraAnterior, reconhecer,
+  let props = { isOpen: true, image, contexto, initialValue, leituraAnterior, reconhecer,
     onResult: v => resultados.push(v) };
   function View(p) { atual = useOcrLeitura(p); return null; }
   await act(async () => { renderer = create(React.createElement(View, props)); });
@@ -32,6 +33,35 @@ async function montar({ initialValue = '', ativo = true, leituraAnterior = null 
       else delete globalThis.localStorage;
     },
   };
+}
+
+test('descartar pixels após a sugestão não reinicia a sessão nem apaga o resultado', async () => {
+  const image = criarImagemTemporariaOcr('faixa', true);
+  const h = await montar({ image });
+  try {
+    await h.resolver();
+    assert.equal(image.ler(), null);
+    assert.equal(h.atual.status, 'concluido');
+    assert.deepEqual(h.resultados, ['459,0320']);
+    assert.equal(h.requests.length, 1);
+  } finally { await h.limpar(); }
+});
+test('digitar durante OCR libera o recurso e conserva o descarte síncrono da resposta', async () => {
+  const image = criarImagemTemporariaOcr('faixa', true);
+  const h = await montar({ image });
+  try {
+    act(() => h.atual.cancelar());
+    assert.equal(image.ler(), null);
+    await h.resolver(); assert.deepEqual(h.resultados, []);
+  } finally { await h.limpar(); }
+});
+for (const opcoes of [{ ativo: false }, { initialValue: '13,5950' }]) {
+  test(`recurso que não precisa de OCR é liberado sem chamar o motor: ${JSON.stringify(opcoes)}`, async () => {
+    const image = criarImagemTemporariaOcr('faixa', true);
+    const h = await montar({ ...opcoes, image });
+    try { assert.equal(image.ler(), null); assert.equal(h.requests.length, 0); }
+    finally { await h.limpar(); }
+  });
 }
 
 test('sugestão única preenche e não salva', async () => {

@@ -230,3 +230,79 @@ test('unidade anexada exige cor preta confirmada e coordenadas dentro da foto', 
     assert.equal(lerRecorte([l]), null);
   }
 });
+
+const linha103SemUnidade = () => {
+  const l = linha103();
+  l.elements[1] = grupo(l.elements[1].symbols.slice(0, -1));
+  l.text = l.elements.map(e => e.text).join(' ');
+  return l;
+};
+
+test('regressão D13 APTO-103: traço apenas no texto da linha preserva os oito dígitos no recorte', () => {
+  const l = linha103SemUnidade();
+  l.text += '-';
+  const original = structuredClone(l);
+  const logs = [];
+  assert.equal(normalizarLinhaVisor(l), null);
+  const valor = lerRecorte([l], logs);
+  assert.equal(valor, '00072,933');
+  assert.equal(aplicarMascaraLeitura(valor), '72,9330');
+  assert.ok(logs.includes('Traço final da linha ausente dos símbolos: dígitos conferidos'));
+  assert.deepEqual(l, original);
+  assert.equal(lerRecorte([l, l]), null);
+});
+
+test('traço reconhecido nos elementos ou nos símbolos não é descartado', () => {
+  const l = linha103SemUnidade();
+  const traco = simbolo('-', 310, 'preto');
+  l.elements[1] = grupo([...l.elements[1].symbols, traco]);
+  l.text += '-';
+  assert.equal(lerRecorte([l]), null);
+  l.elements[1] = grupo(l.elements[1].symbols.slice(0, -1));
+  l.elements.push(grupo([traco]));
+  assert.equal(lerRecorte([l]), null);
+});
+
+test('traço agregado exige símbolos completos; payload ausente ou incompleto não usa grupos', () => {
+  for (const alterar of [
+    l => { for (const g of l.elements) delete g.symbols; },
+    l => { l.elements[1].symbols = []; },
+    l => { l.elements[1].symbols.pop(); },
+    l => { l.elements[1].symbols[0].boundingBox = undefined; },
+  ]) {
+    const l = linha103SemUnidade();
+    l.text += '-';
+    alterar(l);
+    assert.equal(lerRecorte([l]), null);
+  }
+});
+
+test('traço agregado não permite remover números, sinais internos, negativos ou rótulos', () => {
+  const l = linha103SemUnidade();
+  for (const text of ['0007 293-', '0007 29333-', '-0007 2933', '0007-2933',
+    '0007 2933--', '0007 2933+', '0007 2933-m', 'APTO 0007 2933-']) {
+    assert.equal(lerRecorte([{ ...l, text }]), null);
+  }
+  const comUnidade = linha103();
+  comUnidade.text = '0007 2933-m';
+  assert.equal(lerRecorte([comUnidade]), null);
+});
+
+test('traço agregado com faixa descontínua não libera uma sugestão parcial', () => {
+  const l = linha103SemUnidade();
+  l.elements[1].symbols.splice(2, 1);
+  l.elements[1] = grupo(l.elements[1].symbols);
+  l.text = l.elements.map(e => e.text).join(' ') + '-';
+  const logs = [];
+  assert.equal(lerRecorte([l], logs), null);
+  assert.ok(logs.some(d => d.includes('faixa de dígitos descontínua')));
+});
+
+test('regressão cores D13: o 2 indefinido na fronteira decimal não é presumido preto', () => {
+  const l = linha103SemUnidade();
+  l.text += '-';
+  l.elements[1].symbols[0].cor = null;
+  assert.equal(lerRecorte([l]), null);
+  l.elements[1].symbols[0].cor = 'misto';
+  assert.equal(lerRecorte([l]), null);
+});

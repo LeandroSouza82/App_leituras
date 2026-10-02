@@ -1,0 +1,49 @@
+/* O portal da câmera é o único conteúdo visível sobre a prévia nativa. */
+body.ocr-camera-active > :not(.ocr-camera) { visibility: hidden !important; }
+
+.ocr-camera {
+  position: fixed; inset: 0; z-index: 100000;
+  display: flex; flex-direction: column; color: #fff;
+  background: transparent; isolation: isolate;
+}
+.ocr-camera button { border: 0; cursor: pointer; touch-action: manipulation; }
+.ocr-camera button:disabled { opacity: .5; cursor: default; }
+.ocr-camera-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: calc(14px + env(safe-area-inset-top)) 18px 14px; background: #0f172a;
+}
+.ocr-camera-header strong, .ocr-camera-header span { display: block; }
+.ocr-camera-header span { margin-top: 4px; font-size: 13px; color: #e2e8f0; }
+.ocr-camera-header button { background: transparent; color: #fff; padding: 10px; }
+.ocr-camera-area {
+  flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center;
+  overflow: hidden; background: #0f172a;
+}
+.ocr-camera-preview {
+  position: relative; width: min(100%, calc((100dvh - 310px) * .75));
+  aspect-ratio: 3 / 4; max-height: 100%; overflow: hidden; background: transparent;
+  box-shadow: 0 0 0 200vmax #0f172a;
+}
+/* A área de câmera fica transparente; as bordas fora dela permanecem opacas. */
+body.ocr-camera-active .ocr-camera-area { background: transparent; }
+.ocr-camera-video { width: 100%; height: 100%; object-fit: cover; }
+.ocr-camera-guia {
+  position: absolute; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  border: 2px solid #fff; border-radius: 8px; pointer-events: none;
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .45);
+}
+.ocr-camera-status {
+  position: absolute; inset: 0; z-index: 2; display: grid; place-items: center;
+  text-align: center; padding: 24px; background: #0f172a;
+}
+.ocr-camera-footer {
+  padding: 12px 18px calc(18px + env(safe-area-inset-bottom)); background: #0f172a;
+}
+.ocr-camera-formatos, .ocr-camera-acoes { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.ocr-camera-acoes { flex-wrap: wrap; }
+.ocr-camera-footer button { border-radius: 12px; padding: 10px 14px; color: #fff; background: #334155; }
+.ocr-camera-formatos [aria-pressed="true"] { background: #1e88e5; }
+.ocr-camera-ajuste { display: flex; align-items: center; gap: 12px; font-size: 13px; margin: 12px 0; }
+.ocr-camera-ajuste input { flex: 1; min-width: 0; accent-color: #1e88e5; }
+.ocr-camera-acoes .ocr-camera-capturar { display: flex; align-items: center; gap: 10px; background: #1e88e5; font-weight: 700; padding: 14px 20px; }
+.ocr-camera-footer p { margin: 8px 0; font-size: 13px; }

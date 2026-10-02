@@ -18,6 +18,7 @@ globalThis.Capacitor = {
     }
     if (plugin === 'Filesystem' && metodo === 'deleteFile') {
       estado.excluidos.push(opcoes.path);
+      estado.aoExcluir?.();
       return {};
     }
     if (plugin === 'TextRecognition' && metodo === 'processImage') {
@@ -31,6 +32,7 @@ globalThis.Capacitor = {
   },
 };
 const { executarOcr } = await import('../src/utils/ocrService.js');
+const { criarImagemTemporariaOcr } = await import('../src/utils/ocrEnquadramento.js');
 const parcial = { text: '00017', blocks: [{ lines: [{ text: '00017',
   boundingBox: { left: 100, top: 40, right: 300, bottom: 80 },
   elements: [{ text: '00017', boundingBox: { left: 100, top: 40, right: 300, bottom: 80 } }],
@@ -76,6 +78,71 @@ function preparar(t) {
   });
   return estado;
 }
+
+test('guia reconhece sua faixa e libera a imagem sem enviar a foto completa ao motor', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '459,0320', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,cmVjb3J0ZQ==', true);
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, '459,0320');
+  assert.equal(e.escritas[0].data, 'cmVjb3J0ZQ==');
+  assert.equal(e.chamadas.length, 1);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('guia permite contraste mesmo se a primeira passagem não encontrar nenhum texto', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '', blocks: [] }, { text: '459,0320', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, '459,0320');
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('cancelar a faixa impede segunda passagem e limpa pixels e temporário', async t => {
+  const e = preparar(t);
+  let ativa = true;
+  e.aoReconhecer = () => { ativa = false; };
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  await executarOcr(imagem, {}, () => {}, () => ativa);
+  assert.equal(e.chamadas.length, 1);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('falha nativa na faixa libera os arquivos e o recurso sem sugestão', async t => {
+  const e = preparar(t);
+  e.respostas = [new Error('erro no motor')];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, null); assert.equal(r.sucesso, false);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+test('cancelar remove o temporário mesmo com reconhecimento nativo ainda pendente', async t => {
+  const e = preparar(t);
+  let entregar, iniciou, excluiu;
+  const inicio = new Promise(r => { iniciou = r; });
+  const limpeza = new Promise(r => { excluiu = r; });
+  const pendente = new Promise(r => { entregar = r; });
+  e.respostas = [pendente]; e.aoReconhecer = () => iniciou();
+  e.aoExcluir = () => excluiu();
+  let ativa = true;
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const tarefa = executarOcr(imagem, {}, () => {}, () => ativa);
+  await inicio;
+  ativa = false; imagem.liberar();
+  try {
+    assert.equal(imagem.ler(), null);
+    await limpeza; // A exclusão nativa é assíncrona e independe do motor terminar.
+    assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+  } finally {
+    entregar({ text: '459,0320', blocks: [] });
+  }
+  const resultado = await tarefa;
+  assert.equal(resultado.valor, null);
+  assert.equal(e.excluidos.length, 1);
+});
 
 test('primeira resposta válida não inicia recorte e limpa seu temporário', async t => {
   const e = preparar(t);
@@ -461,6 +528,52 @@ test('ponte D13: caixa da unidade fora da imagem não valida os dígitos interno
     boundingBox: { ...s.boundingBox, left: s.boundingBox.left + 250, right: s.boundingBox.right + 250 },
   }))));
   e.respostas = [resposta103(false), segunda];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+// Texto observado no D13; caixas e pixels seguem sendo fixtures sintéticas.
+const resposta103SemUnidade = (traco = false) => {
+  const r = resposta103(true);
+  const l = r.blocks[0].lines[0];
+  l.elements[1] = grupoD12(l.elements[1].symbols.slice(0, -1));
+  l.text = l.elements.map(g => g.text).join(' ') + (traco ? '-' : '');
+  r.text = l.text;
+  return r;
+};
+const cores103 = e => x => (e.chamadas.length < 2 ? x < 300 ? [255, 255, 255] : [180, 50, 50]
+  : x < 300 ? [30, 30, 30] : [180, 50, 50]);
+
+test('ponte D14 APTO-103: recorte 0007 2933- com símbolos numéricos mantém a leitura e limpa os temporários', async t => {
+  const e = preparar(t);
+  e.corPixel = cores103(e);
+  e.respostas = [resposta103SemUnidade(), resposta103SemUnidade(true)];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, '00072,933');
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D14: traço presente no elemento do recorte continua sem sugestão ou terceira chamada', async t => {
+  const e = preparar(t);
+  e.corPixel = cores103(e);
+  const segunda = resposta103SemUnidade(true);
+  const l = segunda.blocks[0].lines[0];
+  l.elements[1] = grupoD12([...l.elements[1].symbols, simboloD12('-', 460)]);
+  e.respostas = [resposta103SemUnidade(), segunda];
+  const r = await executarOcr('data:image/jpeg;base64,eA==', {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('ponte D14: retirar traço agregado não confirma uma fronteira decimal indefinida', async t => {
+  const e = preparar(t);
+  const cor = cores103(e);
+  e.corPixel = x => e.chamadas.length === 2 && x >= 250 && x < 300 ? [255, 255, 255] : cor(x);
+  e.respostas = [resposta103SemUnidade(), resposta103SemUnidade(true)];
   const r = await executarOcr('data:image/jpeg;base64,eA==', {});
   assert.equal(r.valor, null);
   assert.equal(e.chamadas.length, 2);

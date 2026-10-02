@@ -1,0 +1,59 @@
+diff --git a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
+--- a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
++++ b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraActivity.java
+@@ -1195,6 +1195,15 @@
+         }
+     }
+
++    public int[] getPreviewDimensions() {
++        if (mPreview == null || mPreview.mPreviewSize == null) return null;
++        Camera.Size size = mPreview.mPreviewSize;
++        int orientation = mPreview.getDisplayOrientation();
++        return orientation == 90 || orientation == 270
++            ? new int[] { size.height, size.width }
++            : new int[] { size.width, size.height };
++    }
++
+     public void takePicture(final int width, final int height, final int quality) {
+         Log.d(TAG, "CameraPreview takePicture width: " + width + ", height: " + height + ", quality: " + quality);
+
+diff --git a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraPreview.java b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraPreview.java
+--- a/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraPreview.java
++++ b/node_modules/@capacitor-community/camera-preview/android/src/main/java/com/ahm/capacitor/camera/preview/CameraPreview.java
+@@ -457,6 +457,11 @@
+     public void onPictureTaken(String originalPicture) {
+         JSObject jsObject = new JSObject();
+         jsObject.put("value", originalPicture);
++        int[] dimensions = fragment != null ? fragment.getPreviewDimensions() : null;
++        if (dimensions != null) {
++            jsObject.put("previewWidth", dimensions[0]);
++            jsObject.put("previewHeight", dimensions[1]);
++        }
+         resolvePendingCall(captureCallbackId, jsObject, "onPictureTaken");
+     }
+
+@@ -635,8 +640,22 @@
+                 new View.OnTouchListener() {
+                     @Override
+                     public boolean onTouch(View v, MotionEvent event) {
+-                        if (fragment != null && fragment.toBack && fragment.frameContainerLayout != null) {
+-                            fragment.frameContainerLayout.dispatchTouchEvent(event);
++                        if (fragment != null && fragment.toBack && fragment.frameContainerLayout != null && fragment.isPreviewReady()) {
++                            int[] webPosition = new int[2];
++                            int[] cameraPosition = new int[2];
++                            v.getLocationOnScreen(webPosition);
++                            fragment.frameContainerLayout.getLocationOnScreen(cameraPosition);
++                            MotionEvent localEvent = MotionEvent.obtain(event);
++                            try {
++                                localEvent.offsetLocation(webPosition[0] - cameraPosition[0], webPosition[1] - cameraPosition[1]);
++                                if (localEvent.getX() >= 0 && localEvent.getY() >= 0 &&
++                                    localEvent.getX() < fragment.frameContainerLayout.getWidth() &&
++                                    localEvent.getY() < fragment.frameContainerLayout.getHeight()) {
++                                    fragment.frameContainerLayout.dispatchTouchEvent(localEvent);
++                                }
++                            } finally {
++                                localEvent.recycle();
++                            }
+                         }
+                         return false;
+                     }

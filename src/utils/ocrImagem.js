@@ -76,6 +76,35 @@ export const realcarContrasteOcr = (pixels) => {
   return true;
 };
 
+const copiarComContraste = (canvas, ctx) => {
+  if (!ctx) return null;
+  const original = canvas.toDataURL('image/jpeg', 0.95);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  if (!realcarContrasteOcr(pixels.data)) return null;
+  ctx.putImageData(pixels, 0, 0);
+  return { original, contraste: canvas.toDataURL('image/jpeg', 0.95) };
+};
+
+// A faixa escolhida pelo leiturista já é o recorte. Não depende de o motor
+// localizar uma linha primeiro e não corta novamente os dígitos da cauda.
+export const prepararContrasteEnquadrado = async (imagem) => {
+  const foto = new Image();
+  const canvas = document.createElement('canvas');
+  try {
+    foto.src = imagem;
+    await foto.decode();
+    canvas.width = foto.naturalWidth;
+    canvas.height = foto.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(foto, 0, 0);
+    return copiarComContraste(canvas, ctx);
+  } finally {
+    canvas.width = canvas.height = 0;
+    foto.src = '';
+  }
+};
+
 export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => {}) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
@@ -135,13 +164,10 @@ export const prepararRecorteVisor = async (imagem, blocks, diagnosticar = () => 
       0, 0, recorte.width, recorte.height);
     // Mantém a cópia colorida no mesmo tamanho para interpretar as caixas
     // retornadas pelo reconhecimento da versão com contraste.
-    const original = recorte.toDataURL('image/jpeg', 0.95);
-    const pixels = destino.getImageData(0, 0, recorte.width, recorte.height);
-    if (!realcarContrasteOcr(pixels.data)) return null;
-    destino.putImageData(pixels, 0, 0);
     diagnosticar(`Recorte: ${caixa.left},${caixa.top} ${recorte.width}×${recorte.height}`);
-    return { original, contraste: recorte.toDataURL('image/jpeg', 0.95) };
+    return copiarComContraste(recorte, destino);
   } finally {
     fonte.width = fonte.height = recorte.width = recorte.height = 0;
+    foto.src = '';
   }
 };

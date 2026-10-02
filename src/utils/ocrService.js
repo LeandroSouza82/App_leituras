@@ -18,7 +18,7 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { reconhecerVisorPorCor } from './ocrVisor.js';
-import { prepararRecorteVisor } from './ocrImagem.js';
+import { prepararRecorteVisor, prepararContrasteEnquadrado } from './ocrImagem.js';
 
 /**
  * Salva uma imagem base64 em arquivo temporário para o ML Kit processar.
@@ -98,8 +98,8 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
   const interpretacao = interpretarTextoMedidor(resposta?.text || '');
   if (interpretacao.valor) registrar(`${origem} — separador explícito: ${interpretacao.valor}`);
   const detalhes = [];
-  // A foto pode omitir dígitos antes de uma unidade anexada; só permite
-  // separar esse sufixo após reconhecer novamente o recorte validado.
+  // A foto pode omitir dígitos. Só permite tratar sufixos verificados pelos
+  // símbolos após reconhecer novamente o recorte validado.
   const valor = interpretacao.valor || await reconhecerVisorPorCor(imagem, resposta?.blocks, detalhe => {
     if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
   }, origem === 'Recorte');
@@ -111,7 +111,7 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
 /**
  * Executa o OCR na imagem fornecida.
  *
- * @param {string} imageDataUrl - "data:image/jpeg;base64,..."
+ * @param {string|object} imagem - DataUrl ou recurso temporário do reconhecimento.
  * @param {{ condominioId: string, unidadeId: string, servico: string, captureId: string }} contexto
  *   Contexto de isolamento: permite descartar resultado se contexto mudar.
  * @param {function(string): void} registrar - Diagnóstico local da sessão.
@@ -124,7 +124,9 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
  *   contexto: object
  * }>}
  */
-export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, sessaoAtiva = () => true) => {
+export const executarOcr = async (imagem, contexto, registrar = () => {}, sessaoAtiva = () => true) => {
+  let imageDataUrl = typeof imagem === 'string' ? imagem : imagem?.ler?.();
+  const enquadrada = imagem?.enquadrada === true;
   const resultado = {
     sucesso: false,
     valor: null,
@@ -132,25 +134,38 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
     contexto,
   };
 
-  if (!imageDataUrl) {
-    resultado.erro = 'Imagem ausente.';
-    return resultado;
-  }
-
-  registrar('Verificando plugin · D13');
+  registrar('Verificando plugin · D15');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
 
-  if (!plugin) {
-    registrar('Plugin indisponível');
-    resultado.erro = 'OCR não disponível neste ambiente.';
-    return resultado;
-  }
-
   const temporarios = [];
+  let recorte = null;
+  let limpeza = Promise.resolve();
+  const limparTodos = () => {
+    const arquivos = temporarios.splice(0);
+    limpeza = Promise.all([limpeza, ...arquivos.map(limparImagemTemporaria)]);
+    return limpeza;
+  };
+  const desobservar = imagem?.aoLiberar?.(() => {
+    // Mesmo se a chamada nativa não responder, cancelar/timeout não conserva
+    // o arquivo temporário. Uma resposta posterior continuará descartada.
+    imageDataUrl = null;
+    recorte = null;
+    limparTodos();
+  });
 
   try {
+    if (!imageDataUrl) {
+      resultado.erro = imagem?.erro || 'Imagem ausente.';
+      registrar(resultado.erro);
+      return resultado;
+    }
+    if (!plugin) {
+      registrar('Plugin indisponível');
+      resultado.erro = 'OCR não disponível neste ambiente.';
+      return resultado;
+    }
     // 1. Salva imagem em arquivo temporário (ML Kit exige caminho)
     registrar('Preparando arquivo da foto');
     const temp = await salvarImagemTemporaria(imageDataUrl);
@@ -175,12 +190,14 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
 
     if (!sessaoAtiva()) return resultado;
     resultado.sucesso = true;
-    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, 'Foto', registrar);
+    registrar(enquadrada ? 'Área delimitada pelo guia' : 'Foto sem guia');
+    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, enquadrada ? 'Recorte' : 'Foto', registrar);
     // Uma única tentativa adicional, somente num recorte visualmente validado.
     // Edição, fechamento e timeout impedem iniciar outra chamada ao motor.
     if (!resultado.valor && sessaoAtiva()) {
-      registrar('Preparando recorte do visor');
-      const recorte = await prepararRecorteVisor(imageDataUrl, ocrResult?.blocks, detalhe => {
+      registrar(enquadrada ? 'Preparando contraste da faixa' : 'Preparando recorte do visor');
+      recorte = enquadrada ? await prepararContrasteEnquadrado(imageDataUrl)
+        : await prepararRecorteVisor(imageDataUrl, ocrResult?.blocks, detalhe => {
         if (import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true') registrar(detalhe);
       });
       if (recorte && sessaoAtiva()) {
@@ -204,7 +221,11 @@ export const executarOcr = async (imageDataUrl, contexto, registrar = () => {}, 
   } finally {
     // Limpeza das duas imagens temporárias, inclusive em caso de erro.
     registrar('Limpando arquivo temporário');
-    await Promise.all(temporarios.map(limparImagemTemporaria));
+    await limparTodos();
+    desobservar?.();
+    imagem?.liberar?.();
+    imageDataUrl = null;
+    recorte = null;
     registrar('Limpeza encerrada');
   }
 

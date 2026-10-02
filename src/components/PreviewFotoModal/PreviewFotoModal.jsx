@@ -11,8 +11,8 @@ import './PreviewFotoModal.css';
  * PreviewFotoModal
  *
  * Props novas (OCR):
- *   - imageParaOcr: string|null — imagem ANTES do carimbo (base64 DataUrl),
- *     usada exclusivamente para o reconhecimento. Nunca exibida.
+ *   - imageParaOcr: recurso temporário|null — imagem ANTES do carimbo,
+ *     usada exclusivamente para reconhecimento. Liberada sem apagar o campo.
  *   - ocrContexto: { condominioId, unidadeId, servico, captureId } — contexto
  *     de isolamento para descartar resultado atrasado.
  */
@@ -256,7 +256,7 @@ const PreviewFotoModal = ({
             {import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && ocrAtivo &&
               ocrStatus !== 'idle' && ocrStatus !== 'processando' && (
                 <details>
-                  <summary>Diagnóstico OCR · D13</summary>
+                  <summary>Diagnóstico OCR · D15</summary>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{ocrDiagnostico.join('\n')}</pre>
                 </details>
               )}

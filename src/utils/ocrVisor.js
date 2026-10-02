@@ -44,12 +44,20 @@ const elementosAlinhados = (elementos) => {
 };
 
 // Na foto inteira, só separa a unidade como elemento próprio. No recorte,
-// permite separação pelas caixas reais dos símbolos; nunca apaga letras às cegas.
-export const normalizarLinhaVisor = (linha, permitirUnidadeAnexada = false) => {
+// permite sufixos verificados pelos símbolos; conserva todos os dígitos.
+export const normalizarLinhaVisor = (linha, ehRecorte = false) => {
   let text = linha?.text?.trim() || '';
   let elements = linha?.elements || [];
   let unidade = null;
   let unidadeAnexada = false;
+  let tracoAgregado = false;
+  // Alguns retornos contêm "0007 2933-" na linha, mas somente dígitos nos
+  // elementos e símbolos. Só ignora esse traço ausente do contrato individual.
+  if (ehRecorte && /^\d[\d\s]*-$/.test(text)) {
+    if (!expandirSimbolosVisor(elements)?.individuais) return null;
+    text = text.slice(0, -1).trim();
+    tracoAgregado = true;
+  }
   const ultimo = elements.at(-1)?.text;
   if (/^(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
     const partes = text.match(/^(.*?)\s+(\S+)$/);
@@ -57,7 +65,7 @@ export const normalizarLinhaVisor = (linha, permitirUnidadeAnexada = false) => {
     text = partes[1].trim();
     elements = elements.slice(0, -1);
     unidade = ultimo;
-  } else if (permitirUnidadeAnexada && /\d(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
+  } else if (ehRecorte && /\d(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
     const separada = separarUnidadeSimbolos(elements.at(-1));
     if (!separada || !text.endsWith(separada.unidade)) return null;
     text = text.slice(0, -separada.unidade.length).trim();
@@ -68,10 +76,10 @@ export const normalizarLinhaVisor = (linha, permitirUnidadeAnexada = false) => {
   if (!/^\d[\d\s]*$/.test(text) || !elements.length ||
       elements.some(e => !/^\d+$/.test(e.text)) ||
       elements.map(e => e.text).join('') !== text.replace(/\s/g, '')) return null;
-  return { text, elements, unidade, unidadeAnexada };
+  return { text, elements, unidade, unidadeAnexada, tracoAgregado };
 };
 
-export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, permitirUnidadeAnexada = false) => {
+export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, ehRecorte = false) => {
   const candidatos = [];
   const amostras = new Map();
   const corDoElemento = elemento => {
@@ -79,13 +87,13 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, p
     return amostras.get(elemento);
   };
   const linhas = (blocks || []).flatMap(b => b.lines || []).map(linha => {
-    const normalizada = normalizarLinhaVisor(linha, permitirUnidadeAnexada);
+    const normalizada = normalizarLinhaVisor(linha, ehRecorte);
     const expandida = normalizada && expandirSimbolosVisor(normalizada.elements);
     return { linha, normalizada, expandida };
   });
   for (const { linha, normalizada, expandida } of linhas) {
     if (!normalizada) {
-      if (/\d/.test(linha.text || '')) diagnosticar(permitirUnidadeAnexada && /\d(?:m(?:3|³)?|kWh)$/i.test(linha.elements?.at(-1)?.text || '')
+      if (/\d/.test(linha.text || '')) diagnosticar(ehRecorte && /\d(?:m(?:3|³)?|kWh)$/i.test(linha.elements?.at(-1)?.text || '')
         ? 'Linha recusada: unidade anexada sem separação confirmada por símbolos'
         : 'Linha recusada: texto e elementos não formam visor numérico');
       continue;
@@ -99,8 +107,8 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, p
       elementos = resolverTransicoesVisor(elementos, outros, corDoElemento, diagnosticar);
       if (!elementos) continue;
     } else diagnosticar('Símbolos individuais indisponíveis: análise por grupos');
-    if (normalizada.unidadeAnexada && !elementosAlinhados(elementos)) {
-      diagnosticar('Linha recusada: faixa de dígitos descontínua antes da unidade anexada');
+    if ((normalizada.unidadeAnexada || normalizada.tracoAgregado) && !elementosAlinhados(elementos)) {
+      diagnosticar('Linha recusada: faixa de dígitos descontínua no recorte');
       continue;
     }
     if (normalizada.unidadeAnexada && linha.elements.at(-1).symbols.slice(-normalizada.unidade.length)
@@ -109,6 +117,7 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, p
       continue;
     }
     if (normalizada.unidade) diagnosticar(`Unidade separada${normalizada.unidadeAnexada ? ' por símbolos' : ''}: ${normalizada.unidade}`);
+    if (normalizada.tracoAgregado) diagnosticar('Traço final da linha ausente dos símbolos: dígitos conferidos');
     let inteiros = '';
     let decimais = '';
     let invalido = false;
@@ -159,7 +168,7 @@ export const caixaAmostraVisor = (caixa, largura, altura) => {
 
 // Cor confirmada exige amostras uniformes. Um prefixo indefinido só entra pela
 // posição antes de uma âncora preta; nunca divide uma caixa para inventar dígitos.
-export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}, permitirUnidadeAnexada = false) => {
+export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}, ehRecorte = false) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
   foto.src = imagem;
@@ -192,7 +201,7 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
       if (!a || !b || a !== b) diagnosticar(`Caixa ${x},${y} ${w}×${h}: ${a || '?'} / ${b || '?'}`);
       if (a && b && a !== b) return 'misto';
       return a === b ? a : null;
-    }, diagnosticar, permitirUnidadeAnexada);
+    }, diagnosticar, ehRecorte);
   } finally {
     canvas.width = canvas.height = 0;
   }
