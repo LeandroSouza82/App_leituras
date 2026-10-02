@@ -132,3 +132,27 @@ test('liberação é idempotente e conserva a identidade do recurso de sessão',
   assert.equal(recurso.ler(), null);
   assert.equal(recurso.enquadrada, true);
 });
+
+test('o padrão é uma cópia imutável das casas físicas no momento da captura', () => {
+  const padrao = { inteiros: 5, decimais: 3 };
+  const recurso = criarImagemTemporariaOcr('imagem', true, null, padrao);
+  padrao.decimais = 2;
+  assert.deepEqual(recurso.padrao, { inteiros: 5, decimais: 3 });
+  assert.ok(Object.isFrozen(recurso.padrao));
+  recurso.liberar();
+});
+
+test('faixa pequena é ampliada só na imagem temporária, mantendo foto JPEG 30 e a geometria original', async t => {
+  const e = instalarCanvas(t);
+  const faixa = { left: 80, top: 170, width: 135, height: 27 };
+  const r = await prepararCapturaEnquadrada('data:image/jpeg;base64,eA==', viewport, faixa,
+    { width: 480, height: 640 }, { inteiros: 5, decimais: 3 });
+  assert.deepEqual(e.exportacoes, [
+    { width: 1200, height: 1600, qualidade: 0.3, tipo: 'image/jpeg' },
+    { width: 1080, height: 216, qualidade: 0.95, tipo: 'image/jpeg' },
+  ]);
+  assert.deepEqual(e.canvases[1].desenhos[0].slice(1), [320, 680, 540, 108, 0, 0, 1080, 216]);
+  assert.deepEqual(r.imagemOcr.padrao, { inteiros: 5, decimais: 3 });
+  assert.ok(e.canvases.every(c => c.width === 0 && c.height === 0));
+  r.imagemOcr.liberar();
+});

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { aplicarMascaraLeitura } from '../src/utils/leituraNumerica.js';
 
 // Ponte nativa simulada: exercita os proxies reais do Capacitor e a limpeza.
 // Não simula a precisão do ML Kit. Os pixels sintéticos exercitam cor e recorte.
@@ -96,12 +97,46 @@ const reconhecerBorda = async (t, corPixel) => {
   e.largura = 540; e.altura = 109;
   e.corPixel = corPixel;
   e.respostas = [respostaBordaVisor(), { text: '', blocks: [] }];
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 3 });
   const r = await executarOcr(imagem, {});
   assert.equal(imagem.ler(), null);
   assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
   return { r, e };
 };
+
+const respostaSemUltimoDigito = () => {
+  const r = respostaBordaVisor();
+  const l = r.blocks[0].lines[0];
+  l.elements.pop();
+  r.text = l.text = l.elements.map(e => e.text).join(' ');
+  return r;
+};
+
+test('visor de oito dígitos: resultado com sete exige nova tentativa antes de preencher', async t => {
+  const e = preparar(t);
+  e.largura = 540; e.altura = 109;
+  e.corPixel = x => x >= 320 ? [180, 50, 50] : [30, 30, 30];
+  e.respostas = [respostaSemUltimoDigito(), respostaBordaVisor()];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 3 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, '00045,678');
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('duas omissões iguais não confirmam uma leitura incompleta', async t => {
+  const e = preparar(t);
+  e.largura = 540; e.altura = 109;
+  e.corPixel = x => x >= 320 ? [180, 50, 50] : [30, 30, 30];
+  e.respostas = [respostaSemUltimoDigito(), respostaSemUltimoDigito()];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 3 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
 
 test('borda vermelha fora da caixa do último inteiro não desloca a vírgula', async t => {
   const { r, e } = await reconhecerBorda(t, x => x >= 320 ? [180, 50, 50] : [30, 30, 30]);
@@ -145,10 +180,74 @@ test('margem vermelha não substitui metade preta confirmada dentro da caixa', a
   assert.equal(r.valor, null);
 });
 
+for (const enquadrada of [true, false]) {
+  test(`captura ${enquadrada ? 'com guia' : 'da galeria'} sem padrão não chama o motor nem sugere leitura parcial`, async t => {
+    const e = preparar(t);
+    const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', enquadrada);
+    const r = await executarOcr(imagem, {});
+    assert.equal(r.valor, null);
+    assert.match(r.erro, /Confirme o padrão/);
+    assert.equal(e.chamadas.length, 0);
+    assert.equal(e.escritas.length, 0);
+    assert.equal(imagem.ler(), null);
+  });
+}
+
+test('separador explícito não permite completar uma casa física que o motor omitiu', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '459,032', blocks: [] }, { text: '459,0320', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 3, decimais: 4 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, '459,0320');
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('mesmo total com separação decimal diferente do visor continua recusado', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '0045,6780', blocks: [] }, { text: '0045,6780', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 3 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('visor confirmado sem decimais reconhece inteiro sem mudar a máscara do app', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '00123 kWh', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 0 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, '00123,0');
+  assert.equal(aplicarMascaraLeitura(r.valor), '123,0000');
+  assert.equal(e.chamadas.length, 1);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('quantidade não converte letras parecidas com números', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '9o9 28133-m', blocks: [] }, { text: '9o9 2933-m', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 3 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
+test('visor sem decimais não aproveita unidades anexadas ou rótulos como números', async t => {
+  const e = preparar(t);
+  e.respostas = [{ text: '00123kWh', blocks: [] }, { text: 'Serial 00123', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 5, decimais: 0 });
+  const r = await executarOcr(imagem, {});
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+});
+
 test('guia reconhece sua faixa e libera a imagem sem enviar a foto completa ao motor', async t => {
   const e = preparar(t);
   e.respostas = [{ text: '459,0320', blocks: [] }];
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,cmVjb3J0ZQ==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,cmVjb3J0ZQ==', true, null, { inteiros: 3, decimais: 4 });
   const r = await executarOcr(imagem, {});
   assert.equal(r.valor, '459,0320');
   assert.equal(e.escritas[0].data, 'cmVjb3J0ZQ==');
@@ -159,7 +258,7 @@ test('guia reconhece sua faixa e libera a imagem sem enviar a foto completa ao m
 test('guia permite contraste mesmo se a primeira passagem não encontrar nenhum texto', async t => {
   const e = preparar(t);
   e.respostas = [{ text: '', blocks: [] }, { text: '459,0320', blocks: [] }];
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 3, decimais: 4 });
   const r = await executarOcr(imagem, {});
   assert.equal(r.valor, '459,0320');
   assert.equal(e.chamadas.length, 2);
@@ -170,7 +269,7 @@ test('cancelar a faixa impede segunda passagem e limpa pixels e temporário', as
   const e = preparar(t);
   let ativa = true;
   e.aoReconhecer = () => { ativa = false; };
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 3, decimais: 4 });
   await executarOcr(imagem, {}, () => {}, () => ativa);
   assert.equal(e.chamadas.length, 1);
   assert.equal(imagem.ler(), null);
@@ -179,7 +278,7 @@ test('cancelar a faixa impede segunda passagem e limpa pixels e temporário', as
 test('falha nativa na faixa libera os arquivos e o recurso sem sugestão', async t => {
   const e = preparar(t);
   e.respostas = [new Error('erro no motor')];
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 3, decimais: 4 });
   const r = await executarOcr(imagem, {});
   assert.equal(r.valor, null); assert.equal(r.sucesso, false);
   assert.equal(imagem.ler(), null);
@@ -194,7 +293,7 @@ test('cancelar remove o temporário mesmo com reconhecimento nativo ainda penden
   e.respostas = [pendente]; e.aoReconhecer = () => iniciou();
   e.aoExcluir = () => excluiu();
   let ativa = true;
-  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true, null, { inteiros: 3, decimais: 4 });
   const tarefa = executarOcr(imagem, {}, () => {}, () => ativa);
   await inicio;
   ativa = false; imagem.liberar();

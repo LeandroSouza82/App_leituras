@@ -5,12 +5,13 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { criarSessaoCameraOcr } from '../../services/ocrCameraService';
 import { obterAreaCameraOcr, prepararCapturaEnquadrada } from '../../utils/ocrEnquadramento';
+import { obterPadraoVisor, salvarPadraoVisor, normalizarPadraoVisor } from '../../utils/ocrConfig';
 import './OcrCamera.css';
 
 const detalheDoTeste = (etapa, erro) => import.meta.env.VITE_OCR_DIAGNOSTICO === 'true'
   ? `${etapa}: ${String(erro?.message || 'Falha sem detalhe informado.').slice(0, 180)}` : '';
 
-const OcrCamera = ({ unidade, onCapture, onClose, onGaleria = null }) => {
+const OcrCamera = ({ unidade, condominioId, servico, onCapture, onClose, onGaleria = null }) => {
   const viewportRef = useRef(null);
   const guiaRef = useRef(null);
   const sessaoRef = useRef(null);
@@ -29,6 +30,20 @@ const OcrCamera = ({ unidade, onCapture, onClose, onGaleria = null }) => {
   const [largura, setLargura] = useState(88);
   const [temLuz, setTemLuz] = useState(false);
   const [luz, setLuz] = useState(false);
+  const [padrao, setPadrao] = useState(() => obterPadraoVisor(condominioId, servico));
+  const [ajustandoPadrao, setAjustandoPadrao] = useState(!padrao);
+  const [inteiros, setInteiros] = useState(padrao?.inteiros ?? 5);
+  const [decimais, setDecimais] = useState(padrao?.decimais ?? 3);
+
+  const confirmarPadrao = () => {
+    if (ocupadaRef.current) return;
+    if (!salvarPadraoVisor(condominioId, servico, { inteiros, decimais })) {
+      setErro('Não foi possível guardar o padrão do visor. Tente novamente.');
+      return;
+    }
+    setPadrao(normalizarPadraoVisor({ inteiros, decimais }));
+    setAjustandoPadrao(false); setErro('');
+  };
 
   const fechar = async (galeria = false) => {
     if (fechandoRef.current || (galeria && ocupadaRef.current)) return;
@@ -108,7 +123,7 @@ const OcrCamera = ({ unidade, onCapture, onClose, onGaleria = null }) => {
       etapa = 'Preparo da imagem';
       preparada = await prepararCapturaEnquadrada(`data:image/jpeg;base64,${foto.value}`,
         area, { left: guia.left - area.left, top: guia.top - area.top, width: guia.width, height: guia.height },
-        nativa ? { width: foto.previewWidth, height: foto.previewHeight } : null);
+        nativa ? { width: foto.previewWidth, height: foto.previewHeight } : null, padrao);
       foto = null;
       etapa = 'Encerramento da câmera';
       await sessao.fechar();
@@ -152,6 +167,28 @@ const OcrCamera = ({ unidade, onCapture, onClose, onGaleria = null }) => {
         </div>
       </div>
       <footer className="ocr-camera-footer">
+        <div className="ocr-camera-padrao">
+          {ajustandoPadrao ? <>
+            <div className="ocr-camera-casas">
+              <label>Inteiros (pretos)
+                <select aria-label="Dígitos inteiros do visor" value={inteiros} disabled={ocupada}
+                  onChange={e => { setInteiros(Number(e.target.value)); setPadrao(null); }}>
+                  {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label>Decimais (vermelhos)
+                <select aria-label="Dígitos decimais do visor" value={decimais} disabled={ocupada}
+                  onChange={e => { setDecimais(Number(e.target.value)); setPadrao(null); }}>
+                  {[0, 1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 0 ? 'Nenhum' : n}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={confirmarPadrao} disabled={ocupada}>Confirmar visor</button>
+            </div>
+            <p>Conte todos os números do visor, incluindo os zeros. A escolha vale para este condomínio e serviço.</p>
+          </> : <button type="button" onClick={() => setAjustandoPadrao(true)} disabled={ocupada}>
+            Visor: {padrao.inteiros} inteiros + {padrao.decimais} decimais · Ajustar
+          </button>}
+        </div>
         <div className="ocr-camera-formatos" aria-label="Tamanho do visor">
           <button type="button" aria-pressed={!faixaAlta} onClick={() => setFaixaAlta(false)} disabled={ocupada}>Uma linha</button>
           <button type="button" aria-pressed={faixaAlta} onClick={() => setFaixaAlta(true)} disabled={ocupada}>Visor maior</button>

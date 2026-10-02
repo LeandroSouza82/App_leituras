@@ -1,10 +1,12 @@
+import { normalizarPadraoVisor } from './ocrConfig.js';
+
 // Recurso temporário: liberar os pixels não muda a identidade da sessão React
 // nem apaga a leitura que o usuário já digitou ou conferiu.
-export const criarImagemTemporariaOcr = (imagem, enquadrada = false, erro = null) => {
+export const criarImagemTemporariaOcr = (imagem, enquadrada = false, erro = null, padrao = null) => {
   const listeners = new Set();
   let liberada = false;
   return {
-    enquadrada, erro,
+    enquadrada, erro, padrao: normalizarPadraoVisor(padrao),
     ler: () => imagem,
     aoLiberar: listener => {
       if (liberada) listener();
@@ -58,7 +60,7 @@ export const calcularRecorteEnquadrado = (largura, altura, viewport, guia, previ
 
 // Só a versão JPEG 30 entra no carimbo/armazenamento existente. O recorte
 // colorido JPEG 95 fica no recurso descartável, nunca no payload de salvamento.
-export const prepararCapturaEnquadrada = async (imagem, viewport, guia, previa = null) => {
+export const prepararCapturaEnquadrada = async (imagem, viewport, guia, previa = null, padrao = null) => {
   const foto = new Image();
   const completa = document.createElement('canvas');
   const recorte = document.createElement('canvas');
@@ -74,15 +76,20 @@ export const prepararCapturaEnquadrada = async (imagem, viewport, guia, previa =
     const caixa = calcularRecorteEnquadrado(completa.width, completa.height, viewport, guia, previa);
     if (!caixa) return {
       fotoComprimida,
-      imagemOcr: criarImagemTemporariaOcr(null, true, 'Não foi possível relacionar o guia à foto. Digite a leitura.'),
+      imagemOcr: criarImagemTemporariaOcr(null, true, 'Não foi possível relacionar o guia à foto. Digite a leitura.', padrao),
     };
     recorte.width = caixa.right - caixa.left;
     recorte.height = caixa.bottom - caixa.top;
+    const larguraFonte = recorte.width, alturaFonte = recorte.height;
+    // Amplia apenas faixas pequenas; a foto destinada ao armazenamento já
+    // foi comprimida. Não acrescenta detalhes ausentes na imagem original.
+    const escala = alturaFonte < 180 && larguraFonte <= 800 ? 2 : 1;
+    recorte.width *= escala; recorte.height *= escala;
     const destino = recorte.getContext('2d');
     if (!destino) throw new Error('Não foi possível preparar a área de leitura.');
-    destino.drawImage(completa, caixa.left, caixa.top, recorte.width, recorte.height,
+    destino.drawImage(completa, caixa.left, caixa.top, larguraFonte, alturaFonte,
       0, 0, recorte.width, recorte.height);
-    return { fotoComprimida, imagemOcr: criarImagemTemporariaOcr(recorte.toDataURL('image/jpeg', 0.95), true) };
+    return { fotoComprimida, imagemOcr: criarImagemTemporariaOcr(recorte.toDataURL('image/jpeg', 0.95), true, null, padrao) };
   } finally {
     completa.width = completa.height = recorte.width = recorte.height = 0;
     foto.src = '';

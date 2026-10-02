@@ -1,4 +1,4 @@
-import { isOcrAtivo, observarOcr } from '../../utils/ocrConfig';
+import { isOcrAtivo, observarOcr, obterPadraoVisor } from '../../utils/ocrConfig';
 import { criarImagemTemporariaOcr } from '../../utils/ocrEnquadramento';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
@@ -1111,7 +1111,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const captureId = crypto.randomUUID();
       if (!isOcrAtivo()) imagemOcr?.liberar();
       setFotoParaOcr(isOcrAtivo() ? (imagemOcr || criarImagemTemporariaOcr(
-        base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`)) : null);
+        base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`, false, null,
+        obterPadraoVisor(leitura?.id || leitura?.condominio_id, tipoMedicaoAtivo))) : null);
       setOcrContexto({
         condominioId: String(leitura?.id || leitura?.condominio_id || ''),
         unidadeId,
@@ -2013,6 +2014,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         <OcrCamera
           key={cameraOcrVigente.captureId}
           unidade={`${cameraOcrVigente.apto} - ${tipoMedicaoAtivo.toUpperCase()}`}
+          condominioId={leitura?.id || leitura?.condominio_id}
+          servico={tipoMedicaoAtivo}
           onCapture={receberCapturaOcr}
           onClose={() => { capturaFotoRef.current = null; setCameraOcr(null); }}
           onGaleria={import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' ? escolherFotoTeste : null}

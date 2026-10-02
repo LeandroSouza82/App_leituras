@@ -19,6 +19,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { reconhecerVisorPorCor } from './ocrVisor.js';
 import { prepararRecorteVisor, prepararContrasteEnquadrado } from './ocrImagem.js';
+import { normalizarPadraoVisor } from './ocrConfig.js';
 
 /**
  * Salva uma imagem base64 em arquivo temporário para o ML Kit processar.
@@ -86,7 +87,7 @@ export const interpretarTextoMedidor = (texto) => {
   return candidatos.length === 1 ? { valor: candidatos[0] } : vazio;
 };
 
-const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
+const interpretarRespostaOcr = async (imagem, resposta, origem, registrar, padrao) => {
   const diagnosticoAtivo = import.meta.env?.VITE_OCR_DIAGNOSTICO === 'true';
   if (diagnosticoAtivo) {
     const linhas = (resposta?.blocks || []).flatMap(b => b.lines || []);
@@ -95,8 +96,11 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
     registrar(`${origem} — linhas com números:\n${trechos.join('\n').slice(0, 600) || 'Nenhuma'}`);
   }
   registrar(`Interpretando ${origem.toLowerCase()}`);
-  const interpretacao = interpretarTextoMedidor(resposta?.text || '');
-  if (interpretacao.valor) registrar(`${origem} — separador explícito: ${interpretacao.valor}`);
+  const inteiroPuro = padrao?.decimais === 0
+    ? (resposta?.text || '').trim().match(/^(\d{1,6})(?:\s+(?:m(?:3|³)?|kWh))?$/i) : null;
+  const interpretacao = inteiroPuro ? { valor: `${inteiroPuro[1]},0` } : interpretarTextoMedidor(resposta?.text || '');
+  if (interpretacao.valor) registrar(inteiroPuro ? `${origem} — visor sem decimais: ${inteiroPuro[1]}`
+    : `${origem} — separador explícito: ${interpretacao.valor}`);
   const detalhes = [];
   // A foto pode omitir dígitos. Só permite tratar sufixos verificados pelos
   // símbolos após reconhecer novamente o recorte validado.
@@ -104,6 +108,16 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
     if (diagnosticoAtivo && detalhes.length < 32) detalhes.push(detalhe);
   }, origem === 'Recorte');
   if (diagnosticoAtivo && detalhes.length) registrar(`${origem} — análise das cores:\n${detalhes.join('\n')}`);
+  if (valor && padrao) {
+    const partes = valor.split(/[.,]/);
+    const inteiros = partes[0].length;
+    const decimais = inteiroPuro ? 0 : partes[1]?.length;
+    if (inteiros !== padrao.inteiros || decimais !== padrao.decimais) {
+      registrar(`Leitura recusada: visor exige ${padrao.inteiros} inteiros e ${padrao.decimais} decimais; motor entregou ${inteiros} e ${decimais ?? 0}`);
+      return null;
+    }
+    registrar('Quantidade de dígitos conferida com o padrão do visor');
+  }
   if (valor && !interpretacao.valor) registrar(`${origem} — divisão por cor/posição: ${valor}`);
   return valor;
 };
@@ -111,7 +125,7 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
 /**
  * Executa o OCR na imagem fornecida.
  *
- * @param {string|object} imagem - DataUrl ou recurso temporário do reconhecimento.
+ * @param {string|object} imagem - DataUrl legado ou recurso da captura com seu padrão físico confirmado.
  * @param {{ condominioId: string, unidadeId: string, servico: string, captureId: string }} contexto
  *   Contexto de isolamento: permite descartar resultado se contexto mudar.
  * @param {function(string): void} registrar - Diagnóstico local da sessão.
@@ -127,6 +141,7 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar) => {
 export const executarOcr = async (imagem, contexto, registrar = () => {}, sessaoAtiva = () => true) => {
   let imageDataUrl = typeof imagem === 'string' ? imagem : imagem?.ler?.();
   const enquadrada = imagem?.enquadrada === true;
+  const padrao = normalizarPadraoVisor(imagem?.padrao);
   const resultado = {
     sucesso: false,
     valor: null,
@@ -134,7 +149,7 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
     contexto,
   };
 
-  registrar('Verificando plugin · D16');
+  registrar('Verificando plugin · D17');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
@@ -166,6 +181,11 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
       resultado.erro = 'OCR não disponível neste ambiente.';
       return resultado;
     }
+    if (typeof imagem !== 'string' && !padrao) {
+      resultado.erro = 'Confirme o padrão do visor na câmera para receber sugestões. A leitura manual continua disponível.';
+      registrar(resultado.erro);
+      return resultado;
+    }
     // 1. Salva imagem em arquivo temporário (ML Kit exige caminho)
     registrar('Preparando arquivo da foto');
     const temp = await salvarImagemTemporaria(imageDataUrl);
@@ -191,7 +211,7 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
     if (!sessaoAtiva()) return resultado;
     resultado.sucesso = true;
     registrar(enquadrada ? 'Área delimitada pelo guia' : 'Foto sem guia');
-    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, enquadrada ? 'Recorte' : 'Foto', registrar);
+    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, enquadrada ? 'Recorte' : 'Foto', registrar, padrao);
     // Uma única tentativa adicional, somente num recorte visualmente validado.
     // Edição, fechamento e timeout impedem iniciar outra chamada ao motor.
     if (!resultado.valor && sessaoAtiva()) {
@@ -209,7 +229,7 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
         const respostaRecorte = await plugin.processImage({ path: tempRecorte.uri });
         if (!sessaoAtiva()) return resultado;
         // As cores vêm da cópia colorida, com as mesmas coordenadas do recorte.
-        resultado.valor = await interpretarRespostaOcr(recorte.original, respostaRecorte, 'Recorte', registrar);
+        resultado.valor = await interpretarRespostaOcr(recorte.original, respostaRecorte, 'Recorte', registrar, padrao);
       }
     }
     registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');

@@ -44,3 +44,33 @@ export const setOcrAtivo = (ativo) => {
     return false;
   }
 };
+
+// Descreve as casas físicas do visor, não a máscara numérica do aplicativo.
+export const normalizarPadraoVisor = (padrao) => {
+  if (!Number.isInteger(padrao?.inteiros) || padrao.inteiros < 1 || padrao.inteiros > 6 ||
+      !Number.isInteger(padrao?.decimais) || padrao.decimais < 0 || padrao.decimais > 4) return null;
+  return Object.freeze({ inteiros: padrao.inteiros, decimais: padrao.decimais });
+};
+
+const chavePadraoVisor = (condominioId, servico) => {
+  const id = String(condominioId ?? '').trim();
+  const tipo = String(servico ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  return id && ['agua', 'gas', 'energia'].includes(tipo) ? `ocr_visor_${JSON.stringify([id, tipo])}` : null;
+};
+
+export const obterPadraoVisor = (condominioId, servico) => {
+  try {
+    const chave = chavePadraoVisor(condominioId, servico);
+    return chave ? normalizarPadraoVisor(JSON.parse(localStorage.getItem(chave))) : null;
+  } catch { return null; }
+};
+
+export const salvarPadraoVisor = (condominioId, servico, padrao) => {
+  const chave = chavePadraoVisor(condominioId, servico);
+  const valido = normalizarPadraoVisor(padrao);
+  if (!chave || !valido) return false;
+  try {
+    localStorage.setItem(chave, JSON.stringify(valido));
+    return true;
+  } catch { return false; }
+};
