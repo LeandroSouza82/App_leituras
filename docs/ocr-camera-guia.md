@@ -1,4 +1,4 @@
-# Câmera com guia para o OCR — D15
+# Câmera com guia para o OCR — D16
 
 ## Comportamento
 
@@ -38,7 +38,8 @@ A imagem enviada pelo aparelho contém somente uma mensagem genérica e não com
 
 ## Verificação nesta entrega
 
-- 190 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem o componente React real com ponte/layout simulados: redimensionamento do rodapé, falha nativa e nova tentativa, mudança da janela e cancelamento no preparo da imagem.
+- A classificação de cor usa primeiro as duas metades da caixa original reconhecida pelo motor. A margem ampliada só confirma fundo ausente em números brancos, quando é uniforme e não contradiz uma cor interna. Moldura e roletes vizinhos deixam de definir o separador de um dígito já confirmado. Uma caixa realmente preta/vermelha continua sem sugestão.
+- 196 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem o componente React real com ponte/layout simulados e seis cenários de bordas e fundo branco. Os testes de borda usam a geometria do diagnóstico, com números e pixels sintéticos; não executam o ML Kit sobre a foto do aparelho. Antes do ajuste, dois deles reproduziram a recusa e a mudança indevida de separador pela moldura.
 - A interface original foi verificada com ponte nativa simulada em 320 × 640, 360 × 640 e 412 × 915: botões dentro da tela, ajuste do guia, captura, sugestão, consumo, correção de um dígito, salvamento manual, cancelamento e desativação. Nenhum erro de página.
 - `npm run build` passou. Permanece o aviso conhecido de tamanho dos chunks.
 - `npx cap sync android` passou e reconheceu 15 plugins, incluindo a nova câmera. Os caminhos gerados foram mantidos relativos ao `node_modules` do projeto.
@@ -50,7 +51,7 @@ A imagem enviada pelo aparelho contém somente uma mensagem genérica e não com
 1. Desligar OCR e confirmar que a câmera e o salvamento originais continuam funcionando.
 2. Ligar OCR, fotografar em modo avião e comparar o retângulo ao recorte realmente reconhecido. Manter uma única linha de dígitos no guia, sem etiquetas, seriais ou ponteiros.
 3. Testar água, gás e energia, tamanhos do guia, foco, iluminação e orientação. Confirmar captura após aparecer a lanterna e no build com “Galeria (teste)”. Fotografar com todos os dígitos visíveis; evitar reflexo e movimento. Se falhar, registrar também o “Detalhe do teste” exibido na tela.
-4. Conferir se o campo sugerido, seus decimais e o consumo estão corretos. Editar apenas um dígito e salvar pelo botão existente.
+4. Confirmar “Diagnóstico OCR · D16”. Conferir se o campo sugerido, seus decimais e o consumo estão corretos, inclusive em visores com moldura vermelha encostada no último inteiro. Editar apenas um dígito e salvar pelo botão existente. A foto enviada confirmou visualmente a divisão do visor; o recorte exato usado pelo motor não foi disponibilizado para repetir o caso nativo neste ambiente.
 5. Durante o OCR, digitar, refazer foto, fechar, trocar de unidade e desativar a opção: respostas antigas não podem preencher outra leitura.
 6. Conferir a foto completa comprimida no celular e no banco; a faixa de maior qualidade não deve entrar nesses destinos.
 7. Medir a primeira execução e as seguintes, e registrar taxa de acertos e correções. Dígitos em transição, sujeira, pintura ou foco ruim ainda podem impedir uma sugestão segura; não há garantia de reconhecimento perfeito.

@@ -54,12 +54,12 @@ function preparar(t) {
       return {
         drawImage(...args) { deslocamentoX = args.length === 9 ? args[1] - args[5] : 0; },
         putImageData() {},
-        getImageData(x, _y, w, h) {
+        getImageData(x, y, w, h) {
           const data = new Uint8ClampedArray(w * h * 4);
           for (let i = 0; i < w * h; i++) {
             const p = i * 4;
             const posicao = deslocamentoX + x + i % w;
-            const cor = estado.corPixel?.(posicao) || (posicao >= 300 ? [180, 50, 50] : [30, 30, 30]);
+            const cor = estado.corPixel?.(posicao, y + Math.floor(i / w)) || (posicao >= 300 ? [180, 50, 50] : [30, 30, 30]);
             data[p] = cor[0];
             data[p + 1] = cor[1];
             data[p + 2] = cor[2];
@@ -78,6 +78,72 @@ function preparar(t) {
   });
   return estado;
 }
+
+// Geometria da caixa ampliada do diagnóstico D15 (285,30,38×58),
+// com números e pixels sintéticos. A moldura não pertence ao dígito.
+const respostaBordaVisor = () => {
+  const digitos = [...'00045678'].map((text, i) => ({ text,
+    boundingBox: { left: 80 + i * 52, top: 37, right: 112 + i * 52, bottom: 81 },
+  }));
+  const elements = [digitos.slice(0, 3), digitos.slice(3, 5), digitos.slice(5, 7), digitos.slice(7)]
+    .map(symbols => ({ text: symbols.map(s => s.text).join(''), symbols }));
+  const l = { text: elements.map(e => e.text).join(' '), elements };
+  return { text: l.text, blocks: [{ lines: [l] }] };
+};
+
+const reconhecerBorda = async (t, corPixel) => {
+  const e = preparar(t);
+  e.largura = 540; e.altura = 109;
+  e.corPixel = corPixel;
+  e.respostas = [respostaBordaVisor(), { text: '', blocks: [] }];
+  const imagem = criarImagemTemporariaOcr('data:image/jpeg;base64,eA==', true);
+  const r = await executarOcr(imagem, {});
+  assert.equal(imagem.ler(), null);
+  assert.deepEqual(e.excluidos, e.escritas.map(o => o.path));
+  return { r, e };
+};
+
+test('borda vermelha fora da caixa do último inteiro não desloca a vírgula', async t => {
+  const { r, e } = await reconhecerBorda(t, x => x >= 320 ? [180, 50, 50] : [30, 30, 30]);
+  assert.equal(r.valor, '00045,678');
+  assert.equal(e.chamadas.length, 1);
+});
+
+test('moldura vermelha acima do dígito não transforma inteiro em decimal', async t => {
+  const { r, e } = await reconhecerBorda(t, (x, y) => x >= 330 || (x >= 285 && y < 37)
+    ? [180, 50, 50] : [30, 30, 30]);
+  assert.equal(r.valor, '00045,678');
+  assert.equal(e.chamadas.length, 1);
+});
+
+test('divisão preta/vermelha dentro da caixa do dígito continua ambígua', async t => {
+  const { r, e } = await reconhecerBorda(t, x => x >= 304 ? [180, 50, 50] : [30, 30, 30]);
+  assert.equal(r.valor, null);
+  assert.equal(e.chamadas.length, 2);
+});
+
+test('dígito branco usa margem uniforme preta quando sua caixa não contém fundo', async t => {
+  const { r, e } = await reconhecerBorda(t, (x, y) =>
+    x >= 288 && x < 320 && y >= 37 && y < 81 ? [255, 255, 255]
+      : x >= 330 ? [180, 50, 50] : [30, 30, 30]);
+  assert.equal(r.valor, '00045,678');
+  assert.equal(e.chamadas.length, 1);
+});
+
+test('caixa branca com margem mista não recebe cor pelo vizinho', async t => {
+  const { r } = await reconhecerBorda(t, (x, y) =>
+    x >= 288 && x < 320 && y >= 37 && y < 81 ? [255, 255, 255]
+      : x >= 320 ? [180, 50, 50] : [30, 30, 30]);
+  assert.equal(r.valor, null);
+});
+
+test('margem vermelha não substitui metade preta confirmada dentro da caixa', async t => {
+  const { r } = await reconhecerBorda(t, (x, y) => {
+    if (x >= 288 && x < 320 && y >= 37 && y < 81) return x < 304 ? [30, 30, 30] : [255, 255, 255];
+    return x >= 330 || (x >= 285 && y < 37) ? [180, 50, 50] : [30, 30, 30];
+  });
+  assert.equal(r.valor, null);
+});
 
 test('guia reconhece sua faixa e libera a imagem sem enviar a foto completa ao motor', async t => {
   const e = preparar(t);

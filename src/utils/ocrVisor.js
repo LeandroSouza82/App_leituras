@@ -150,15 +150,15 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, e
   return candidatos.length === 1 ? candidatos[0] : null;
 };
 
-// Inclui uma margem pequena para enxergar o fundo do rolete, inclusive quando
-// os números são brancos. A caixa do OCR pode cobrir apenas o traço do dígito.
-export const caixaAmostraVisor = (caixa, largura, altura) => {
+// A margem só deve confirmar fundo ausente na caixa original. Ela pode
+// incluir a moldura colorida ou o rolete vizinho e não define a cor do dígito.
+export const caixaAmostraVisor = (caixa, largura, altura, incluirMargem = true) => {
   if (!caixa || ![caixa.left, caixa.top, caixa.right, caixa.bottom].every(Number.isFinite)) return null;
   const w = caixa.right - caixa.left;
   const h = caixa.bottom - caixa.top;
   if (w < 2 || h < 2 || caixa.left < 0 || caixa.top < 0 || caixa.right > largura || caixa.bottom > altura) return null;
-  const margemX = Math.max(1, Math.round(w * 0.08));
-  const margemY = Math.max(1, Math.round(h * 0.15));
+  const margemX = incluirMargem ? Math.max(1, Math.round(w * 0.08)) : 0;
+  const margemY = incluirMargem ? Math.max(1, Math.round(h * 0.15)) : 0;
   const left = Math.max(0, Math.floor(caixa.left) - margemX);
   const top = Math.max(0, Math.floor(caixa.top) - margemY);
   const right = Math.min(largura, Math.ceil(caixa.right) + margemX);
@@ -166,8 +166,18 @@ export const caixaAmostraVisor = (caixa, largura, altura) => {
   return { left, top, right, bottom };
 };
 
-// Cor confirmada exige amostras uniformes. Um prefixo indefinido só entra pela
-// posição antes de uma âncora preta; nunca divide uma caixa para inventar dígitos.
+const amostrarMetades = (ctx, caixa) => {
+  const w = caixa.right - caixa.left;
+  const h = caixa.bottom - caixa.top;
+  const metade = Math.floor(w / 2);
+  return [
+    classificarCorDigito(ctx.getImageData(caixa.left, caixa.top, metade, h).data),
+    classificarCorDigito(ctx.getImageData(caixa.left + metade, caixa.top, w - metade, h).data),
+  ];
+};
+
+// Cor confirmada exige duas metades uniformes na caixa do OCR. A margem
+// auxilia números brancos, mas não substitui uma cor interna conflitante.
 export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () => {}, ehRecorte = false) => {
   if (!blocks?.length || typeof document === 'undefined') return null;
   const foto = new Image();
@@ -182,25 +192,19 @@ export const reconhecerVisorPorCor = async (imagem, blocks, diagnosticar = () =>
   try {
     ctx.drawImage(foto, 0, 0);
     return interpretarVisor(blocks, elemento => {
-      const caixa = caixaAmostraVisor(elemento.boundingBox, canvas.width, canvas.height);
+      const caixa = caixaAmostraVisor(elemento.boundingBox, canvas.width, canvas.height, false);
       if (!caixa) { diagnosticar('Coordenadas ausentes ou fora da foto'); return 'invalido'; }
-      const x = Math.floor(caixa.left);
-      const y = Math.floor(caixa.top);
-      const w = Math.ceil(caixa.right) - x;
-      const h = Math.ceil(caixa.bottom) - y;
-      if (x < 0 || y < 0 || w <= 0 || h <= 0 ||
-          x + w > canvas.width || y + h > canvas.height) {
-        diagnosticar('Coordenadas fora da foto');
-        return 'invalido';
-      }
-      // Amostras das duas metades evitam aceitar uma caixa preto/vermelho mista.
-      if (w < 2) return 'invalido';
-      const metade = Math.floor(w / 2);
-      const a = classificarCorDigito(ctx.getImageData(x, y, metade, h).data);
-      const b = classificarCorDigito(ctx.getImageData(x + metade, y, w - metade, h).data);
-      if (!a || !b || a !== b) diagnosticar(`Caixa ${x},${y} ${w}×${h}: ${a || '?'} / ${b || '?'}`);
-      if (a && b && a !== b) return 'misto';
-      return a === b ? a : null;
+      const [a, b] = amostrarMetades(ctx, caixa);
+      if (!a || !b || a !== b) diagnosticar(`Caixa interna ${caixa.left},${caixa.top} ${caixa.right - caixa.left}×${caixa.bottom - caixa.top}: ${a || '?'} / ${b || '?'}`);
+      if (a && b) return a === b ? a : 'misto';
+
+      const margem = caixaAmostraVisor(elemento.boundingBox, canvas.width, canvas.height);
+      const [ma, mb] = amostrarMetades(ctx, margem);
+      if (!ma || !mb || ma !== mb) diagnosticar(`Margem: ${ma || '?'} / ${mb || '?'}`);
+      if ((ma && mb && ma !== mb) || [a, b].some(cor => cor && ma && cor !== ma)) return 'misto';
+      if (!ma || ma !== mb) return null;
+      diagnosticar(`Fundo do rolete confirmado na margem: ${ma}`);
+      return ma;
     }, diagnosticar, ehRecorte);
   } finally {
     canvas.width = canvas.height = 0;
