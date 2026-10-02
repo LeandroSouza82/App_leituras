@@ -28,10 +28,18 @@ O patch também troca `proguard-android.txt` por `proguard-android-optimize.txt`
 
 O Android usa `@capacitor-community/camera-preview@8.0.2`. Sem tamanho explícito, o plugin escolhe a proporção da prévia e uma foto de até aproximadamente 2 MP. O tamanho efetivo depende do aparelho. O patch e a correspondência entre guia e câmera precisam de teste físico; o build web não compila o código Java.
 
+## Correção da recusa de captura
+
+A superfície nativa agora ocupa as dimensões fixas da janela, atrás da interface. O recorte usa a posição do guia nessa janela no momento do toque. Acrescentar o botão da lanterna ou mudar a altura do rodapé não invalida a foto. Uma mudança real da janela continua recusando a captura para evitar desalinhamento.
+
+Essa recusa foi reproduzida no componente com layout e ponte simulados: antes da correção, a câmera não recebia a chamada de captura; depois, a foto e o recorte foram entregues. Falhas encerram a sessão antes de oferecer nova tentativa. No build com `VITE_OCR_DIAGNOSTICO=true`, a tela informa a etapa e o erro recebido; esses detalhes não aparecem no build normal.
+
+A imagem enviada pelo aparelho contém somente uma mensagem genérica e não comprova qual exceção ocorreu. O alinhamento real e eventuais falhas do driver da câmera precisam do novo teste físico. Não foi possível repetir a verificação em navegador nesta correção: não havia executável instalado e o download não entregou um arquivo válido.
+
 ## Verificação nesta entrega
 
-- 183 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo.
-- Interface verificada com ponte nativa simulada em 320 × 640, 360 × 640 e 412 × 915: botões dentro da tela, ajuste do guia, captura, sugestão, consumo, correção de um dígito, salvamento manual, cancelamento e desativação. Nenhum erro de página.
+- 190 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem o componente React real com ponte/layout simulados: redimensionamento do rodapé, falha nativa e nova tentativa, mudança da janela e cancelamento no preparo da imagem.
+- A interface original foi verificada com ponte nativa simulada em 320 × 640, 360 × 640 e 412 × 915: botões dentro da tela, ajuste do guia, captura, sugestão, consumo, correção de um dígito, salvamento manual, cancelamento e desativação. Nenhum erro de página.
 - `npm run build` passou. Permanece o aviso conhecido de tamanho dos chunks.
 - `npx cap sync android` passou e reconheceu 15 plugins, incluindo a nova câmera. Os caminhos gerados foram mantidos relativos ao `node_modules` do projeto.
 - A simulação confirma o fluxo e a interface; não mede precisão ou velocidade do ML Kit e não substitui o teste da câmera Android.
@@ -41,7 +49,7 @@ O Android usa `@capacitor-community/camera-preview@8.0.2`. Sem tamanho explícit
 
 1. Desligar OCR e confirmar que a câmera e o salvamento originais continuam funcionando.
 2. Ligar OCR, fotografar em modo avião e comparar o retângulo ao recorte realmente reconhecido. Manter uma única linha de dígitos no guia, sem etiquetas, seriais ou ponteiros.
-3. Testar água, gás e energia, tamanhos do guia, foco, iluminação e orientação. Fotografar com todos os dígitos visíveis; evitar reflexo e movimento.
+3. Testar água, gás e energia, tamanhos do guia, foco, iluminação e orientação. Confirmar captura após aparecer a lanterna e no build com “Galeria (teste)”. Fotografar com todos os dígitos visíveis; evitar reflexo e movimento. Se falhar, registrar também o “Detalhe do teste” exibido na tela.
 4. Conferir se o campo sugerido, seus decimais e o consumo estão corretos. Editar apenas um dígito e salvar pelo botão existente.
 5. Durante o OCR, digitar, refazer foto, fechar, trocar de unidade e desativar a opção: respostas antigas não podem preencher outra leitura.
 6. Conferir a foto completa comprimida no celular e no banco; a faixa de maior qualidade não deve entrar nesses destinos.

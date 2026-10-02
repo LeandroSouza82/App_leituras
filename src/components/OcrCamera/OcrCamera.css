@@ -47,3 +47,4 @@ body.ocr-camera-active .ocr-camera-area { background: transparent; }
 .ocr-camera-ajuste input { flex: 1; min-width: 0; accent-color: #1e88e5; }
 .ocr-camera-acoes .ocr-camera-capturar { display: flex; align-items: center; gap: 10px; background: #1e88e5; font-weight: 700; padding: 14px 20px; }
 .ocr-camera-footer p { margin: 8px 0; font-size: 13px; }
+.ocr-camera-diagnostico { overflow-wrap: anywhere; }

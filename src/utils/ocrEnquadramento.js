@@ -20,6 +20,18 @@ export const criarImagemTemporariaOcr = (imagem, enquadrada = false, erro = null
   };
 };
 
+// No Android a câmera ocupa a janela atrás da interface. Botões e mensagens
+// podem mudar o espaço visível sem deslocar a superfície nativa.
+export const obterAreaCameraOcr = (viewport, nativa, janela = globalThis.window) => {
+  const area = nativa
+    ? { left: 0, top: 0, width: janela?.innerWidth, height: janela?.innerHeight }
+    : Object.fromEntries(['left', 'top', 'width', 'height'].map(k => [k, viewport?.[k]]));
+  if (!Object.values(area).every(Number.isFinite) || area.width <= 0 || area.height <= 0) {
+    throw new Error('A área da câmera não está disponível.');
+  }
+  return nativa ? Object.fromEntries(Object.entries(area).map(([k, v]) => [k, Math.round(v)])) : area;
+};
+
 // A prévia nativa e a foto precisam mostrar a mesma proporção do sensor.
 // Se a câmera não comprovar isso, conserva a foto e deixa a leitura manual.
 export const calcularRecorteEnquadrado = (largura, altura, viewport, guia, previa = null) => {

@@ -1,9 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularRecorteEnquadrado, prepararCapturaEnquadrada, criarImagemTemporariaOcr } from '../src/utils/ocrEnquadramento.js';
+import { calcularRecorteEnquadrado, prepararCapturaEnquadrada, criarImagemTemporariaOcr, obterAreaCameraOcr } from '../src/utils/ocrEnquadramento.js';
 
 const viewport = { width: 300, height: 400 };
 const guia = { left: 30, top: 160, width: 240, height: 80 };
+
+test('controles mudam a área visível sem mudar a superfície nativa ou o recorte selecionado', () => {
+  const janela = { innerWidth: 360, innerHeight: 760 };
+  const antes = obterAreaCameraOcr({ left: 30, top: 120, width: 300, height: 400 }, true, janela);
+  const depois = obterAreaCameraOcr({ left: 45, top: 100, width: 270, height: 360 }, true, janela);
+  assert.deepEqual(antes, { left: 0, top: 0, width: 360, height: 760 });
+  assert.deepEqual(depois, antes);
+  // Guia em coordenadas da janela: a prévia é cover 4:3 no sensor em retrato.
+  assert.deepEqual(calcularRecorteEnquadrado(1200, 1600, depois,
+    { left: 60, top: 260, width: 240, height: 80 }, { width: 480, height: 640 }),
+  { left: 347, top: 547, right: 853, bottom: 716 });
+});
+test('na web o vídeo acompanha o elemento visível e conserva suas coordenadas fracionárias', () => {
+  assert.deepEqual(obterAreaCameraOcr({ left: 12.5, top: 20.25, width: 300.5, height: 400.25 }, false),
+    { left: 12.5, top: 20.25, width: 300.5, height: 400.25 });
+});
+test('mudança real da janela altera a área nativa; medidas ausentes ou vazias são recusadas', () => {
+  const pequena = obterAreaCameraOcr(viewport, true, { innerWidth: 360, innerHeight: 760 });
+  assert.notDeepEqual(obterAreaCameraOcr(viewport, true, { innerWidth: 760, innerHeight: 360 }), pequena);
+  for (const janela of [{}, { innerWidth: 0, innerHeight: 760 }, { innerWidth: 360, innerHeight: NaN }]) {
+    assert.throws(() => obterAreaCameraOcr(viewport, true, janela), /área da câmera/);
+  }
+  assert.throws(() => obterAreaCameraOcr(null, false), /área da câmera/);
+});
 
 test('guia em retrato aponta para os pixels da foto, sem usar pixels de tela como pixels de câmera', () => {
   assert.deepEqual(calcularRecorteEnquadrado(1200, 1600, viewport, guia, { width: 480, height: 640 }),
