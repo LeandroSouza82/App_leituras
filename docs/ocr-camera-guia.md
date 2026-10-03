@@ -1,4 +1,4 @@
-# Câmera com guia para o OCR — D18
+# Câmera com guia para o OCR — D19
 
 ## Comportamento
 
@@ -13,7 +13,7 @@ Ao fotografar:
 1. A câmera entrega uma imagem JPEG com qualidade 90, normalizada para a orientação correta, sem salvar essa imagem em arquivo.
 2. A foto completa é recomprimida em JPEG com qualidade 30 e entra no carimbo, cache, banco e compartilhamento já existentes. O guia não aparece nessa foto.
 3. Apenas a região dentro do guia vira uma cópia JPEG com qualidade 95 para o OCR. Faixas com altura menor que 180 pixels e largura até 800 pixels são ampliadas duas vezes nessa cópia temporária; isso não recupera detalhes ausentes na foto. Se a proporção da foto e da prévia não puder ser confirmada, conserva a foto comprimida e pede digitação manual.
-4. O OCR offline tenta a faixa colorida e confere a quantidade de inteiros e decimais antes de aplicar a máscara. Se faltarem ou sobrarem dígitos, tenta a segunda passagem com contraste. Duas omissões iguais continuam recusadas. Não há terceira tentativa nem salvamento automático.
+4. O OCR offline tenta a faixa colorida e confere a quantidade de inteiros e decimais antes de aplicar a máscara. Se faltarem ou sobrarem dígitos, ou a sugestão for menor que a leitura anterior da sessão, tenta a segunda passagem com contraste. Usa a mesma comparação numérica do campo manual. Duas omissões iguais ou dois valores menores continuam recusados. Não há terceira tentativa nem salvamento automático.
 5. Os pixels temporários são liberados e os arquivos de cache do OCR têm sua exclusão solicitada ao terminar, cancelar, editar, fechar ou atingir o limite de espera. A exclusão nativa é assíncrona e uma falha nela não bloqueia o leiturista.
 
 O campo, a máscara com quatro casas, o cálculo de consumo, a validação contra a leitura anterior e a confirmação manual continuam existentes. A marcação mensal dos condomínios não foi alterada. Não foi adicionada API de IA nesta etapa.
@@ -42,7 +42,7 @@ A imagem enviada pelo aparelho contém somente uma mensagem genérica e não com
 ## Verificação nesta entrega
 
 - A classificação de cor usa primeiro as duas metades da caixa original reconhecida pelo motor. A margem ampliada só confirma fundo ausente em números brancos, quando é uniforme e não contradiz uma cor interna. Moldura e roletes vizinhos deixam de definir o separador de um dígito já confirmado. Uma caixa realmente preta/vermelha continua sem sugestão.
-- 214 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem confirmação do padrão no componente React real, isolamento por condomínio/serviço, omissão repetida, separador explícito incompleto, divisão decimal divergente, cópia do padrão da captura e ampliação apenas da faixa temporária. Dois testes anteriores reproduziram o preenchimento com um dígito faltando. Os novos testes confirmam três grupos com a unidade anexada ao último dígito e o diagnóstico de símbolos ausentes, escore insuficiente e sobreposição, mantendo a recusa. As fixtures são sintéticas e não executam o ML Kit sobre as fotos do aparelho.
+- 223 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem confirmação do padrão no componente React real, isolamento por condomínio/serviço, omissão repetida, separador explícito incompleto, divisão decimal divergente, cópia do padrão da captura e ampliação apenas da faixa temporária. Os testes de unidade anexada preservam as recusas por símbolos ausentes, escore e sobreposição. Os novos casos reproduzem a interrupção prematura após valor menor e verificam segunda tentativa válida, menor novamente, vazia ou incompleta, igualdade, cancelamento, contraste indisponível e a passagem da leitura anterior entre hook e serviço. As fixtures são sintéticas e não executam o ML Kit sobre as fotos do aparelho.
 - A interface original foi verificada com ponte nativa simulada em 320 × 640, 360 × 640 e 412 × 915: botões dentro da tela, ajuste do guia, captura, sugestão, consumo, correção de um dígito, salvamento manual, cancelamento e desativação. Nenhum erro de página.
 - `npm run build` passou. Permanece o aviso conhecido de tamanho dos chunks.
 - `npx cap sync android` passou e reconheceu 15 plugins, incluindo a nova câmera. Os caminhos gerados foram mantidos relativos ao `node_modules` do projeto.
@@ -56,12 +56,18 @@ O motor pode reunir o último dígito e a unidade em um elemento, como `8m` em `
 
 A mensagem genérica da D17 não distingue qual dessas condições falhou no aparelho. A causa nativa ainda depende de um novo diagnóstico; esta atualização não promete preencher a foto recusada nem relaxa a validação. Um teste passou com o mesmo agrupamento de caracteres e caixas sintéticas válidas; outro reproduziu a falta da informação de diagnóstico e passou após a alteração.
 
+## Segunda tentativa após valor menor
+
+Antes da D19, uma sugestão numericamente bem formada encerrava o motor; só depois o campo comparava com a leitura anterior e a descartava. Isso impedia o contraste quando um dígito confundido produzia um valor menor. Agora o hook fornece a leitura anterior da sessão ao serviço. A comparação existente recusa o candidato antes de encerrar as tentativas. Um resultado igual ou maior ainda encerra na primeira passagem, sem custo de uma chamada extra.
+
+A leitura anterior serve apenas para descartar candidatos; não corrige dígitos nem determina o número a reconhecer. Se a segunda tentativa continuar menor, vier vazia ou incompleta, permanece sem preenchimento e mantém o aviso de inconsistência. Cancelamento e mudança de sessão descartam os resultados. O hook mantém a validação final antes de entregar a sugestão ao campo. O reconhecimento de dígitos omitidos ou em transição continua dependendo de evidência na imagem.
+
 ## Teste físico obrigatório antes do merge
 
 1. Desligar OCR e confirmar que a câmera e o salvamento originais continuam funcionando.
 2. Ligar OCR e confirmar o padrão físico na câmera, contando inclusive os zeros. Verificar que a preferência reaparece para o mesmo condomínio/serviço e não se mistura com outro serviço. Fotografar em modo avião e comparar o retângulo ao recorte realmente reconhecido. Manter uma única linha de dígitos no guia, sem etiquetas, seriais ou ponteiros.
 3. Testar água, gás e energia, tamanhos do guia, foco, iluminação e orientação. Confirmar captura após aparecer a lanterna e no build com “Galeria (teste)”. Fotografar com todos os dígitos visíveis; evitar reflexo e movimento. Se falhar, registrar também o “Detalhe do teste” exibido na tela.
-4. Confirmar “Diagnóstico OCR · D18”. Conferir leitura, decimais e consumo, inclusive em visores com moldura vermelha encostada no último inteiro. Ocultar parte da cauda numa foto de teste: uma leitura com menos dígitos deve ficar sem sugestão, sem completar casas físicas com zeros. Se houver recusa de unidade anexada, registrar “Unidade recusada”, “Grupo anexado” e as caixas/escores dos símbolos seguintes. Depois conferir uma foto completa, editar apenas um dígito e salvar pelo botão existente. Os recortes exatos usados pelo motor não foram disponibilizados para repetir os casos nativos neste ambiente.
+4. Confirmar “Diagnóstico OCR · D19”. Conferir leitura, decimais e consumo, inclusive em visores com moldura vermelha encostada no último inteiro. Se a primeira sugestão for menor que a anterior, verificar a tentativa com contraste; se continuar inválida, o campo deve permanecer vazio. Ocultar parte da cauda numa foto de teste: uma leitura com menos dígitos deve ficar sem sugestão, sem completar casas físicas com zeros. Se houver recusa de unidade anexada, registrar “Unidade recusada”, “Grupo anexado” e as caixas/escores dos símbolos seguintes. Depois conferir uma foto completa, editar apenas um dígito e salvar pelo botão existente. Os recortes exatos usados pelo motor não foram disponibilizados para repetir os casos nativos neste ambiente.
 5. Durante o OCR, digitar, refazer foto, fechar, trocar de unidade e desativar a opção: respostas antigas não podem preencher outra leitura.
 6. Conferir a foto completa comprimida no celular e no banco; a faixa de maior qualidade não deve entrar nesses destinos.
 7. Medir a primeira execução e as seguintes, e registrar taxa de acertos e correções. Dígitos em transição, sujeira, pintura ou foco ruim ainda podem impedir uma sugestão segura; não há garantia de reconhecimento perfeito.

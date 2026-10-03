@@ -20,6 +20,7 @@ import { TextRecognition } from '@capacitor-mlkit/text-recognition';
 import { reconhecerVisorPorCor } from './ocrVisor.js';
 import { prepararRecorteVisor, prepararContrasteEnquadrado } from './ocrImagem.js';
 import { normalizarPadraoVisor } from './ocrConfig.js';
+import { aplicarMascaraLeitura, leituraEhMenorQueAnterior } from './leituraNumerica.js';
 
 /**
  * Salva uma imagem base64 em arquivo temporário para o ML Kit processar.
@@ -130,15 +131,17 @@ const interpretarRespostaOcr = async (imagem, resposta, origem, registrar, padra
  *   Contexto de isolamento: permite descartar resultado se contexto mudar.
  * @param {function(string): void} registrar - Diagnóstico local da sessão.
  * @param {function(): boolean} sessaoAtiva - Impede novas chamadas após cancelamento.
+ * @param {string|number|null} leituraAnterior - Limite da sessão; uma sugestão menor permite a segunda tentativa.
  *
  * @returns {Promise<{
  *   sucesso: boolean,
  *   valor: string | null,
  *   erro: string | null,
+ *   inconsistente: boolean,
  *   contexto: object
  * }>}
  */
-export const executarOcr = async (imagem, contexto, registrar = () => {}, sessaoAtiva = () => true) => {
+export const executarOcr = async (imagem, contexto, registrar = () => {}, sessaoAtiva = () => true, leituraAnterior = null) => {
   let imageDataUrl = typeof imagem === 'string' ? imagem : imagem?.ler?.();
   const enquadrada = imagem?.enquadrada === true;
   const padrao = normalizarPadraoVisor(imagem?.padrao);
@@ -146,10 +149,24 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
     sucesso: false,
     valor: null,
     erro: null,
+    inconsistente: false,
     contexto,
   };
 
-  registrar('Verificando plugin · D18');
+  // A mesma comparação usada no campo manual decide se a tentativa serve.
+  // Não altera dígitos para alcançar a anterior; só permite reconhecer de novo.
+  const aceitarSugestao = valor => {
+    if (!valor) return null;
+    if (leituraEhMenorQueAnterior(aplicarMascaraLeitura(valor), leituraAnterior)) {
+      resultado.inconsistente = true;
+      registrar('Sugestão menor que a leitura anterior: descartada nesta tentativa');
+      return null;
+    }
+    resultado.inconsistente = false;
+    return valor;
+  };
+
+  registrar('Verificando plugin · D19');
   // Importar o proxy não executa o motor. A chamada permanece só no nativo.
   const plugin = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('TextRecognition')
     ? TextRecognition : null;
@@ -211,7 +228,7 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
     if (!sessaoAtiva()) return resultado;
     resultado.sucesso = true;
     registrar(enquadrada ? 'Área delimitada pelo guia' : 'Foto sem guia');
-    resultado.valor = await interpretarRespostaOcr(imageDataUrl, ocrResult, enquadrada ? 'Recorte' : 'Foto', registrar, padrao);
+    resultado.valor = aceitarSugestao(await interpretarRespostaOcr(imageDataUrl, ocrResult, enquadrada ? 'Recorte' : 'Foto', registrar, padrao));
     // Uma única tentativa adicional, somente num recorte visualmente validado.
     // Edição, fechamento e timeout impedem iniciar outra chamada ao motor.
     if (!resultado.valor && sessaoAtiva()) {
@@ -229,7 +246,7 @@ export const executarOcr = async (imagem, contexto, registrar = () => {}, sessao
         const respostaRecorte = await plugin.processImage({ path: tempRecorte.uri });
         if (!sessaoAtiva()) return resultado;
         // As cores vêm da cópia colorida, com as mesmas coordenadas do recorte.
-        resultado.valor = await interpretarRespostaOcr(recorte.original, respostaRecorte, 'Recorte', registrar, padrao);
+        resultado.valor = aceitarSugestao(await interpretarRespostaOcr(recorte.original, respostaRecorte, 'Recorte', registrar, padrao));
       }
     }
     registrar(resultado.valor ? 'Sugestão encontrada' : 'Nenhuma sugestão utilizável');

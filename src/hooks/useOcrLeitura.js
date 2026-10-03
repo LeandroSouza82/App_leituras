@@ -62,10 +62,13 @@ export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAn
         setStatus('demorado');
       }, LIMITE_OCR_MS);
       try {
-        const resultado = await reconhecer(image, contexto, registrar, valido);
+        const resultado = await reconhecer(image, contexto, registrar, valido, leituraAnterior);
         if (!valido()) return;
         if (!resultado.sucesso || !resultado.valor) {
-          setStatus('erro');
+          if (resultado.sucesso && resultado.inconsistente) {
+            atual.cancelado = true;
+            setStatus('inconsistente');
+          } else setStatus('erro');
           return;
         }
         const sugestao = aplicarMascaraLeitura(resultado.valor);
