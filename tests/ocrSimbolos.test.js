@@ -129,6 +129,38 @@ const linha103 = (unidade = 'm') => {
 };
 const lerRecorte = (lines, logs = []) => interpretarVisor([{ lines }], s => s.cor, d => logs.push(d), true);
 
+const linhaTresGrupos = () => {
+  const digitos = [...'00045678'].map((d, i) => simbolo(d, 50 + i * 30, i < 5 ? 'preto' : 'vermelho'));
+  return linha([grupo(digitos.slice(0, 4)), grupo(digitos.slice(4, 7)),
+    grupo([digitos.at(-1), simbolo('m', 310, 'preto')])]);
+};
+
+test('três grupos com a unidade anexada ao último dígito preservam a leitura completa', () => {
+  const l = linhaTresGrupos();
+  const original = structuredClone(l);
+  assert.equal(l.text, '0004 567 8m');
+  assert.equal(lerRecorte([l]), '00045,678');
+  assert.equal(aplicarMascaraLeitura(lerRecorte([l])), '45,6780');
+  assert.deepEqual(l, original);
+});
+
+test('recusa de unidade informa a condição nativa que falhou sem aceitar a leitura', () => {
+  for (const [alterar, motivo] of [
+    [g => { delete g.symbols; }, /símbolos ausentes/],
+    [g => { g.symbols.at(-1).confidence = 0.4; }, /escore da unidade/],
+    [g => { g.symbols.at(-1).boundingBox.left = 278; }, /intervalo entre dígito e unidade/],
+  ]) {
+    const l = linhaTresGrupos();
+    alterar(l.elements.at(-1));
+    const original = structuredClone(l);
+    const logs = [];
+    assert.equal(lerRecorte([l], logs), null);
+    assert.ok(logs.some(d => motivo.test(d)), logs.join('\n'));
+    assert.ok(logs.some(d => d.includes('Grupo anexado 8m')));
+    assert.deepEqual(l, original);
+  }
+});
+
 test('regressão D12 APTO-103: 0007 2933m separa unidade somente no recorte', () => {
   const l = linha103();
   const original = structuredClone(l);

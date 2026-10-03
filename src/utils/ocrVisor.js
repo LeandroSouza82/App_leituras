@@ -45,7 +45,7 @@ const elementosAlinhados = (elementos) => {
 
 // Na foto inteira, só separa a unidade como elemento próprio. No recorte,
 // permite sufixos verificados pelos símbolos; conserva todos os dígitos.
-export const normalizarLinhaVisor = (linha, ehRecorte = false) => {
+export const normalizarLinhaVisor = (linha, ehRecorte = false, diagnosticar) => {
   let text = linha?.text?.trim() || '';
   let elements = linha?.elements || [];
   let unidade = null;
@@ -66,7 +66,7 @@ export const normalizarLinhaVisor = (linha, ehRecorte = false) => {
     elements = elements.slice(0, -1);
     unidade = ultimo;
   } else if (ehRecorte && /\d(?:m(?:3|³)?|kWh)$/i.test(ultimo || '')) {
-    const separada = separarUnidadeSimbolos(elements.at(-1));
+    const separada = separarUnidadeSimbolos(elements.at(-1), diagnosticar);
     if (!separada || !text.endsWith(separada.unidade)) return null;
     text = text.slice(0, -separada.unidade.length).trim();
     elements = [...elements.slice(0, -1), separada.elemento];
@@ -87,7 +87,7 @@ export const interpretarVisor = (blocks, corElemento, diagnosticar = () => {}, e
     return amostras.get(elemento);
   };
   const linhas = (blocks || []).flatMap(b => b.lines || []).map(linha => {
-    const normalizada = normalizarLinhaVisor(linha, ehRecorte);
+    const normalizada = normalizarLinhaVisor(linha, ehRecorte, diagnosticar);
     const expandida = normalizada && expandirSimbolosVisor(normalizada.elements);
     return { linha, normalizada, expandida };
   });

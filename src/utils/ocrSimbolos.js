@@ -3,16 +3,22 @@
 const caixaValida = c => c && [c.left, c.top, c.right, c.bottom].every(Number.isFinite) &&
   c.left >= 0 && c.top >= 0 && c.right - c.left >= 2 && c.bottom - c.top >= 2;
 
-const simbolosDoElemento = elemento => {
+const descreverCaixa = c => c ? `${c.left},${c.top},${c.right},${c.bottom}` : 'ausente';
+
+const simbolosDoElemento = (elemento, aoRecusar = () => {}) => {
   const simbolos = elemento?.symbols;
-  if (!Array.isArray(simbolos) || !simbolos.length ||
-      simbolos.map(s => s?.text || '').join('') !== elemento.text ||
-      simbolos.some(s => typeof s?.text !== 'string' || s.text.length !== 1 || !caixaValida(s.boundingBox))) return null;
+  if (!Array.isArray(simbolos) || !simbolos.length) { aoRecusar('símbolos ausentes ou vazios'); return null; }
+  if (simbolos.map(s => s?.text || '').join('') !== elemento.text) {
+    aoRecusar('texto dos símbolos diferente do grupo'); return null;
+  }
+  if (simbolos.some(s => typeof s?.text !== 'string' || s.text.length !== 1 || !caixaValida(s.boundingBox))) {
+    aoRecusar('caractere ou caixa individual inválida'); return null;
+  }
   if (elemento.boundingBox && (!caixaValida(elemento.boundingBox) || simbolos.some(s => {
     const c = s.boundingBox;
     const p = elemento.boundingBox;
     return c.left < p.left - 2 || c.top < p.top - 2 || c.right > p.right + 2 || c.bottom > p.bottom + 2;
-  }))) return null;
+  }))) { aoRecusar('caixa individual fora do grupo ou caixa do grupo inválida'); return null; }
   return simbolos;
 };
 
@@ -29,9 +35,18 @@ export const expandirSimbolosVisor = elementos => {
 
 // Uma unidade anexada no texto só é removida quando o motor entregou todos
 // os caracteres e a caixa da letra está separada à direita do último dígito.
-export const separarUnidadeSimbolos = elemento => {
+export const separarUnidadeSimbolos = (elemento, diagnosticar) => {
+  const recusar = motivo => {
+    if (!diagnosticar) return;
+    diagnosticar(`Unidade recusada: ${motivo}`);
+    const simbolos = elemento?.symbols;
+    diagnosticar(`Grupo anexado ${elemento?.text}: caixa ${descreverCaixa(elemento?.boundingBox)}; símbolos ${Array.isArray(simbolos) ? simbolos.map(s => s?.text || '?').join('') : 'ausentes'}`);
+    if (Array.isArray(simbolos)) for (const s of simbolos.slice(-4)) {
+      diagnosticar(`Símbolo ${s?.text || '?'}: caixa ${descreverCaixa(s?.boundingBox)}; escore ${s?.confidence ?? 'ausente'}`);
+    }
+  };
   const partes = elemento?.text?.match(/^(\d+)(m(?:3|³)?|kWh)$/i);
-  const simbolos = partes && simbolosDoElemento(elemento);
+  const simbolos = partes && simbolosDoElemento(elemento, recusar);
   if (!simbolos) return null;
   const digitos = simbolos.slice(0, partes[1].length);
   const unidade = simbolos.slice(partes[1].length);
@@ -40,12 +55,22 @@ export const separarUnidadeSimbolos = elemento => {
   const altura = ultimo.bottom - ultimo.top;
   const intervalo = letra.left - Math.max(...digitos.map(s => s.boundingBox.right));
   const sobreposicao = Math.min(ultimo.bottom, letra.bottom) - Math.max(ultimo.top, letra.top);
-  if (intervalo < Math.max(2, (ultimo.right - ultimo.left) * 0.25) || intervalo > altura * 3 ||
-      sobreposicao < Math.min(altura, letra.bottom - letra.top) * 0.5 ||
-      unidade.some((s, i) => !Number.isFinite(s.confidence) || s.confidence < 0.85 || s.confidence > 1 ||
-        (i && (s.boundingBox.left <= unidade[i - 1].boundingBox.left ||
-          s.boundingBox.right <= unidade[i - 1].boundingBox.right ||
-          s.boundingBox.left - unidade[i - 1].boundingBox.right > altura)))) return null;
+  const minimoIntervalo = Math.max(2, (ultimo.right - ultimo.left) * 0.25);
+  if (intervalo < minimoIntervalo || intervalo > altura * 3) {
+    recusar(`intervalo entre dígito e unidade ${intervalo}; permitido ${minimoIntervalo} a ${altura * 3}`); return null;
+  }
+  const minimoSobreposicao = Math.min(altura, letra.bottom - letra.top) * 0.5;
+  if (sobreposicao < minimoSobreposicao) {
+    recusar(`alinhamento vertical ${sobreposicao}; mínimo ${minimoSobreposicao}`); return null;
+  }
+  if (unidade.some(s => !Number.isFinite(s.confidence) || s.confidence < 0.85 || s.confidence > 1)) {
+    recusar('escore da unidade ausente ou fora do intervalo 0.85 a 1'); return null;
+  }
+  if (unidade.some((s, i) => i && (s.boundingBox.left <= unidade[i - 1].boundingBox.left ||
+      s.boundingBox.right <= unidade[i - 1].boundingBox.right ||
+      s.boundingBox.left - unidade[i - 1].boundingBox.right > altura))) {
+    recusar('ordem ou distância entre caracteres da unidade inválida'); return null;
+  }
   return { unidade: partes[2], elemento: {
     text: partes[1], symbols: digitos,
     boundingBox: {

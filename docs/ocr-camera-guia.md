@@ -1,4 +1,4 @@
-# Câmera com guia para o OCR — D17
+# Câmera com guia para o OCR — D18
 
 ## Comportamento
 
@@ -42,7 +42,7 @@ A imagem enviada pelo aparelho contém somente uma mensagem genérica e não com
 ## Verificação nesta entrega
 
 - A classificação de cor usa primeiro as duas metades da caixa original reconhecida pelo motor. A margem ampliada só confirma fundo ausente em números brancos, quando é uniforme e não contradiz uma cor interna. Moldura e roletes vizinhos deixam de definir o separador de um dígito já confirmado. Uma caixa realmente preta/vermelha continua sem sugestão.
-- 212 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem confirmação do padrão no componente React real, isolamento por condomínio/serviço, omissão repetida, separador explícito incompleto, divisão decimal divergente, cópia do padrão da captura e ampliação apenas da faixa temporária. Antes desta correção, dois testes reproduziram o preenchimento com um dígito faltando. As fixtures são sintéticas e não executam o ML Kit sobre as fotos do aparelho.
+- 214 testes automatizados passam: geometria, separação das imagens, limpeza, sessões, cancelamentos e regressões existentes de leituras e consumo. Incluem confirmação do padrão no componente React real, isolamento por condomínio/serviço, omissão repetida, separador explícito incompleto, divisão decimal divergente, cópia do padrão da captura e ampliação apenas da faixa temporária. Dois testes anteriores reproduziram o preenchimento com um dígito faltando. Os novos testes confirmam três grupos com a unidade anexada ao último dígito e o diagnóstico de símbolos ausentes, escore insuficiente e sobreposição, mantendo a recusa. As fixtures são sintéticas e não executam o ML Kit sobre as fotos do aparelho.
 - A interface original foi verificada com ponte nativa simulada em 320 × 640, 360 × 640 e 412 × 915: botões dentro da tela, ajuste do guia, captura, sugestão, consumo, correção de um dígito, salvamento manual, cancelamento e desativação. Nenhum erro de página.
 - `npm run build` passou. Permanece o aviso conhecido de tamanho dos chunks.
 - `npx cap sync android` passou e reconheceu 15 plugins, incluindo a nova câmera. Os caminhos gerados foram mantidos relativos ao `node_modules` do projeto.
@@ -50,12 +50,18 @@ A imagem enviada pelo aparelho contém somente uma mensagem genérica e não com
 - A nova interface de confirmação do padrão foi exercitada no renderer React, sem navegador real. O layout e o ganho de reconhecimento com a faixa ampliada precisam do teste no aparelho. Conferir a quantidade de dígitos detecta omissões, mas não elimina a possibilidade de trocar um dígito por outro.
 - Não houve merge na `main`, instalação física ou geração de APK neste ambiente.
 
+## Diagnóstico da unidade anexada
+
+O motor pode reunir o último dígito e a unidade em um elemento, como `8m` em `0004 567 8m`. A regra existente já separa esses caracteres quando recebe símbolos completos, caixas separadas, alinhamento e escore válidos. A D18 detalha a condição que recusou o sufixo e informa a caixa do grupo, as caixas dos últimos símbolos e seus escores no diagnóstico local habilitado por `VITE_OCR_DIAGNOSTICO=true`. Mantém os mesmos critérios, duas tentativas, descarte e limpeza.
+
+A mensagem genérica da D17 não distingue qual dessas condições falhou no aparelho. A causa nativa ainda depende de um novo diagnóstico; esta atualização não promete preencher a foto recusada nem relaxa a validação. Um teste passou com o mesmo agrupamento de caracteres e caixas sintéticas válidas; outro reproduziu a falta da informação de diagnóstico e passou após a alteração.
+
 ## Teste físico obrigatório antes do merge
 
 1. Desligar OCR e confirmar que a câmera e o salvamento originais continuam funcionando.
 2. Ligar OCR e confirmar o padrão físico na câmera, contando inclusive os zeros. Verificar que a preferência reaparece para o mesmo condomínio/serviço e não se mistura com outro serviço. Fotografar em modo avião e comparar o retângulo ao recorte realmente reconhecido. Manter uma única linha de dígitos no guia, sem etiquetas, seriais ou ponteiros.
 3. Testar água, gás e energia, tamanhos do guia, foco, iluminação e orientação. Confirmar captura após aparecer a lanterna e no build com “Galeria (teste)”. Fotografar com todos os dígitos visíveis; evitar reflexo e movimento. Se falhar, registrar também o “Detalhe do teste” exibido na tela.
-4. Confirmar “Diagnóstico OCR · D17”. Conferir leitura, decimais e consumo, inclusive em visores com moldura vermelha encostada no último inteiro. Ocultar parte da cauda numa foto de teste: uma leitura com menos dígitos deve ficar sem sugestão, sem completar casas físicas com zeros. Depois conferir uma foto completa, editar apenas um dígito e salvar pelo botão existente. Os recortes exatos usados pelo motor não foram disponibilizados para repetir os casos nativos neste ambiente.
+4. Confirmar “Diagnóstico OCR · D18”. Conferir leitura, decimais e consumo, inclusive em visores com moldura vermelha encostada no último inteiro. Ocultar parte da cauda numa foto de teste: uma leitura com menos dígitos deve ficar sem sugestão, sem completar casas físicas com zeros. Se houver recusa de unidade anexada, registrar “Unidade recusada”, “Grupo anexado” e as caixas/escores dos símbolos seguintes. Depois conferir uma foto completa, editar apenas um dígito e salvar pelo botão existente. Os recortes exatos usados pelo motor não foram disponibilizados para repetir os casos nativos neste ambiente.
 5. Durante o OCR, digitar, refazer foto, fechar, trocar de unidade e desativar a opção: respostas antigas não podem preencher outra leitura.
 6. Conferir a foto completa comprimida no celular e no banco; a faixa de maior qualidade não deve entrar nesses destinos.
 7. Medir a primeira execução e as seguintes, e registrar taxa de acertos e correções. Dígitos em transição, sujeira, pintura ou foco ruim ainda podem impedir uma sugestão segura; não há garantia de reconhecimento perfeito.
