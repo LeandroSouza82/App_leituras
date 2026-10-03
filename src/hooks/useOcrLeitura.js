@@ -1,0 +1,106 @@
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { isOcrAtivo, observarOcr } from '../utils/ocrConfig.js';
+import { executarOcr } from '../utils/ocrService.js';
+import { aplicarMascaraLeitura, formatarLeitura4Casas, leituraEhMenorQueAnterior } from '../utils/leituraNumerica.js';
+
+export const LIMITE_OCR_MS = 5000;
+
+// O contexto deve representar a unidade/serviço exibidos, além da captura.
+export const chaveContextoOcr = (contexto) => contexto ? JSON.stringify([
+  contexto.condominioId, contexto.unidadeId, contexto.servico, contexto.captureId,
+]) : '';
+
+export const useOcrLeitura = ({ isOpen, image, contexto, initialValue, leituraAnterior = null, onResult, reconhecer = executarOcr }) => {
+  const ativo = useSyncExternalStore(observarOcr, isOcrAtivo, () => false);
+  const chave = chaveContextoOcr(contexto);
+  const sessao = useRef(null);
+  const callback = useRef(onResult);
+  const [status, setStatus] = useState('idle');
+  const [diagnostico, setDiagnostico] = useState([]);
+
+  useLayoutEffect(() => { callback.current = onResult; });
+  useLayoutEffect(() => {
+    const atual = { cancelado: Boolean(initialValue), chave, image, isOpen };
+    sessao.current = atual;
+    setStatus('idle');
+    setDiagnostico([]);
+    return () => { atual.cancelado = true; };
+  }, [isOpen, image, chave, initialValue, leituraAnterior]);
+
+  const cancelar = () => {
+    if (sessao.current) sessao.current.cancelado = true;
+    image?.liberar?.();
+    setStatus('idle');
+  };
+
+  useEffect(() => {
+    const atual = sessao.current;
+    if (!ativo || !isOpen || !image || !chave || atual.cancelado) {
+      image?.liberar?.();
+      return;
+    }
+    let cancelado = false;
+    let iniciou = false;
+    let timer;
+    const valido = () => !cancelado && !atual.cancelado && sessao.current === atual && isOcrAtivo();
+    // A primeira montagem descartada pelo StrictMode não chama o motor.
+    Promise.resolve().then(async () => {
+      if (!valido()) return;
+      iniciou = true;
+      setStatus('processando');
+      const inicio = Date.now();
+      const registrar = (etapa) => {
+        if (!valido()) return;
+        setDiagnostico(anterior => [...anterior, `${Date.now() - inicio} ms · ${etapa}`].slice(-12));
+      };
+      registrar('Início');
+      timer = setTimeout(() => {
+        if (!valido()) return;
+        registrar('Limite de espera atingido');
+        atual.cancelado = true;
+        image?.liberar?.();
+        setStatus('demorado');
+      }, LIMITE_OCR_MS);
+      try {
+        const resultado = await reconhecer(image, contexto, registrar, valido, leituraAnterior);
+        if (!valido()) return;
+        if (!resultado.sucesso || !resultado.valor) {
+          if (resultado.sucesso && resultado.inconsistente) {
+            atual.cancelado = true;
+            setStatus('inconsistente');
+          } else setStatus('erro');
+          return;
+        }
+        const sugestao = aplicarMascaraLeitura(resultado.valor);
+        if (!sugestao) {
+          registrar('Sugestão sem valor numérico utilizável');
+          setStatus('erro');
+          return;
+        }
+        registrar(`Sugestão: ${sugestao}; anterior: ${formatarLeitura4Casas(leituraAnterior) || 'ausente'}`);
+        if (leituraEhMenorQueAnterior(sugestao, leituraAnterior)) {
+          registrar('Sugestão descartada: menor que a leitura anterior');
+          atual.cancelado = true;
+          setStatus('inconsistente');
+          return;
+        }
+        atual.cancelado = true; // Uma sugestão por sessão; nunca salva.
+        callback.current(resultado.valor);
+        setStatus('concluido');
+      } catch {
+        if (valido()) { registrar('Falha inesperada'); setStatus('erro'); }
+      } finally {
+        clearTimeout(timer);
+        image?.liberar?.();
+      }
+    });
+    return () => {
+      cancelado = true; clearTimeout(timer);
+      const proxima = sessao.current;
+      const reutilizada = proxima !== atual && proxima.image === image && proxima.isOpen && !proxima.cancelado;
+      if (iniciou && !reutilizada) image?.liberar?.();
+    };
+  }, [ativo, isOpen, image, chave, initialValue, leituraAnterior, reconhecer]);
+
+  return { ativo, status, cancelar, diagnostico };
+};

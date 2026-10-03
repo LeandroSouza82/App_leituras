@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { isOcrAtivo, observarOcr, obterPadraoVisor } from '../../utils/ocrConfig';
+import { criarImagemTemporariaOcr } from '../../utils/ocrEnquadramento';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
@@ -16,6 +18,7 @@ import { filesystemService } from '../../services/filesystemService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
+import OcrCamera from '../OcrCamera/OcrCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
 import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
 import { obterServicosAtivos } from '../../utils/servicosCondominio';
@@ -239,6 +242,24 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hydrationCounter, setHydrationCounter] = useState(0);
+  // OCR: imagem pré-carimbo (sem texto sobreposto) e contexto de isolamento
+  const [fotoParaOcr, setFotoParaOcr] = useState(null);
+  const [ocrContexto, setOcrContexto] = useState(null);
+  const ocrAtivo = useSyncExternalStore(observarOcr, isOcrAtivo, () => false);
+  const [cameraOcr, setCameraOcr] = useState(null);
+  const capturaFotoRef = useRef(null);
+  const contextoFotoRef = useRef(null);
+  contextoFotoRef.current = isOpen ? JSON.stringify([
+    String(leitura?.id || leitura?.condominio_id || ''), String(activeApto).trim(), tipoMedicaoAtivo,
+  ]) : null;
+  const cameraOcrVigente = cameraOcr && ocrAtivo && isOpen &&
+    cameraOcr.contexto === contextoFotoRef.current ? cameraOcr : null;
+  const cameraOcrRef = useRef(null);
+  cameraOcrRef.current = cameraOcrVigente;
+  useEffect(() => () => fotoParaOcr?.liberar?.(), [fotoParaOcr]);
+  useEffect(() => {
+    if (!isOpen || !ocrAtivo) { capturaFotoRef.current = null; setCameraOcr(null); }
+  }, [isOpen, ocrAtivo]);
   const toastTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const servicosAtivos = useMemo(
@@ -975,6 +996,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       exibirToastSucesso();
       setIsPreviewOpen(false);
       setActiveApto(null);
+      setFotoParaOcr(null);
+      setOcrContexto(null);
 
     } catch (error) {
       if (error.message === 'LEITURA_MENOR_QUE_ANTERIOR') {
@@ -992,18 +1015,27 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
-  // Dispara a Câmera Nativa do Sistema Operacional (Sem recortes e sem PWA UI)
+  const abrirCameraOcr = apto => {
+    const captureId = crypto.randomUUID();
+    capturaFotoRef.current = captureId;
+    setCameraOcr({ apto, captureId, contexto: JSON.stringify([
+      String(leitura?.id || leitura?.condominio_id || ''), String(apto).trim(), tipoMedicaoAtivo,
+    ]) });
+  };
+
+  // OCR ativo usa a câmera com guia. Desligado mantém a captura original.
   const handleDispararCamera = async (aptoAlvo) => {
     const apto = aptoAlvo || activeApto;
     if (!apto || isProcessing) return;
     setActiveApto(apto);
+    if (isOcrAtivo()) { abrirCameraOcr(apto); return; }
 
     try {
       const photo = await Camera.getPhoto({
         quality: 30, // Compressão máxima para otimizar disco e banda (reduz a foto severamente)
         allowEditing: false,
         resultType: CameraResultType.DataUrl, // <-- GARANTE BASE64 NO CAPACITOR
-        source: CameraSource.Camera, // <-- FORÇA ABRIR O APLICATIVO NATIVO DE CÂMERA
+        source: CameraSource.Camera,
         correctOrientation: true
       });
 
@@ -1013,11 +1045,36 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     }
   };
 
+  const receberCapturaOcr = async preparada => {
+    const captura = cameraOcrRef.current;
+    if (!captura) { preparada.imagemOcr.liberar(); return; }
+    const vigente = () => capturaFotoRef.current === captura.captureId &&
+      contextoFotoRef.current === captura.contexto && isOcrAtivo();
+    setCameraOcr(null);
+    await handleCaptureAndSave(preparada.fotoComprimida, null, captura.apto, preparada.imagemOcr, vigente);
+  };
+
+  // A galeria de diagnóstico conserva a captura antiga; não simula o guia ao vivo.
+  const escolherFotoTeste = async () => {
+    const captura = cameraOcrRef.current;
+    setCameraOcr(null);
+    if (!captura) return;
+    const vigente = () => contextoFotoRef.current === captura.contexto &&
+      capturaFotoRef.current === captura.captureId && isOcrAtivo();
+    try {
+      const photo = await Camera.getPhoto({ quality: 30, allowEditing: false,
+        resultType: CameraResultType.DataUrl, source: CameraSource.Photos, correctOrientation: true });
+      if (vigente()) {
+        await handleCaptureAndSave(photo.dataUrl, null, captura.apto, null, vigente);
+      }
+    } catch { /* Cancelar a galeria não altera fotos nem leituras. */ }
+  };
+
   // Novo fluxo All-in-One: Captura a foto e já recebe o valor digitado
-  const handleCaptureAndSave = async (base64, valorLeitura, aptoOverride = null) => {
+  const handleCaptureAndSave = async (base64, valorLeitura, aptoOverride = null, imagemOcr = null, vigente = () => true) => {
     // Isolamento cirúrgico de ID de unidade (Impede sobrescrever de outras)
     const apto = aptoOverride || activeApto;
-    if (!apto) return;
+    if (!apto || !vigente()) { imagemOcr?.liberar(); return; }
 
     try {
       setIsProcessing(true);
@@ -1037,15 +1094,31 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       };
 
       const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
+      if (!vigente()) { imagemOcr?.liberar(); return; }
 
       // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
       await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
+      if (!vigente()) { imagemOcr?.liberar(); return; }
 
       // 3. Limpeza de RAM imediata
       // (Variáveis de base64 agora saem de escopo naturalmente ao fechar a função)
 
       // 3. Sucesso parcial — fecha a câmera
       setCustomCameraOpen(false);
+
+      // OCR: guarda imagem ANTES do carimbo e gera captureId único por foto
+      // O captureId garante que resultado atrasado de foto anterior seja descartado.
+      const captureId = crypto.randomUUID();
+      if (!isOcrAtivo()) imagemOcr?.liberar();
+      setFotoParaOcr(isOcrAtivo() ? (imagemOcr || criarImagemTemporariaOcr(
+        base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`, false, null,
+        obterPadraoVisor(leitura?.id || leitura?.condominio_id, tipoMedicaoAtivo))) : null);
+      setOcrContexto({
+        condominioId: String(leitura?.id || leitura?.condominio_id || ''),
+        unidadeId,
+        servico: tipoMedicaoAtivo,
+        captureId,
+      });
 
       // 4. Salva a FOTO BANCO (leve) apenas na Memória para a Interface
       // Isso exibe a miniatura, aguardando o usuário digitar o valor da leitura.
@@ -1061,9 +1134,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // para evitar o erro de "Valor da leitura ausente."
 
     } catch (error) {
+      imagemOcr?.liberar();
+      if (!vigente()) return;
       const errMsg = error?.message || JSON.stringify(error) || 'Erro desconhecido';
       await customAlert('⚠️ Erro ao processar a foto. Tente novamente.\n(Detalhe: ' + errMsg + ')');
-      setCustomCameraOpen(true); // mantém câmera aberta para nova tentativa
+      if (imagemOcr && isOcrAtivo()) abrirCameraOcr(apto);
+      else setCustomCameraOpen(true); // mantém o fluxo original para nova tentativa
     } finally {
       setIsProcessing(false);
     }
@@ -1169,6 +1245,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
         return novo;
       });
+
+      // OCR: descarta foto pré-carimbo e contexto da foto anterior
+      setFotoParaOcr(null);
+      setOcrContexto(null);
 
       // 5. Fecha o preview e abre a câmera customizada in-app para nova captura
       setIsPreviewOpen(false);
@@ -1907,13 +1987,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       <PreviewFotoModal
         key={`preview-${activeApto}-${tipoMedicaoAtivo}`}
         isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
+        onClose={() => { setIsPreviewOpen(false); setFotoParaOcr(null); setOcrContexto(null); }}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo] || ''}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
         leituraAnterior={todasLeiturasAnteriores[activeApto] ?? null}
+        imageParaOcr={fotoParaOcr}
+        ocrContexto={ocrContexto && String(activeApto).trim() === ocrContexto.unidadeId
+          && tipoMedicaoAtivo === ocrContexto.servico
+          && String(leitura?.id || leitura?.condominio_id || '') === ocrContexto.condominioId
+          ? ocrContexto : null}
       />
 
       {/* 4. Feedback Toast */}
@@ -1925,6 +2010,17 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       )}
 
       {/* 5. Câmera customizada in-app (Totalmente independente da árvore do modal) */}
+      {cameraOcrVigente && (
+        <OcrCamera
+          key={cameraOcrVigente.captureId}
+          unidade={`${cameraOcrVigente.apto} - ${tipoMedicaoAtivo.toUpperCase()}`}
+          condominioId={leitura?.id || leitura?.condominio_id}
+          servico={tipoMedicaoAtivo}
+          onCapture={receberCapturaOcr}
+          onClose={() => { capturaFotoRef.current = null; setCameraOcr(null); }}
+          onGaleria={import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' ? escolherFotoTeste : null}
+        />
+      )}
       {customCameraOpen && (
         <CustomCamera
           onSaveReading={handleCaptureAndSave}

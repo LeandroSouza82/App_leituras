@@ -1,0 +1,25 @@
+diff --git a/node_modules/@capacitor-mlkit/text-recognition/android/src/main/java/io/capawesome/capacitorjs/plugins/mlkit/textrecognition/classes/results/ProcessImageResult.java b/node_modules/@capacitor-mlkit/text-recognition/android/src/main/java/io/capawesome/capacitorjs/plugins/mlkit/textrecognition/classes/results/ProcessImageResult.java
+--- a/node_modules/@capacitor-mlkit/text-recognition/android/src/main/java/io/capawesome/capacitorjs/plugins/mlkit/textrecognition/classes/results/ProcessImageResult.java
++++ b/node_modules/@capacitor-mlkit/text-recognition/android/src/main/java/io/capawesome/capacitorjs/plugins/mlkit/textrecognition/classes/results/ProcessImageResult.java
+@@ -64,7 +64,21 @@
+             putBoundingBox(elementResult, element.getBoundingBox());
+             putCornerPoints(elementResult, element.getCornerPoints());
+             putRecognizedLanguage(elementResult, element.getRecognizedLanguage());
++            elementResult.put("symbols", createSymbolsResult(element.getSymbols()));
+             result.put(elementResult);
++        }
++        return result;
++    }
++
++    private JSArray createSymbolsResult(@NonNull List<Text.Symbol> symbols) {
++        JSArray result = new JSArray();
++        for (Text.Symbol symbol : symbols) {
++            JSObject symbolResult = new JSObject();
++            symbolResult.put("text", symbol.getText());
++            symbolResult.put("confidence", symbol.getConfidence());
++            putBoundingBox(symbolResult, symbol.getBoundingBox());
++            putCornerPoints(symbolResult, symbol.getCornerPoints());
++            result.put(symbolResult);
+         }
+         return result;
+     }
