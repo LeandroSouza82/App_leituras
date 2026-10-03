@@ -6,6 +6,7 @@ import {
   formatarDigitosLeitura,
   formatarLeitura4Casas,
   parseLeituraNumerica,
+  leituraEhMenorQueAnterior,
 } from '../src/utils/leituraNumerica.js';
 
 test('converte leituras nos formatos usados pelo aplicativo e pelas planilhas', () => {
@@ -33,4 +34,19 @@ test('aplica a máscara canônica durante a digitação', () => {
   assert.equal(formatarDigitosLeitura('238000'), '23,8000');
   assert.equal(formatarDigitosLeitura('16608100'), '1.660,8100');
   assert.equal(aplicarMascaraLeitura('1.312,3500'), '1.312,3500');
+});
+
+test('comparação compartilhada conserva igualdade e precisão de quatro casas', () => {
+  assert.equal(leituraEhMenorQueAnterior('1,7490', '17,2970'), true);
+  assert.equal(leituraEhMenorQueAnterior('17,2969', '17,2970'), true);
+  assert.equal(leituraEhMenorQueAnterior('17,2970', '17,2970'), false);
+  assert.equal(leituraEhMenorQueAnterior('17,4400', '17,2970'), false);
+  assert.equal(leituraEhMenorQueAnterior(17.296999999, 17.297), false);
+});
+
+test('comparação não cria uma leitura anterior quando o histórico está ausente', () => {
+  for (const anterior of [null, undefined, '', 'inválido']) {
+    assert.equal(leituraEhMenorQueAnterior('1,7490', anterior), false);
+  }
+  assert.equal(leituraEhMenorQueAnterior('', '17,2970'), false);
 });

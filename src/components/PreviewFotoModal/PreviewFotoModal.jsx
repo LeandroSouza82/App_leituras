@@ -3,34 +3,58 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, RotateCcw } from 'lucide-react';
 import Zoom from 'react-medium-image-zoom';
 import 'react-medium-image-zoom/dist/styles.css';
-import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
+import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura, leituraEhMenorQueAnterior } from '../../utils/leituraNumerica';
+import { useOcrLeitura, chaveContextoOcr } from '../../hooks/useOcrLeitura';
 import './PreviewFotoModal.css';
 
-const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituraAnterior = null }) => {
+/**
+ * PreviewFotoModal
+ *
+ * Props novas (OCR):
+ *   - imageParaOcr: recurso temporário|null — imagem ANTES do carimbo,
+ *     usada exclusivamente para reconhecimento. Liberada sem apagar o campo.
+ *   - ocrContexto: { condominioId, unidadeId, servico, captureId } — contexto
+ *     de isolamento para descartar resultado atrasado.
+ */
+const PreviewFotoModal = ({
+  isOpen,
+  onClose,
+  imageUri,
+  unitInfo,
+  onRetake,
+  onSaveReading,
+  initialValue = '',
+  leituraAnterior = null,
+  // Props OCR
+  imageParaOcr = null,
+  ocrContexto = null,
+}) => {
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
+
   const inputRef = useRef(null);
 
   const validarLeitura = (valor) => {
-    if (leituraAnterior !== null && leituraAnterior !== undefined) {
-      const valorAtualFloat = parseLeituraNumerica(valor);
-      const valorAnteriorFloat = parseLeituraNumerica(leituraAnterior);
-      if (
-        valorAtualFloat !== null &&
-        valorAnteriorFloat !== null &&
-        Math.round(valorAtualFloat * 10000) < Math.round(valorAnteriorFloat * 10000)
-      ) {
-        setErroValidacao('A leitura não pode ser menor que o mês anterior');
-      } else {
-        setErroValidacao('');
-      }
-    } else {
-      setErroValidacao('');
-    }
+    setErroValidacao(leituraEhMenorQueAnterior(valor, leituraAnterior)
+      ? 'A leitura não pode ser menor que o mês anterior' : '');
   };
 
+  const { ativo: ocrAtivo, status: ocrStatus, cancelar: cancelarOcr, diagnostico: ocrDiagnostico } = useOcrLeitura({
+    isOpen, image: imageParaOcr, contexto: ocrContexto, initialValue, leituraAnterior,
+    onResult: (valor) => {
+      const formatado = aplicarMascaraLeitura(valor);
+      if (!formatado) return;
+      setLeituraValor(formatado);
+      validarLeitura(formatado);
+    },
+  });
+  const fechar = () => { cancelarOcr(); onClose(); };
+  const refazer = () => { cancelarOcr(); onRetake(); };
+
   const handleInputChange = (e) => {
+    cancelarOcr();
+
     const raw = e.target.value;
     if (!raw) {
       setLeituraValor('');
@@ -64,6 +88,8 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
   };
 
   const handleKeyDown = (e) => {
+    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') cancelarOcr();
+
     if (e.key === 'Backspace') {
       const input = e.currentTarget;
       const { selectionStart, selectionEnd, value } = input;
@@ -92,6 +118,8 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
   };
 
   const handlePaste = (e) => {
+    cancelarOcr();
+
     e.preventDefault();
     const pasted = e.clipboardData?.getData('text') || '';
     const trimmed = pasted.trim();
@@ -120,14 +148,14 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
         setErroValidacao('');
       }
     }
-  }, [isOpen, initialValue, leituraAnterior]);
-
+  }, [isOpen, initialValue, leituraAnterior, imageParaOcr, chaveContextoOcr(ocrContexto)]);
 
   if (!isOpen || !imageUri) return null;
 
   const handleSave = async () => {
     if (!leituraValor || isSaving) return;
 
+    cancelarOcr();
     setIsSaving(true);
     try {
       await onSaveReading(leituraValor);
@@ -141,11 +169,11 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
   };
 
   return (
-    <div className="preview-foto-overlay" onClick={onClose}>
+    <div className="preview-foto-overlay" onClick={fechar}>
       <div className="preview-foto-container" onClick={(e) => e.stopPropagation()}>
         <header className="preview-foto-header">
           <h3>{unitInfo}</h3>
-          <button type="button" className="btn-close" onClick={onClose}><X size={20} /></button>
+          <button type="button" className="btn-close" onClick={fechar}><X size={20} /></button>
         </header>
 
         <div className="preview-foto-body">
@@ -160,7 +188,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
               <button
                 type="button"
                 className="btn-floating btn-floating-retake"
-                onClick={onRetake}
+                onClick={refazer}
                 disabled={isSaving}
                 title="Refazer foto"
               >
@@ -192,6 +220,47 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
               })()}
             </div>
 
+            {/* Indicador de status OCR — discreto, nunca bloqueia o campo */}
+            {ocrAtivo && ocrStatus === 'processando' && (
+              <div
+                className="ocr-status-indicator ocr-status-processando"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="ocr-spinner" />
+                <span>Reconhecendo leitura…</span>
+              </div>
+            )}
+            {ocrAtivo && ocrStatus === 'concluido' && (
+              <div
+                className="ocr-status-indicator ocr-status-concluido"
+                role="status"
+                aria-live="polite"
+              >
+                <span>✓ Sugestão do OCR · Confira o medidor antes de salvar</span>
+              </div>
+            )}
+            {ocrAtivo && (ocrStatus === 'erro' || ocrStatus === 'demorado' || ocrStatus === 'inconsistente') && (
+              <div
+                className="ocr-status-indicator ocr-status-erro"
+                role="alert"
+              >
+                <span>{ocrStatus === 'demorado'
+                  ? 'O reconhecimento demorou. Digite a leitura manualmente.'
+                  : ocrStatus === 'inconsistente'
+                  ? 'O OCR sugeriu um valor menor que a leitura anterior. Confira o medidor e digite manualmente.'
+                  : 'Não foi possível obter uma sugestão. Confira o medidor e digite manualmente.'}</span>
+              </div>
+            )}
+
+            {import.meta.env.VITE_OCR_DIAGNOSTICO === 'true' && ocrAtivo &&
+              ocrStatus !== 'idle' && ocrStatus !== 'processando' && (
+                <details>
+                  <summary>Diagnóstico OCR · D18</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>{ocrDiagnostico.join('\n')}</pre>
+                </details>
+              )}
+
             <input
               ref={inputRef}
               id="leitura-atual"
@@ -199,6 +268,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
               inputMode="numeric"
               pattern="[0-9]*"
               value={leituraValor}
+              onBeforeInput={cancelarOcr}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}

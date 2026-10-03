@@ -14,6 +14,8 @@
     "android:run": "cap run android"
   },
   "dependencies": {
+    "@capacitor-community/camera-preview": "8.0.2",
+    "@capacitor-mlkit/text-recognition": "8.2.1",
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",
     "@capacitor/app-launcher": "^8.0.1",
@@ -48,6 +50,7 @@
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.3",
     "patch-package": "^8.0.1",
+    "react-test-renderer": "^18.3.1",
     "typescript": "^7.0.2",
     "vite": "^5.4.10",
     "vite-plugin-qrcode": "^0.4.1"
