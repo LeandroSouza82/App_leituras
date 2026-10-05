@@ -771,6 +771,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
       const chaveFoto = gerarChaveLeituraLocal(leitura.id, unidadeId, servicoKey);
+      const fotoPathExcluida = localStorage.getItem(`foto_path_${chaveFoto}`);
       FotoLeituraService.esquecerFoto(chaveFoto);
       delete origensFotosRef.current[chaveFoto];
 
@@ -823,7 +824,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       try {
         const safeCondNameOffline = filesystemService.sanitizeName(leitura.nome);
         const offlinePath = `Backups/${safeCondNameOffline}/Apto${unidadeId}_${tipoServico}.jpg`;
-        await Filesystem.deleteFile({ path: offlinePath, directory: Directory.Data });
+        for (const path of new Set([offlinePath, fotoPathExcluida].filter(Boolean))) {
+          try {
+            await Filesystem.deleteFile({ path, directory: Directory.Data });
+          } catch (e) {}
+        }
       } catch (e) {
         // Arquivo pode não existir no lote offline — ignora silenciosamente
       }

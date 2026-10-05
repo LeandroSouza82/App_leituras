@@ -37,6 +37,11 @@ const criarAparelho = () => {
       disco.set(`${toDirectory}/${to}`, data);
       disco.delete(source);
     },
+    async copy({ from, to, directory, toDirectory }) {
+      const data = disco.get(`${directory}/${from}`);
+      if (data === undefined) throw new Error('File does not exist');
+      disco.set(`${toDirectory}/${to}`, data);
+    },
     async deleteFile(options) { disco.delete(chaveArquivo(options)); },
   };
   const abrirApp = () => criarFotoLeituraService({
@@ -215,8 +220,54 @@ test('falha na substituição final não apaga a foto existente nem deixa tempor
   const aparelho = criarAparelho();
   const input = captura();
   const path = await aparelho.service.salvarFoto(input);
-  aparelho.arquivos.rename = async () => { throw new Error('Falha na substituição'); };
+  aparelho.arquivos.rename = async ({ to, toDirectory }) => {
+    // Comportamento real do plugin Android: remove o destino antes do rename.
+    aparelho.disco.delete(`${toDirectory}/${to}`);
+    throw new Error('Falha na substituição');
+  };
   await assert.rejects(aparelho.service.salvarFoto({ ...input, base64: 'bm92YQ==' }), /Falha na substituição/);
   assert.equal(aparelho.disco.get(`${Directory.Data}/${path}`), input.base64);
   assert.equal(aparelho.disco.size, 1);
+});
+
+test('se o Android impedir também a restauração, a referência passa à cópia de recuperação preservada', async () => {
+  const aparelho = criarAparelho();
+  const input = captura();
+  const path = await aparelho.service.salvarFoto(input);
+  aparelho.storage.setItem(`valor_${input.chaveLocal}`, '125.1234');
+  aparelho.storage.setItem(`concluido_${input.chaveLocal}`, 'true');
+  aparelho.storage.removeItem(`foto_pendente_${input.chaveLocal}`);
+  const copiar = aparelho.arquivos.copy;
+  aparelho.arquivos.copy = async options => {
+    if (options.to === path) throw new Error('Disco não aceita restauração');
+    return copiar(options);
+  };
+  aparelho.arquivos.rename = async ({ to, toDirectory }) => {
+    aparelho.disco.delete(`${toDirectory}/${to}`);
+    throw new Error('Falha na substituição');
+  };
+  await assert.rejects(aparelho.service.salvarFoto({ ...input, base64: 'bm92YQ==' }), /cópia de recuperação/);
+  const recuperada = await aparelho.abrirApp().obterFoto(input.chaveLocal);
+  assert.ok(recuperada.path.endsWith('.anterior.jpg'));
+  assert.equal(aparelho.disco.get(`${Directory.Data}/${recuperada.path}`), input.base64);
+  assert.equal(aparelho.storage.getItem(`valor_${input.chaveLocal}`), '125.1234');
+  assert.equal(aparelho.storage.getItem(`concluido_${input.chaveLocal}`), 'true');
+});
+
+test('falha de quota nos metadados mantém a nova foto no backup sem validá-la com o número antigo', async () => {
+  const aparelho = criarAparelho();
+  const input = captura();
+  const path = await aparelho.service.salvarFoto(input);
+  aparelho.storage.setItem(`valor_${input.chaveLocal}`, '125.1234');
+  aparelho.storage.setItem(`concluido_${input.chaveLocal}`, 'true');
+  aparelho.storage.removeItem(`foto_pendente_${input.chaveLocal}`);
+  const salvar = aparelho.storage.setItem;
+  aparelho.storage.setItem = (key, value) => {
+    if (key.startsWith('foto_pendente_')) throw new Error('QuotaExceededError');
+    salvar(key, value);
+  };
+  await assert.rejects(aparelho.service.salvarFoto({ ...input, base64: 'bm92YQ==' }), /QuotaExceededError/);
+  assert.equal(aparelho.disco.get(`${Directory.Data}/${path}`), 'bm92YQ==');
+  assert.equal(aparelho.storage.getItem(`valor_${input.chaveLocal}`), null);
+  assert.equal(aparelho.storage.getItem(`concluido_${input.chaveLocal}`), null);
 });

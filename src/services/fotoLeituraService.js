@@ -27,21 +27,29 @@ export const criarFotoLeituraService = ({
     if (!chaveLocal || !base64) throw new Error('Foto ou identificação da unidade ausente.');
     if (novaCaptura) this.verificarSubstituicao({ chaveLocal, condominioId, unidadeId, servico });
 
-    const path = await backups.salvarFotoCondominio(condominioNome, fileName, base64);
-    const arquivo = await arquivos.stat({ path, directory: Directory.Data });
-    if (!arquivo.size) throw new Error('O aparelho não confirmou o arquivo da foto.');
-
-    storage.setItem(`foto_path_${chaveLocal}`, path);
-    storage.setItem(`foto_directory_${chaveLocal}`, 'DATA');
-    if (novaCaptura || storage.getItem(`concluido_${chaveLocal}`) !== 'true') {
-      storage.setItem(`foto_pendente_${chaveLocal}`, 'true');
+    let path;
+    try {
+      path = await backups.salvarFotoCondominio(condominioNome, fileName, base64);
+    } catch (err) {
+      if (err.fotoPreservadaPath) {
+        storage.setItem(`foto_path_${chaveLocal}`, err.fotoPreservadaPath);
+        storage.setItem(`foto_directory_${chaveLocal}`, 'DATA');
+      }
+      throw err;
     }
+    // O serviço oficial só retorna após conferir o destino final. Invalidar
+    // valores antigos antes dos novos metadados evita reaproveitá-los se faltar quota.
     if (novaCaptura) {
       const chaveLegada = `${chaveLocal.slice(0, chaveLocal.lastIndexOf('_'))}_${String(servico).toUpperCase()}`;
       for (const chave of [chaveLocal, chaveLegada]) {
         storage.removeItem(`valor_${chave}`);
         storage.removeItem(`concluido_${chave}`);
       }
+    }
+    storage.setItem(`foto_path_${chaveLocal}`, path);
+    storage.setItem(`foto_directory_${chaveLocal}`, 'DATA');
+    if (novaCaptura || storage.getItem(`concluido_${chaveLocal}`) !== 'true') {
+      storage.setItem(`foto_pendente_${chaveLocal}`, 'true');
     }
     return path;
   },
