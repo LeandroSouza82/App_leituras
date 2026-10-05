@@ -7,25 +7,42 @@ export const filesystemService = {
     return name.replace(/[^a-z0-9]/gi, '_');
   },
 
-  salvarFotoCondominio: async (condominioNome, fileName, base64Data) => {
+  salvarFotoCondominio: async (condominioNome, fileName, base64Data, arquivos = Filesystem) => {
     const safeCondo = filesystemService.sanitizeName(condominioNome);
     const dirPath = `${BASE_DIR}/${safeCondo}`;
     const filePath = `${dirPath}/${fileName}`;
+    const tempPath = `${filePath}.${crypto.randomUUID()}.tmp`;
 
     try {
-      await Filesystem.readdir({ path: dirPath, directory: Directory.Data });
+      await arquivos.readdir({ path: dirPath, directory: Directory.Data });
     } catch {
-      await Filesystem.mkdir({ path: dirPath, directory: Directory.Data, recursive: true });
+      await arquivos.mkdir({ path: dirPath, directory: Directory.Data, recursive: true });
     }
 
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
-    await Filesystem.writeFile({
-      path: filePath,
-      data: cleanBase64,
-      directory: Directory.Data,
-      recursive: true
-    });
+    // Não truncar uma foto existente antes de confirmar a nova gravação.
+    try {
+      await arquivos.writeFile({
+        path: tempPath,
+        data: cleanBase64,
+        directory: Directory.Data,
+        recursive: true
+      });
+      const arquivo = await arquivos.stat({ path: tempPath, directory: Directory.Data });
+      if (!arquivo.size) throw new Error('A gravação da foto retornou um arquivo vazio.');
+      await arquivos.rename({
+        from: tempPath,
+        to: filePath,
+        directory: Directory.Data,
+        toDirectory: Directory.Data
+      });
+    } catch (err) {
+      try {
+        await arquivos.deleteFile({ path: tempPath, directory: Directory.Data });
+      } catch {}
+      throw err;
+    }
 
     return filePath;
   },

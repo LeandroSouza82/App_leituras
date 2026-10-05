@@ -13,6 +13,7 @@ import { supabase } from '../../services/supabase';
 import { salvarLeituraOffline } from '../../services/syncService';
 import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
 import { filesystemService } from '../../services/filesystemService';
+import { FotoLeituraService } from '../../services/fotoLeituraService';
 import { UCondoImportService } from '../../services/ucondoImportService';
 import { customConfirm, customConfirmDestrutivo, customAlert } from '../CustomPrompt/CustomPrompt';
 import CustomCamera from '../CustomCamera/CustomCamera';
@@ -108,7 +109,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
   };
 
   const startLongPress = (e) => {
-    if (!concluido) return;
+    if (!concluido && !thumbnail) return;
 
     pointerStartPos.current = {
       x: e.clientX ?? (e.touches?.[0]?.clientX || 0),
@@ -185,7 +186,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
       <span className="apto-number">{apto}</span>
-      {concluido ? (
+      {thumbnail || concluido ? (
         <div className="concluido-container">
           {thumbnail ? (
             <img
@@ -200,9 +201,8 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
               <CheckCircle size={22} color="#16a34a" />
             </div>
           )}
-          <div className="concluido-label">
-            <CheckCircle size={12} />
-            ✓ OK
+          <div className="concluido-label" style={!concluido ? { color: '#b45309' } : {}}>
+            {concluido ? <><CheckCircle size={12} /> ✓ OK</> : 'Leitura pendente'}
           </div>
         </div>
       ) : (
@@ -223,6 +223,7 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 1. DECLARAÇÃO DE TODOS OS HOOKS NO TOPO ABSOLUTO
   const [fotosCapturadas, setFotosCapturadas] = useState({});
+  const origensFotosRef = useRef({});
   const [concluidosMemoria, setConcluidosMemoria] = useState({});
   const [leiturasValores, setLeiturasValores] = useState({});
   const [exportando, setExportando] = useState(false);
@@ -551,12 +552,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return unidadesPorTorre[torreAtiva] || [];
   }, [torreAtiva, unidadesPorTorre, listaCompleta]);
 
-  // Contador de conclusões (considera arquivo físico OU registro de conclusão persistente)
+  // Foto preservada com leitura pendente não representa uma unidade concluída.
   const unidadesConcluidasCount = useMemo(() => {
     return unidadesExibidas.filter(apto =>
-      Boolean(fotosCapturadas[apto]?.[tipoMedicaoAtivo] || concluidosMemoria[apto]?.[tipoMedicaoAtivo])
+      Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo])
     ).length;
-  }, [unidadesExibidas, fotosCapturadas, concluidosMemoria, tipoMedicaoAtivo]);
+  }, [unidadesExibidas, concluidosMemoria, tipoMedicaoAtivo]);
 
   // 2. FUNÇÕES AUXILIARES E HANDLERS
   const verificarFotosSalvas = async () => {
@@ -568,6 +569,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const capturadas = {};
       const valoresSalvos = {};
+      const falhasBackup = [];
+
+      // Restaura somente referências do ciclo ativo, inclusive fotos sem leitura.
+      // Não varre o backup histórico após a finalização do mês.
+      const fotosPermanentes = await FotoLeituraService.listarFotosAtivas(leitura.id);
+      for (const foto of fotosPermanentes) {
+        if (!capturadas[foto.unidade]) capturadas[foto.unidade] = {};
+        capturadas[foto.unidade][foto.servico] = foto.webUrl;
+      }
 
       // 1. LER DA NOVA PASTA (Organizada)
       try {
@@ -585,6 +595,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               const servico = match[2].toLowerCase();
               const fullPath = `${pastaCondominio}/${fileName}`;
 
+              if (capturadas[unidade]?.[servico]) continue;
+              const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
+              origensFotosRef.current[chaveLocal] = { path: fullPath, directory: Directory.Cache };
+              try {
+                await FotoLeituraService.garantirFoto({
+                  chaveLocal,
+                  condominioNome: leitura.nome,
+                  fileName,
+                  origem: { path: fullPath, directory: Directory.Cache },
+                });
+              } catch (err) {
+                falhasBackup.push(`${unidade} (${servico.toUpperCase()})`);
+              }
+
               const fileUriResult = await Filesystem.getUri({
                 path: fullPath,
                 directory: Directory.Cache
@@ -594,7 +618,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
               if (!capturadas[unidade]) capturadas[unidade] = {};
               capturadas[unidade][servico] = webUrl;
 
-              const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
               if (chaveLocal) {
                 const localVal = localStorage.getItem(`valor_${chaveLocal}`);
                 if (localVal) {
@@ -621,6 +644,19 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             // Se já achou na nova pasta, ignora o antigo
             if (capturadas[unidade]?.[servico]) continue;
 
+            const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
+            origensFotosRef.current[chaveLocal] = { path: fileName, directory: Directory.Data };
+            try {
+              await FotoLeituraService.garantirFoto({
+                chaveLocal,
+                condominioNome: leitura.nome,
+                fileName: `Apto${unidade}_${servico.toUpperCase()}.jpg`,
+                origem: { path: fileName, directory: Directory.Data },
+              });
+            } catch (err) {
+              falhasBackup.push(`${unidade} (${servico.toUpperCase()})`);
+            }
+
             const fileUriResult = await Filesystem.getUri({
               path: fileName,
               directory: Directory.Data
@@ -630,7 +666,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             if (!capturadas[unidade]) capturadas[unidade] = {};
             capturadas[unidade][servico] = webUrl;
 
-            const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
             if (chaveLocal) {
               const localVal = localStorage.getItem(`valor_${chaveLocal}`);
               if (localVal) {
@@ -675,14 +710,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       try {
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key && key.startsWith(`concluido_${leitura.id}_`)) {
+          if (key && key.startsWith(`concluido_${leitura.id}_`) && localStorage.getItem(key) === 'true') {
             // Formato: concluido_{leitura.id}_{unidadeId}_{tipoMedicao}
-            const partes = key.replace(`concluido_${leitura.id}_`, '').split('_');
-            if (partes.length >= 2) {
-              const unidade = partes[0];
-              const servico = partes[1].toLowerCase();
+            const identidade = key.slice(`concluido_${leitura.id}_`.length);
+            const separador = identidade.lastIndexOf('_');
+            if (separador > 0) {
+              const unidade = identidade.slice(0, separador);
+              const servico = identidade.slice(separador + 1).toLowerCase();
               if (!concluidosSalvos[unidade]) concluidosSalvos[unidade] = {};
-              concluidosSalvos[unidade][servico] = true;
+              concluidosSalvos[unidade][servico] = Boolean(valoresSalvos[unidade]?.[servico]);
             }
           }
         }
@@ -690,19 +726,27 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       }
       setConcluidosMemoria(concluidosSalvos);
 
-    } catch (ignored) {
+      if (falhasBackup.length) {
+        await customAlert(
+          `Estas fotos ainda estão no armazenamento temporário, mas o backup permanente falhou: ${falhasBackup.join(', ')}.\n\nVerifique o espaço no aparelho e tente salvar a leitura novamente.`,
+          'Backup da foto pendente'
+        );
+      }
+
+    } catch (err) {
       setFotosCapturadas({});
       setLeiturasValores({});
       setConcluidosMemoria({});
+      await customAlert('Não foi possível carregar as fotos salvas no aparelho: ' + err.message, 'Erro ao carregar fotos');
     }
   };
 
-  const handleUnitClick = (apto, concluido) => {
+  const handleUnitClick = (apto) => {
     setActiveApto(apto);
     // Verifica se realmente existe a foto no estado local
     const temFoto = fotosCapturadas[apto] && fotosCapturadas[apto][tipoMedicaoAtivo];
 
-    if (concluido && temFoto) {
+    if (temFoto) {
       setIsPreviewOpen(true);
     } else {
       // Se não tem foto (mesmo se 'concluido' constar no render/storage),
@@ -726,6 +770,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
       localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
+      const chaveFoto = gerarChaveLeituraLocal(leitura.id, unidadeId, servicoKey);
+      FotoLeituraService.esquecerFoto(chaveFoto);
+      delete origensFotosRef.current[chaveFoto];
 
       setFotosCapturadas((prev) => {
         const novo = { ...prev };
@@ -845,7 +892,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       if (!fotoUrl || fotoUrl.trim() === '') {
         await customAlert('Falha ao processar a foto. A imagem não foi anexada corretamente.');
-        return;
+        return false;
       }
 
       if (!valor) {
@@ -854,25 +901,18 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const newFileName = `Apto${unidadeId}_${tipoMedicaoAtivo.toUpperCase()}.jpg`;
 
-      let localFileName = fileNameOverride;
-
-      // 1. BACKUP LOCAL TOLERANTE A FALHAS (Lote Offline - Organizado via filesystemService)
-      // O bloco try/catch interno garante que uma falha no Filesystem não aborte o fluxo do leiturista.
-      if (fotoUrl.startsWith('data:image/jpeg;base64,')) {
-        try {
-          localFileName = await filesystemService.salvarFotoCondominio(leitura.nome, localFileName || newFileName, fotoUrl);
-        } catch (e) {
-          console.warn('[handleSaveReading] Backup físico da foto falhou silenciosamente. O fluxo continua.', e);
-        }
-      }
-
-      // Se o arquivo físico não pôde ser gerado (falha no FS ou foto não era base64),
-      // usa o nome canônico como referência para o payload, sem abortar.
-      if (!localFileName) {
-        localFileName = newFileName;
-      }
-
       const condId = leitura?.id || leitura?.condominio_id;
+      const chaveLocal = gerarChaveLeituraLocal(condId, unidadeId, tipoMedicaoAtivo);
+      const localFileName = await FotoLeituraService.garantirFoto({
+        chaveLocal,
+        condominioNome: leitura.nome,
+        fileName: fileNameOverride || newFileName,
+        base64: fotoUrl.startsWith('data:image/') ? fotoUrl : null,
+        origem: origensFotosRef.current[chaveLocal] || {
+          path: `FastLeituras/${sanitizeName(leitura.nome)}/${newFileName}`,
+          directory: Directory.Cache,
+        },
+      });
       const valorNumerico = parseLeituraNum(valor);
 
       if (valorNumerico === null) {
@@ -886,7 +926,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           const leitAnt = obterLeituraAnterior(condId, unidadeId, tipoMedicaoAtivo);
           if (leitAnt === null) return; // sem baseline: primeira leitura, permitir
           // Validação: bloquear somente se estritamente menor
-          if (valorNumerico < leitAnt) {
+          if (Math.round(valorNumerico * 10000) < Math.round(leitAnt * 10000)) {
             // Usa IIFE async para aguardar e depois retornar sinalizando bloqueio
             // Não é possível retornar de dentro de IIFE, então lança exceção especial
             throw Object.assign(new Error('LEITURA_MENOR_QUE_ANTERIOR'), {
@@ -905,18 +945,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // OFFLINE-FIRST DESACOPLADO: O salvamento no modal unitário guarda apenas no estado local.
       // O enfileiramento oficial para sync (salvarLeituraOffline) ocorrerá APENAS no Salvar Leituras (Global).
-
-      // Atualiza o estado para forçar o card a se manter preenchido com feedback visual
-      setConcluidosMemoria(prev => ({
-        ...prev,
-        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: true }
-      }));
-      setLeiturasValores(prev => ({
-        ...prev,
-        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor },
-        [`${unidadeId}_${tipoMedicaoAtivo}`]: valor // INJEÇÃO CRÍTICA PARA O VALIDADOR DE EXPORTAÇÃO
-      }));
-      // Mantém o preview da foto até o salvamento global das leituras.
 
       // NOVO: Persiste no LocalStorage (Garantia de Sobrevivência)
       try {
@@ -945,8 +973,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         console.error("Erro ao atualizar localStorage", e);
       }
 
-      const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidadeId, tipoMedicaoAtivo);
-
       if (!chaveLocal) {
         console.error(
           '[LEITURA LOCAL] Não foi possível gerar a chave de persistência'
@@ -960,6 +986,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           `concluido_${chaveLocal}`,
           'true'
         );
+        localStorage.removeItem(`foto_pendente_${chaveLocal}`);
         if (localFileName) {
           localStorage.setItem(
             `foto_path_${chaveLocal}`,
@@ -972,9 +999,20 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         }
       }
 
+      // Só confirma na interface depois que foto e leitura estão persistidas.
+      setConcluidosMemoria(prev => ({
+        ...prev,
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: true }
+      }));
+      setLeiturasValores(prev => ({
+        ...prev,
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: valor },
+        [`${unidadeId}_${tipoMedicaoAtivo}`]: valor
+      }));
       exibirToastSucesso();
       setIsPreviewOpen(false);
       setActiveApto(null);
+      return true;
 
     } catch (error) {
       if (error.message === 'LEITURA_MENOR_QUE_ANTERIOR') {
@@ -984,11 +1022,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           `A leitura atual não pode ser menor que a leitura anterior.\n\nLeitura anterior: ${fmtAnt}\nLeitura informada: ${fmtAt}\n\nCorrija o valor antes de continuar.`,
           'Leitura inválida'
         );
-        // NÃO salva, NÃO persiste, NÃO fecha — mantém usuário no fluxo
-        return;
+        // A foto já está preservada; a leitura inválida continua sem conclusão.
+        return false;
       }
       await customAlert('❌ Erro inesperado ao salvar: ' + error.message);
-      throw error;
+      return false;
     }
   };
 
@@ -999,6 +1037,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     setActiveApto(apto);
 
     try {
+      FotoLeituraService.verificarSubstituicao({
+        chaveLocal: gerarChaveLeituraLocal(leitura.id, apto, tipoMedicaoAtivo),
+        condominioId: leitura.id,
+        unidadeId: apto,
+        servico: tipoMedicaoAtivo,
+      });
       const photo = await Camera.getPhoto({
         quality: 30, // Compressão máxima para otimizar disco e banda (reduz a foto severamente)
         allowEditing: false,
@@ -1010,6 +1054,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // Passa a foto nativa convertida para a função de carimbar
       await handleCaptureAndSave(photo.dataUrl, null, apto);
     } catch (error) {
+      if (!/cancel/i.test(String(error?.message || error))) {
+        await customAlert('Não foi possível capturar a foto: ' + (error?.message || error));
+      }
     }
   };
 
@@ -1038,8 +1085,27 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       const { fotoWhatsApp, fotoBanco } = await ImageStampService.carimbarFotoComDados(base64, dadosUnidade);
 
-      // 2. Salva a FOTO WHATSAPP (pesada) no CACHE LOCAL para compartilhamento
-      await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
+      // Preserva a foto antes de abrir o campo de leitura. Erro de disco bloqueia
+      // o sucesso da captura, sem fingir que existe um backup permanente.
+      const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidadeId, tipoMedicaoAtivo);
+      await FotoLeituraService.salvarFoto({
+        chaveLocal,
+        condominioId: leitura.id,
+        condominioNome: leitura.nome,
+        unidadeId,
+        servico: tipoServico,
+        fileName,
+        base64: fotoBanco,
+        novaCaptura: true,
+      });
+
+      // A versão pesada é auxiliar. Sua falha não invalida a foto já preservada.
+      let falhaCache = false;
+      try {
+        await CameraService.salvarFotoEmPasta(fotoWhatsApp, pastaCondominio, fileName);
+      } catch (err) {
+        falhaCache = true;
+      }
 
       // 3. Limpeza de RAM imediata
       // (Variáveis de base64 agora saem de escopo naturalmente ao fechar a função)
@@ -1047,15 +1113,28 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // 3. Sucesso parcial — fecha a câmera
       setCustomCameraOpen(false);
 
-      // 4. Salva a FOTO BANCO (leve) apenas na Memória para a Interface
+      // 4. Exibe a FOTO BANCO (leve), já preservada no backup permanente.
       // Isso exibe a miniatura, aguardando o usuário digitar o valor da leitura.
       setFotosCapturadas((prev) => ({
         ...prev,
         [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: `data:image/jpeg;base64,${fotoBanco}` }
       }));
+      setConcluidosMemoria(prev => ({
+        ...prev,
+        [unidadeId]: { ...(prev[unidadeId] || {}), [tipoMedicaoAtivo]: false },
+      }));
+      setLeiturasValores(prev => {
+        const novo = { ...prev, [unidadeId]: { ...(prev[unidadeId] || {}) } };
+        delete novo[unidadeId][tipoMedicaoAtivo];
+        delete novo[`${unidadeId}_${tipoMedicaoAtivo}`];
+        return novo;
+      });
 
       // Abre automaticamente o modal de preview/digitação para a unidade capturada
       setIsPreviewOpen(true);
+      if (falhaCache) {
+        await customAlert('A foto foi salva no backup offline. Não foi possível salvar a cópia temporária em alta qualidade.', 'Foto preservada');
+      }
 
       // NÃO salva a leitura automaticamente nem a marca como concluída,
       // para evitar o erro de "Valor da leitura ausente."
@@ -1070,113 +1149,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleRetakeFoto = async () => {
-    try {
-      const unidadeId = String(activeApto).trim();
-      const tipoServico = tipoMedicaoAtivo.toUpperCase();
-      const servicoKey = tipoMedicaoAtivo.toLowerCase();
-
-      // 1. Deleta o arquivo físico novo
-      const safeCondName = sanitizeName(leitura.nome);
-      const pastaCondominio = `FastLeituras/${safeCondName}`;
-      const newFileName = `Apto${unidadeId}_${tipoServico}.jpg`;
-      try {
-        await Filesystem.deleteFile({
-          path: `${pastaCondominio}/${newFileName}`,
-          directory: Directory.Cache
-        });
-      } catch (e) {}
-
-      // 1.5. Deleta formato antigo se existir
-      const prefixoChave = `leitura_foto_${leitura.id}_${unidadeId}_${tipoServico}`;
-      const filesAntigos = await StorageService.listFiles(prefixoChave);
-      for (const file of filesAntigos) {
-        await StorageService.deleteFile(file);
-      }
-
-      // 2. Limpa da fila offline e localStorage
-      try {
-        const condominioIdAtual = String(leitura?.id ?? leitura?.condominio_id ?? '').trim();
-        const condominioNomeAtual = String(leitura?.nome ?? '').trim().toLowerCase();
-        ['fila_sync_auto', 'leituras_pendentes'].forEach((key) => {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const filaAtual = JSON.parse(raw);
-            if (Array.isArray(filaAtual)) {
-              const filaFiltrada = filaAtual.filter((item) => {
-                const itemCondominioId = String(item.condominio_id ?? item.condominioId ?? '').trim();
-                const itemCondominioNome = String(item.condominio_nome ?? item.condominioNome ?? '').trim().toLowerCase();
-                const mesmoCondominio = itemCondominioId && condominioIdAtual
-                  ? itemCondominioId === condominioIdAtual
-                  : !!(itemCondominioNome && condominioNomeAtual && itemCondominioNome === condominioNomeAtual);
-                const mesmaUnidade = String(item.unidade_id ?? item.unidadeId ?? '') === unidadeId;
-                const mesmoServico = (item.servico ?? item.tipoServico ?? '').toUpperCase() === tipoServico;
-                return !(mesmoCondominio && mesmaUnidade && mesmoServico);
-              });
-              localStorage.setItem(key, JSON.stringify(filaFiltrada));
-            }
-          }
-        });
-      } catch (err) {
-      }
-
-      // 3. Limpa no Supabase se possível (sem travar a UI se offline)
-      if (supabase) {
-        try {
-          const { data: authData } = await supabase.auth.getUser();
-          const userId = authData?.user?.id;
-          if (userId && leitura?.nome) {
-            await supabase
-              .from('leituras_detalhes')
-              .delete()
-              .eq('condominio_nome', leitura.nome)
-              .eq('leiturista_id', userId)
-              .eq('unidade_id', unidadeId)
-              .eq('servico', tipoServico);
-          }
-        } catch (supaErr) {
-        }
-      }
-
-      // 4. Limpa chaves e memórias
-      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoMedicaoAtivo}`);
-      localStorage.removeItem(`valor_${leitura.id}_${unidadeId}_${tipoServico}`);
-      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${servicoKey}`);
-      localStorage.removeItem(`concluido_${leitura.id}_${unidadeId}_${tipoServico}`);
-
-      setFotosCapturadas((prev) => {
-        const novo = { ...prev };
-        if (novo[unidadeId]) {
-          delete novo[unidadeId][tipoMedicaoAtivo];
-          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
-        }
-        return novo;
-      });
-
-      setConcluidosMemoria((prev) => {
-        const novo = { ...prev };
-        if (novo[unidadeId]) {
-          delete novo[unidadeId][servicoKey];
-          delete novo[unidadeId][tipoServico];
-          if (Object.keys(novo[unidadeId]).length === 0) delete novo[unidadeId];
-        }
-        return novo;
-      });
-
-      setLeiturasValores((prev) => {
-        const novo = { ...prev };
-        if (novo[unidadeId]) {
-          delete novo[unidadeId][tipoMedicaoAtivo];
-        }
-        return novo;
-      });
-
-      // 5. Fecha o preview e abre a câmera customizada in-app para nova captura
-      setIsPreviewOpen(false);
-      handleDispararCamera(unidadeId);
-    } catch (err) {
-      setIsPreviewOpen(false);
-      handleDispararCamera(activeApto);
-    }
+    // Cancelar a câmera preserva a foto e a leitura anteriores. A substituição
+    // só acontece quando uma nova captura foi gravada no backup permanente.
+    setIsPreviewOpen(false);
+    await handleDispararCamera(activeApto);
   };
 
   // Reset do estado ativo/temporário das unidades do condomínio atual (encerramento do ciclo)
@@ -1198,6 +1174,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           if (
             key.startsWith(`valor_${condominioId}_`) ||
             key.startsWith(`concluido_${condominioId}_`) ||
+            key.startsWith(`foto_path_${condominioId}_`) ||
+            key.startsWith(`foto_directory_${condominioId}_`) ||
+            key.startsWith(`foto_pendente_${condominioId}_`) ||
             key.startsWith(`temp_leituras_${condominioId}`) ||
             key.startsWith(`fotos_temp_${condominioId}`)
           ) {
@@ -1403,12 +1382,30 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
       // listaDeUnidades: fonte canônica de unidades para o loop de processarServico.
       // Exportar NÃO rotaciona leitura anterior — isso é responsabilidade da lixeira (Fase 3B).
-      const storageAnteriorExterno = localStorage.getItem(`leituras_anteriores_${condId}`);
-      let listaDeUnidades = storageAnteriorExterno
-        ? JSON.parse(storageAnteriorExterno)
-        : unidadesCarregadas.map(u => ({
-            unidade: String(u.unidade || u.nome || u).trim(),
-          }));
+      const listaDeUnidades = listaCompleta.map(unidade => ({ unidade: String(unidade).trim() }));
+
+      // Confirma todas as fotos físicas antes de enfileirar a primeira leitura.
+      // Uma referência antiga ou uma miniatura não pode gerar sucesso parcial silencioso.
+      etapaAtual = 'CONFIRMAR_FOTOS_OFFLINE';
+      const fotosPreparadas = new Map();
+      for (const { unidade } of listaDeUnidades) {
+        for (const srv of servicosParaExportar) {
+          const chaveLocal = gerarChaveLeituraLocal(condId, unidade, srv);
+          const fileName = `Apto${unidade}_${srv.toUpperCase()}.jpg`;
+          const foto = fotosCapturadas[unidade]?.[srv];
+          const path = await FotoLeituraService.garantirFoto({
+            chaveLocal,
+            condominioNome: leitura.nome,
+            fileName,
+            base64: foto?.startsWith('data:image/') ? foto : null,
+            origem: origensFotosRef.current[chaveLocal] || {
+              path: `FastLeituras/${sanitizeName(leitura.nome)}/${fileName}`,
+              directory: Directory.Cache,
+            },
+          });
+          fotosPreparadas.set(chaveLocal, path);
+        }
+      }
 
       // -------------------------------------------------
       // PREPARA DADOS PARA LEITURAS_DETALHES
@@ -1448,10 +1445,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const localFileName = `Apto${apString}_${srvUpper}.jpg`;
 
         const chaveLocal = gerarChaveLeituraLocal(leitura.id, apString, servicoAtual);
-        const photoPathReal = chaveLocal ? localStorage.getItem(`foto_path_${chaveLocal}`) : null;
+        const photoPathReal = fotosPreparadas.get(chaveLocal);
 
         if (!photoPathReal) {
-          return;
+          throw new Error(`Foto não confirmada para ${apString} (${srvUpper}).`);
         }
 
         // -----------------------
@@ -1510,7 +1507,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // -----------------------
         etapaAtual = 'ENFILEIRAR';
 
-        await salvarLeituraOffline(payload, null, localFileName);
+        const enfileirada = await salvarLeituraOffline(payload, null, localFileName);
+        if (!enfileirada) throw new Error(`Não foi possível enfileirar ${apString} (${srvUpper}). A foto permanece no backup offline.`);
       };
 
 
@@ -1849,7 +1847,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   .map((apto) => {
                   const status = fotosCapturadas[apto] || {};
                   const thumbnail = status[tipoMedicaoAtivo];
-                  const concluido = Boolean(thumbnail || concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
+                  const concluido = Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
 
                   return (
                     <UnidadeCard
