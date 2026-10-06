@@ -130,7 +130,8 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
 
     setIsSaving(true);
     try {
-      await onSaveReading(leituraValor);
+      const salvo = await onSaveReading(leituraValor);
+      if (salvo === false) return;
       setLeituraValor('');
       onClose();
     } catch (error) {
