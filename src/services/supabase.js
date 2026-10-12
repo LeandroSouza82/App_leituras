@@ -9,4 +9,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Mesma biblioteca/configuração oficial; cada ciclo conserva a identidade de origem.
+export const criarClienteParaToken = (token, assertActive) => createClient(supabaseUrl, supabaseAnonKey, {
+  accessToken: async () => { assertActive(); return token; },
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  global: {
+    fetch: (...args) => { assertActive(); return globalThis.fetch(...args); },
+  },
+});
+
 export { supabase };

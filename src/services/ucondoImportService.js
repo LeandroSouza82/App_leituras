@@ -1,7 +1,9 @@
 import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
-import { supabase } from './supabase';
+import { supabase, criarClienteParaToken } from './supabase';
+import { exigirContaOffline, capturarContextoSync } from './offlineQueueStorage';
+import { getCurrentMonthKey } from '../utils/mesLeituras';
 import { customAlert, customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
 import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
 import { deduplicarGavetaAnteriores } from './leiturasAnterioresService';
@@ -19,8 +21,11 @@ export { normalizarNome, calcularDistanciaLevenstein };
 
 const sincronizarUnidadesNoSupabase = async (condominioId, nomesUnidades) => {
   if (!supabase || !condominioId || !Array.isArray(nomesUnidades)) return;
+  const contexto = await capturarContextoSync(supabase.auth, criarClienteParaToken);
+  if (!contexto) return;
+  const { client } = contexto;
 
-  const { data: unidadesExistentes, error: erroConsulta } = await supabase
+  const { data: unidadesExistentes, error: erroConsulta } = await client
     .from('unidades')
     .select('id, nome')
     .eq('condominio_id', condominioId);
@@ -42,7 +47,7 @@ const sincronizarUnidadesNoSupabase = async (condominioId, nomesUnidades) => {
     }));
 
   if (unidadesParaInserir.length > 0) {
-    const { error: erroInsercao } = await supabase
+    const { error: erroInsercao } = await client
       .from('unidades')
       .insert(unidadesParaInserir);
 
@@ -56,7 +61,7 @@ const sincronizarUnidadesNoSupabase = async (condominioId, nomesUnidades) => {
     .filter(Boolean);
 
   if (idsObsoletos.length > 0) {
-    const { error: erroExclusao } = await supabase
+    const { error: erroExclusao } = await client
       .from('unidades')
       .delete()
       .in('id', idsObsoletos);
@@ -234,6 +239,8 @@ export const UCondoImportService = {
    * @param {'AGUA'|'GAS'|'ENERGIA'|null} [servico=null]
    */
   async persistirUnidadesLocal(condominioId, unidades, servico = null) {
+    const owner = exigirContaOffline();
+    const mesReferencia = getCurrentMonthKey();
     if (!condominioId || !Array.isArray(unidades)) return;
 
     // Normaliza entrada: aceita string pura (compatibilidade) ou objeto {unidade, leituraAnterior}
@@ -259,6 +266,7 @@ export const UCondoImportService = {
       );
     }
 
+    exigirContaOffline(owner);
     // 1. LocalStorage — lista de unidades
     const storageKey = `unidades_${condominioId}`;
     localStorage.setItem(storageKey, JSON.stringify(nomesUnidades));
@@ -308,7 +316,7 @@ export const UCondoImportService = {
 
       localStorage.setItem(chaveServico, JSON.stringify(leiturasParaFila));
       // Enfileira para sincronização com Supabase (tabela unidades_leituras) via offline queue
-      enfileirarLeiturasAnteriores(String(condominioId), leiturasParaFila, servicoValido);
+      enfileirarLeiturasAnteriores(String(condominioId), leiturasParaFila, servicoValido, { userId: owner, mesReferencia });
     }
 
     // Notifica LeituraFotoModal e outros componentes para reidratar a tela instantaneamente
@@ -482,6 +490,10 @@ export const UCondoImportService = {
                 data: new Date().toISOString(),
                 completo: false
               };
+              const owner = exigirContaOffline();
+              condominioSalvo.user_id = owner;
+              condominioSalvo._offline_user_id = owner;
+              condominioSalvo.mes_referencia = getCurrentMonthKey();
               enfileirarNovoCondominio(condominioSalvo);
             } else {
               throw err;

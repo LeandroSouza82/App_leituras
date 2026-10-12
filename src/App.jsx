@@ -34,6 +34,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { logoutGoogleNativo } from './services/googleAuthService';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { restaurarDadosParaUsoOffline } from './services/restauracaoOfflineService';
+import { prepararContaOffline, encerrarContaOffline } from './services/offlineQueueStorage';
 
 const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationActionHandled }) => {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
@@ -67,7 +68,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     editarLeitura,
     recarregarCondominios,
   } = useLeituras(showToast);
-  const { isOnline, pendentesCount, salvarLeituraOffline } = useOfflineSync();
+  const { isOnline, pendentesCount, revisaoOffline, salvarLeituraOffline } = useOfflineSync();
   const totalPendentes = useMemo(
     () => leiturasHoje.length + leiturasAmanha.length + leiturasAtrasadas.length,
     [leiturasHoje, leiturasAmanha, leiturasAtrasadas]
@@ -86,10 +87,11 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
         showToast('Leitura salva localmente. Ela será sincronizada quando a conexão voltar.', 'success');
       } else {
         showToast('Não foi possível guardar a leitura localmente. Tente novamente.', 'error');
+        return false;
       }
 
       setAbaAtiva('leituras');
-      return;
+      return true;
     }
 
     const leituraSalva = await adicionarLeitura(dados);
@@ -102,10 +104,14 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
 
       if (salvo) {
         showToast('O envio falhou, mas a leitura foi salva localmente e será sincronizada depois.', 'warning');
+      } else {
+        showToast('Não foi possível guardar o cadastro. Os campos foram mantidos para tentar novamente.', 'error');
+        return false;
       }
     }
 
     setAbaAtiva('leituras');
+    return true;
   };
 
   const handleImportSuccess = (quantidade) => {
@@ -283,6 +289,11 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
             {pendentesCount > 0 && <span> · {pendentesCount} pendente{pendentesCount > 1 ? 's' : ''}</span>}
           </div>
         )}
+        {revisaoOffline && (
+          <div className="offline-banner offline" role="alert">
+            Há pendências que precisam de conferência. Os dados foram preservados no aparelho e aguardam recuperação antes do envio.
+          </div>
+        )}
         {isOnline && restauracaoOffline.ativa && (
           <div className="offline-banner online" role="status" aria-live="polite">
             Preparando dados para uso offline
@@ -429,6 +440,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
 
 const App = () => {
   const [session, setSession] = useState(null);
+  const [erroContaOffline, setErroContaOffline] = useState(null);
   const [showSplash, setShowSplash] = useState(true);
   const [retornoConfirmacao, setRetornoConfirmacao] = useState(0);
   const [legalConsentStatus, setLegalConsentStatus] = useState({
@@ -453,7 +465,15 @@ const App = () => {
   }, []);
 
   const handleLoginSuccess = useCallback((nextSession) => {
-    setSession(nextSession);
+    try {
+      if (nextSession?.user?.id) prepararContaOffline(nextSession.user.id);
+      else encerrarContaOffline();
+      setErroContaOffline(null);
+      setSession(nextSession);
+    } catch (error) {
+      setSession(null);
+      setErroContaOffline(error.message);
+    }
   }, []);
 
   const revalidarPermissaoNotificacao = useCallback(async () => {
@@ -559,6 +579,8 @@ const App = () => {
   }, []);
 
   const handleLogout = useCallback(async () => {
+    // Interrompe novos envios antes de revogar a sessão. Filas/fotos não são cache descartável.
+    encerrarContaOffline();
     if (Capacitor.isNativePlatform()) {
       try {
         await logoutGoogleNativo();
@@ -581,12 +603,13 @@ const App = () => {
     if (supabase) {
       const { error } = await supabase.auth.signOut();
       if (error) {
+        if (session?.user?.id) prepararContaOffline(session.user.id);
         return false;
       }
     }
 
     sessionStorage.clear();
-    localStorage.clear();
+    setErroContaOffline(null);
     setSession(null);
     setPendingNotificationAction(null);
     setNotificationPermissionStatus({
@@ -598,7 +621,7 @@ const App = () => {
     });
     setShowSplash(true);
     return true;
-  }, []);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     // Detecta retorno via deep link de confirmação de e-mail
@@ -615,6 +638,7 @@ const App = () => {
     }
 
     let isMounted = true;
+    let authEventOccurred = false;
 
     const loadSession = async () => {
       try {
@@ -624,10 +648,11 @@ const App = () => {
           throw error;
         }
 
-        if (isMounted) {
-          setSession(currentSession ?? null);
+        if (isMounted && !authEventOccurred) {
+          handleLoginSuccess(currentSession ?? null);
         }
       } catch (err) {
+        if (authEventOccurred) return;
         const mensagem = String(err?.message || '');
         const offlineByNetwork = mensagem.includes('Failed to fetch')
           || mensagem.includes('fetch')
@@ -643,6 +668,7 @@ const App = () => {
 
         if (isMounted) {
           setSession(null);
+          encerrarContaOffline();
         }
       }
     };
@@ -650,12 +676,14 @@ const App = () => {
     loadSession();
 
     const { data: { subscription } = {} } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      authEventOccurred = true;
       if (isMounted) {
         if (nextSession) {
-          setSession(nextSession);
+          handleLoginSuccess(nextSession);
         } else if (event === 'SIGNED_OUT') {
           // Apenas zera a sessão se o logout foi disparado de forma explícita pelo usuário
           setSession(null);
+          encerrarContaOffline();
         } else if (!navigator.onLine) {
           // Mantém a sessão local em caso de oscilação ou reconexão de rede
         }
@@ -669,10 +697,19 @@ const App = () => {
         subscription.unsubscribe();
       }
     };
-  }, []);
+  }, [handleLoginSuccess]);
 
   if (showSplash) {
     return <SplashScreen onFinish={handleSplashFinish} />;
+  }
+
+  if (erroContaOffline) {
+    return (
+      <div className="legal-consent-loading" role="alert">
+        <p>{erroContaOffline}</p>
+        <button type="button" onClick={handleLogout}>Sair e entrar na conta original</button>
+      </div>
+    );
   }
 
   if (!session) {

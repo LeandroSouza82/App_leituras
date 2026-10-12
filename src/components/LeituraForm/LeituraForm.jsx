@@ -51,6 +51,7 @@ const stripCurrencyFormatting = (value) =>
 
 const LeituraForm = ({ adicionarLeitura, onImportSuccess, onRecarregarCondominios }) => {
   const [form, setForm] = useState(initialState);
+  const [salvando, setSalvando] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
 
   const handleImportSuccess = (total) => {
@@ -93,8 +94,9 @@ const LeituraForm = ({ adicionarLeitura, onImportSuccess, onRecarregarCondominio
     }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    if (salvando) return;
 
     if (!form.nome.trim() || !form.apartamentos || !form.valor || !form.diaLeitura) {
       showToast('Preencha todos os campos antes de adicionar uma leitura.', 'error');
@@ -107,18 +109,25 @@ const LeituraForm = ({ adicionarLeitura, onImportSuccess, onRecarregarCondominio
       return;
     }
 
-    adicionarLeitura({
-      nome: form.nome.trim(),
-      apartamentos: form.apartamentos,
-      valor: valorNumerico,
-      diaLeitura: form.diaLeitura,
-      tipoLeitura: form.tipoLeitura,
-      endereco: form.endereco.trim(),
-      instrucoesAcesso: form.instrucoesAcesso.trim(),
-      contatoSindico: form.contatoSindico.trim(),
-    });
+    setSalvando(true);
+    try {
+      const salvou = await adicionarLeitura({
+        nome: form.nome.trim(),
+        apartamentos: form.apartamentos,
+        valor: valorNumerico,
+        diaLeitura: form.diaLeitura,
+        tipoLeitura: form.tipoLeitura,
+        endereco: form.endereco.trim(),
+        instrucoesAcesso: form.instrucoesAcesso.trim(),
+        contatoSindico: form.contatoSindico.trim(),
+      });
 
-    setForm(initialState);
+      if (salvou === true) setForm(initialState);
+    } catch (error) {
+      showToast('Não foi possível guardar o cadastro. Os campos foram mantidos.', 'error');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -205,9 +214,9 @@ const LeituraForm = ({ adicionarLeitura, onImportSuccess, onRecarregarCondominio
               </div>
 
               {/* BOTÃO SUBMIT DENTRO DO CARD */}
-              <button type="submit" className="submit-btn">
+              <button type="submit" className="submit-btn" disabled={salvando}>
                 <Plus size={18} />
-                Adicionar leitura
+                {salvando ? 'Salvando...' : 'Adicionar leitura'}
               </button>
 
             </form>

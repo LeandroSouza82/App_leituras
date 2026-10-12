@@ -8,6 +8,7 @@ import {
 } from '../services/condominioService';
 import { NotificationService } from '../services/notificationService';
 import { useDataLeituras } from './useDataLeituras';
+import { lerFilaPersistida, gravarFilaPersistida, exigirContaOffline, contaOfflineAtiva, donoDoItem } from '../services/offlineQueueStorage';
 import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
@@ -20,8 +21,9 @@ const extrairNumeroDia = (diaTexto) => {
 const aplicarMesAtual = (dados, mesReferencia) => {
   let pendencias = [];
   try {
-    const fila = JSON.parse(localStorage.getItem('pendencias_offline') || '[]');
-    if (Array.isArray(fila)) pendencias = fila;
+    const fila = lerFilaPersistida('pendencias_offline');
+    const owner = contaOfflineAtiva();
+    pendencias = owner ? fila.filter(item => donoDoItem(item) === owner) : [];
   } catch (error) {
     console.warn('Erro ao ler marcações offline', error);
   }
@@ -137,15 +139,19 @@ export const useLeituras = (onFeedback = () => {}) => {
       if (falhaDeRede) {
 
         try {
-          const pendencias = JSON.parse(localStorage.getItem('pendencias_offline') || '[]');
+          const owner = exigirContaOffline();
+          const pendencias = lerFilaPersistida('pendencias_offline');
           pendencias.push({
             id,
             completo: novoCompleto,
             mes_referencia: mesDoToque,
+            _offline_user_id: owner,
             data: new Date().toISOString(),
           });
-          localStorage.setItem('pendencias_offline', JSON.stringify(pendencias));
+          gravarFilaPersistida('pendencias_offline', pendencias);
         } catch (storageError) {
+          setLeituras(previous => previous.map(item => item.id === id ? leituraAnterior : item));
+          onFeedback('Não foi possível guardar a alteração offline. O status anterior foi preservado.', 'error');
         }
 
         return;
