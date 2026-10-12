@@ -1,0 +1,37 @@
+name: Integridade das filas offline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'vite.config.js'
+      - '.github/workflows/offline-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/offline-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências do lock existente
+        run: npm ci --legacy-peer-deps
+      - name: Testar persistência, identidade, períodos e regressões de fotos
+        run: npm test
+      - name: Compilar interface sem publicar ou executar serviços
+        run: npm run build

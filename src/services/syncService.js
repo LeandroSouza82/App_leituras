@@ -1,6 +1,11 @@
 import { Network } from '@capacitor/network';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { supabase } from './supabase';
+import { supabase, criarClienteParaToken } from './supabase';
+import {
+  lerFilaPersistida, gravarFilaPersistida, enfileirarLeituraPersistida,
+  removerItemConfirmado, atualizarItemPersistido, donoDoItem, periodoDoItem,
+  capturarContextoSync, exigirContaOffline,
+} from './offlineQueueStorage';
 import { temConexaoInternetUtil } from './networkQualityService';
 import {
   sincronizarLeiturasAnterioresOffline,
@@ -23,24 +28,8 @@ let networkListenerInitialized = false;
 
 // ─── Helpers de Fila no localStorage ────────────────────────────────────────
 
-export const readFilaSync = () => {
-  try {
-    const raw = localStorage.getItem(FILA_SYNC_KEY);
-    if (!raw || raw === 'null' || raw === 'undefined') return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-export const writeFilaSync = (items) => {
-  try {
-    const safeItems = Array.isArray(items) ? items : [];
-    localStorage.setItem(FILA_SYNC_KEY, JSON.stringify(safeItems));
-  } catch (err) {
-  }
-};
+export const readFilaSync = () => lerFilaPersistida(FILA_SYNC_KEY);
+export const writeFilaSync = (items) => gravarFilaPersistida(FILA_SYNC_KEY, items);
 
 // ─── Conversor Base64 para Blob ─────────────────────────────────────────────
 
@@ -127,15 +116,11 @@ async function comprimirFotoLegadaParaSync(base64) {
  */
 export async function salvarLeituraOffline(payload, base64Image = null, fileName = null) {
   try {
-    let resolvedUserId = payload.leiturista_id || null;
-
-    if (!resolvedUserId) {
-      try {
-        const { data } = await supabase.auth.getSession();
-        resolvedUserId = data?.session?.user?.id || null;
-      } catch (_) {
-        resolvedUserId = null;
-      }
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    const resolvedUserId = exigirContaOffline(data?.session?.user?.id);
+    if (payload.leiturista_id && payload.leiturista_id !== resolvedUserId) {
+      throw new Error('A leitura pertence a outra conta.');
     }
 
     if (base64Image && fileName) {
@@ -165,26 +150,18 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
       fileName: fileName || payload.fileName || null,
       photoPath: payload.photoPath || null,
       photoDirectory: payload.photoDirectory || null,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      _offline_user_id: resolvedUserId,
+      mes_referencia: payload.mes_referencia || periodoDoItem({ data_leitura: payload.data_leitura || new Date().toISOString() }),
     };
 
-    const filaAtual = readFilaSync();
-    
-    // Evita duplicatas apenas dentro do mesmo condomínio + unidade + serviço.
-    // Apartamentos com o mesmo número em condomínios diferentes nunca podem colidir.
-    const indexExistente = filaAtual.findIndex(
-      f => String(f.condominio_id || '') === String(itemFila.condominio_id || '') &&
-           f.unidade_id === itemFila.unidade_id &&
-           f.servico === itemFila.servico
-    );
-
-    if (indexExistente >= 0) {
-      filaAtual[indexExistente] = itemFila;
-    } else {
-      filaAtual.push(itemFila);
+    // O banco usa data_leitura para o período. Nunca declarar um mês diferente da data.
+    if (periodoDoItem({ data_leitura: itemFila.data_leitura }) !== itemFila.mes_referencia) {
+      throw new Error('O mês da leitura difere da data de captura. A foto foi preservada para conferência.');
     }
 
-    writeFilaSync(filaAtual);
+    exigirContaOffline(resolvedUserId);
+    enfileirarLeituraPersistida(itemFila);
 
     // Dispara evento instantâneo para espelhar a Interface Otimista na Busca Online
     window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
@@ -316,13 +293,7 @@ async function localizarFotoFisicaDaFila(item) {
       }
 
       // Atualiza o item da fila para apontar para a versão comprimida em DATA
-      const filaAtual = readFilaSync();
-      const idx = filaAtual.findIndex(f => f.id === item.id);
-      if (idx !== -1) {
-        filaAtual[idx].photoPath = backupPath;
-        filaAtual[idx].photoDirectory = 'DATA';
-        writeFilaSync(filaAtual);
-      }
+      atualizarItemPersistido(FILA_SYNC_KEY, item, { photoPath: backupPath, photoDirectory: 'DATA' });
 
       return { fileResult: backupFileResult, photoPath: backupPath, photoDirectory: Directory.Data };
     }
@@ -335,13 +306,7 @@ async function localizarFotoFisicaDaFila(item) {
 
     if (!mesmoCaminho) {
       // Corrige o item na fila para que próximas tentativas já usem o caminho real
-      const filaAtual = readFilaSync();
-      const idx = filaAtual.findIndex(f => f.id === item.id);
-      if (idx !== -1) {
-        filaAtual[idx].photoPath = candidato.photoPath;
-        filaAtual[idx].photoDirectory = dirKey;
-        writeFilaSync(filaAtual);
-      }
+      atualizarItemPersistido(FILA_SYNC_KEY, item, { photoPath: candidato.photoPath, photoDirectory: dirKey });
     }
 
     return { fileResult, photoPath: candidato.photoPath, photoDirectory: candidato.photoDirectory };
@@ -397,46 +362,22 @@ export async function sincronizarFilaEmBackground() {
     idsFilaNoInicio = new Set(fila.map(item => item.id));
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: true } }));
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user?.id) {
-      return;
-    }
-    const currentUserId = user.id;
+    const contexto = await capturarContextoSync(supabase.auth, criarClienteParaToken);
+    if (!contexto) return;
+    const { client, userId: currentUserId } = contexto;
 
     for (const item of [...fila]) {
       etapaSync = 'PROCESSAR_ITEM';
       let redeDegradadaNoItem = false;
       
       try {
-        if (item.leiturista_id && item.leiturista_id !== currentUserId) {
-          continue;
-        }
+        contexto.assertActive();
+        // Histórico sem dono/mês inequívoco permanece para conferência, sem adoção da sessão atual.
+        if (donoDoItem(item) !== currentUserId || !periodoDoItem(item)
+          || !item.data_leitura || periodoDoItem({ data_leitura: item.data_leitura }) !== periodoDoItem(item)) continue;
+        if (!item.db_id) throw new Error('Identificador da leitura ausente. Requer conferência antes de enviar.');
 
-        if (!item.leiturista_id) {
-          if (!item.condominio_id) {
-            continue;
-          }
-
-          const { data: condoPermitido, error: condoError } = await supabase
-            .from('condominios')
-            .select('id')
-            .eq('id', item.condominio_id)
-            .maybeSingle();
-
-          if (condoError || !condoPermitido) {
-            continue;
-          }
-
-          item.leiturista_id = currentUserId;
-          const filaAtualizada = readFilaSync();
-          const idx = filaAtualizada.findIndex(f => f.id === item.id);
-          if (idx !== -1) {
-            filaAtualizada[idx].leiturista_id = currentUserId;
-            writeFilaSync(filaAtualizada);
-          }
-        }
-
-        const leituristaEnvio = item.leiturista_id;
+        const leituristaEnvio = donoDoItem(item);
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
@@ -475,20 +416,15 @@ export async function sincronizarFilaEmBackground() {
                 item.db_id || item.id || `${item.condominio_id}_${item.unidade_id}_${item.servico}`
               );
               remotePath = `leituras/${identificadorRemoto}_${nomeStorage}`;
-              item.remotePath = remotePath;
-              const filaAtual = readFilaSync();
-              const idx = filaAtual.findIndex(f => f.id === item.id);
-              if (idx !== -1) {
-                filaAtual[idx].remotePath = remotePath;
-                writeFilaSync(filaAtual);
-              }
+              contexto.assertActive();
+              atualizarItemPersistido(FILA_SYNC_KEY, item, { remotePath });
             }
 
             let uploadSuccess = false;
             let lastUploadError = null;
 
             for (let attempt = 1; attempt <= 2; attempt++) {
-              const { error: uploadError } = await supabase.storage
+              const { error: uploadError } = await client.storage
                 .from('fotos_leituras')
                 .upload(remotePath, blob, { contentType: 'image/jpeg', upsert: true });
 
@@ -521,7 +457,7 @@ export async function sincronizarFilaEmBackground() {
             }
 
             etapaSync = 'OBTER_URL';
-            const { data: publicUrlData } = supabase.storage
+            const { data: publicUrlData } = client.storage
               .from('fotos_leituras')
               .getPublicUrl(remotePath);
 
@@ -545,7 +481,7 @@ export async function sincronizarFilaEmBackground() {
           data_leitura: item.data_leitura || new Date().toISOString()
         };
 
-        const { error: dbError } = await supabase
+        const { error: dbError } = await client
           .from('leituras_detalhes')
           .upsert([payloadEnvio], { onConflict: 'id' });
 
@@ -555,8 +491,8 @@ export async function sincronizarFilaEmBackground() {
 
         etapaSync = 'REMOVER_FILA';
         // 3. SUCESSO: Remove APENAS o item do array no localStorage.
-        const filaAtualizada = readFilaSync().filter(f => f.id !== item.id);
-        writeFilaSync(filaAtualizada);
+        contexto.assertActive();
+        removerItemConfirmado(FILA_SYNC_KEY, item);
 
         if (readFilaSync().length === 0) {
           try {
@@ -591,11 +527,11 @@ export async function sincronizarFilaEmBackground() {
   } catch (globalErr) {
     console.error('Erro global na sincronização:', globalErr);
   } finally {
-    const filaRestante = readFilaSync();
+    isSyncRunning = false;
+    let filaRestante = [];
+    try { filaRestante = readFilaSync(); } catch { /* Dados ilegíveis preservados. */ }
     const existemItensNovos = idsFilaNoInicio instanceof Set &&
       filaRestante.some(item => !idsFilaNoInicio.has(item.id));
-
-    isSyncRunning = false;
     window.dispatchEvent(new CustomEvent('syncStatus', { detail: { syncing: false } }));
 
     // Se novas leituras foram enfileiradas enquanto o snapshot atual estava em

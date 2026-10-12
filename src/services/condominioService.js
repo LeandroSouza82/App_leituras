@@ -202,10 +202,11 @@ export const deletarCondominio = async (id) => {
   }
 };
 
-export const alternarStatusLeitura = async (condominioId, mesReferencia = getCurrentMonthKey(), statusAtual = false) => {
+export const alternarStatusLeitura = async (condominioId, mesReferencia = getCurrentMonthKey(), statusAtual = false, contexto = null) => {
   try {
-    const client = requireSupabase();
-    const userId = await getAuthenticatedUserId();
+    contexto?.assertActive();
+    const client = contexto?.client || requireSupabase();
+    const userId = contexto?.userId || await getAuthenticatedUserId();
     const concluido = !statusAtual;
     const { data, error } = await client
       .from('leituras')

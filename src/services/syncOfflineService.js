@@ -1,6 +1,11 @@
 import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { temConexaoInternetUtil } from './networkQualityService';
-import { supabase } from './supabase';
+import { supabase, criarClienteParaToken } from './supabase';
+import { getCurrentMonthKey } from '../utils/mesLeituras';
+import {
+  lerFilaPersistida, gravarFilaPersistida, removerItemConfirmado,
+  donoDoItem, periodoDoItem, capturarContextoSync, exigirContaOffline,
+} from './offlineQueueStorage';
 import { normalizarNome } from './ucondoSpreadsheetMetadata';
 
 /**
@@ -29,37 +34,10 @@ let isSyncCondsRunning = false;
 
 // ─── Helpers de Fila ────────────────────────────────────────────────────────
 
-const lerFila = () => {
-  try {
-    const raw = localStorage.getItem(FILA_KEY);
-    if (!raw || raw === 'null' || raw === 'undefined') return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const gravarFila = (items) => {
-  try {
-    localStorage.setItem(FILA_KEY, JSON.stringify(Array.isArray(items) ? items : []));
-  } catch { /* Espaço insuficiente — falha silenciosa */ }
-};
-
-const lerFilaCondominios = () => {
-  try {
-    const raw = localStorage.getItem(FILA_COND_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-};
-
-const gravarFilaCondominios = (items) => {
-  try {
-    localStorage.setItem(FILA_COND_KEY, JSON.stringify(Array.isArray(items) ? items : []));
-  } catch {}
-};
+const lerFila = () => lerFilaPersistida(FILA_KEY);
+const gravarFila = (items) => gravarFilaPersistida(FILA_KEY, items);
+const lerFilaCondominios = () => lerFilaPersistida(FILA_COND_KEY);
+const gravarFilaCondominios = (items) => gravarFilaPersistida(FILA_COND_KEY, items);
 
 // ─── 1. Enfileirar (chamado durante importação offline) ──────────────────────
 
@@ -71,22 +49,29 @@ const gravarFilaCondominios = (items) => {
  * @param {Array<{unidade: string, leitura_anterior: number}>} leiturasArray
  * @param {'AGUA'|'GAS'|'ENERGIA'} servico
  */
-export const enfileirarLeiturasAnteriores = (condominioId, leiturasArray, servico = 'AGUA') => {
-  if (!condominioId || !Array.isArray(leiturasArray) || leiturasArray.length === 0) return;
+export const enfileirarLeiturasAnteriores = (condominioId, leiturasArray, servico = 'AGUA', contexto = {}) => {
+  if (!condominioId || !Array.isArray(leiturasArray) || leiturasArray.length === 0) throw new Error('Lote de leituras anteriores inválido.');
+  const owner = exigirContaOffline(contexto.userId);
+  const mesReferencia = contexto.mesReferencia || getCurrentMonthKey();
+  if (!periodoDoItem({ mes_referencia: mesReferencia })) throw new Error('Mês da fila inválido.');
+  if (leiturasArray.some(l => l.mes_referencia && l.mes_referencia !== mesReferencia)) throw new Error('Separe as leituras anteriores por mês antes de enfileirar.');
 
   const novoItem = {
     id: `lant_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     condominioId: String(condominioId),
     servico: String(servico).toUpperCase(),
-    leituras: leiturasArray,
+    leituras: leiturasArray.map(l => ({ ...l, mes_referencia: mesReferencia })),
+    _offline_user_id: owner,
+    mes_referencia: mesReferencia,
     timestamp: Date.now(),
   };
 
   const fila = lerFila();
 
-  // Substitui item existente para o mesmo condomínio+serviço (evita duplicatas na fila)
+  // Substitui apenas o mesmo condomínio/serviço/conta/mês.
   const idxExistente = fila.findIndex(
     (f) => f.condominioId === novoItem.condominioId && f.servico === novoItem.servico
+      && donoDoItem(f) === owner && periodoDoItem(f) === mesReferencia
   );
 
   if (idxExistente >= 0) {
@@ -95,14 +80,26 @@ export const enfileirarLeiturasAnteriores = (condominioId, leiturasArray, servic
     fila.push(novoItem);
   }
 
-  gravarFila(fila);
+  return gravarFila(fila);
 };
 
 export const enfileirarNovoCondominio = (condominioData) => {
-  if (!condominioData || !condominioData.id) return;
+  if (!condominioData?.id) throw new Error('Condomínio offline sem identificador.');
+  const owner = exigirContaOffline(condominioData.user_id || condominioData._offline_user_id);
+  if (donoDoItem(condominioData) && donoDoItem(condominioData) !== owner
+    || condominioData.user_id && condominioData._offline_user_id && condominioData.user_id !== condominioData._offline_user_id) {
+    throw new Error('O condomínio tem identificação de conta divergente.');
+  }
+  const item = {
+    ...condominioData, user_id: owner, _offline_user_id: owner,
+    mes_referencia: condominioData.mes_referencia || getCurrentMonthKey(),
+  };
+  if (!periodoDoItem(item)) throw new Error('Mês do condomínio offline inválido.');
   const fila = lerFilaCondominios();
-  fila.push(condominioData);
-  gravarFilaCondominios(fila);
+  const index = fila.findIndex(f => f.id === item.id && donoDoItem(f) === owner && periodoDoItem(f) === item.mes_referencia);
+  if (index < 0) fila.push(item);
+  else fila[index] = item;
+  return gravarFilaCondominios(fila);
 };
 
 // ─── 2. Sincronizar em Background (chamado quando a rede volta) ──────────────
@@ -125,19 +122,16 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
     const fila = lerFila();
     if (fila.length === 0) return;
 
-    // Obtém o usuário autenticado uma única vez para todo o lote
-    let activeUserId = null;
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id || null;
-    } catch { /* Mantém null */ }
-
-    if (!activeUserId) return;
+    const contexto = await capturarContextoSync(supabase.auth, criarClienteParaToken);
+    if (!contexto) return;
+    const { client, userId: activeUserId } = contexto;
 
     for (const item of [...fila]) {
       try {
+        contexto.assertActive();
+        if (donoDoItem(item) !== activeUserId || !periodoDoItem({ mes_referencia: item.mes_referencia })) continue;
         // 1. Busca as unidades cadastradas para este condomínio
-        const { data: unidadesBanco, error: errUnidades } = await supabase
+        const { data: unidadesBanco, error: errUnidades } = await client
           .from('unidades')
           .select('id, nome, condominio_id')
           .eq('condominio_id', item.condominioId);
@@ -161,27 +155,26 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
               unidade: unidadeBanco.nome,
               condominio_nome: item.condominioId, // Campo usado conforme schema existente
               leitura_anterior: leitura.leitura_anterior,
-              mes_referencia: leitura.mes_referencia || null, // Garante que o mês correto suba para o BD
+              mes_referencia: item.mes_referencia, // Mês fixado na importação, sem recalcular na reconexão.
               leiturista_id: activeUserId,
               servico: item.servico,
             });
           }
         }
 
-        if (loteParaEnvio.length === 0) {
-          // Nenhuma unidade bateu — descarta da fila para não ficar em loop eterno
-          const filaAtualizada = lerFila().filter((f) => f.id !== item.id);
-          gravarFila(filaAtualizada);
+        if (loteParaEnvio.length !== item.leituras.length) {
+          console.warn('[syncOfflineService] Lote incompleto: unidades sem correspondência. Pendência preservada.');
           continue;
         }
 
         // 3. Guarda os registros anteriores para removê-los somente após o novo lote existir.
-        const { data: registrosAnteriores, error: erroConsultaAnteriores } = await supabase
+        const { data: registrosAnteriores, error: erroConsultaAnteriores } = await client
           .from('unidades_leituras')
           .select('id')
           .eq('condominio_nome', item.condominioId)
           .eq('leiturista_id', activeUserId)
-          .eq('servico', item.servico);
+          .eq('servico', item.servico)
+          .eq('mes_referencia', item.mes_referencia);
 
         if (erroConsultaAnteriores) {
           console.warn(`[syncOfflineService] Falha ao consultar lote anterior de ${item.condominioId}:`, erroConsultaAnteriores);
@@ -190,7 +183,7 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
         }
 
         // 4. Insere o novo lote antes de excluir o anterior, evitando janela de perda.
-        const { error: insertError } = await supabase
+        const { error: insertError } = await client
           .from('unidades_leituras')
           .insert(loteParaEnvio);
 
@@ -203,19 +196,20 @@ export const sincronizarLeiturasAnterioresOffline = async () => {
 
         const idsAnteriores = (registrosAnteriores || []).map((row) => row.id).filter(Boolean);
         if (idsAnteriores.length > 0) {
-          const { error: erroExclusaoAnteriores } = await supabase
+          const { error: erroExclusaoAnteriores } = await client
             .from('unidades_leituras')
             .delete()
             .in('id', idsAnteriores);
 
           if (erroExclusaoAnteriores) {
             console.warn(`[syncOfflineService] Novo lote salvo, mas o lote anterior não pôde ser removido:`, erroExclusaoAnteriores);
+            continue;
           }
         }
 
         // 5. Sucesso — remove apenas este item da fila
-        const filaAtualizada = lerFila().filter((f) => f.id !== item.id);
-        gravarFila(filaAtualizada);
+        contexto.assertActive();
+        removerItemConfirmado(FILA_KEY, item);
 
       } catch (itemErr) {
         console.warn('[syncOfflineService] Erro inesperado ao processar item da fila:', itemErr);
@@ -240,17 +234,14 @@ export const sincronizarCondominiosOffline = async () => {
     const fila = lerFilaCondominios();
     if (fila.length === 0) return;
 
-    let activeUserId = null;
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      activeUserId = user?.id || null;
-    } catch {}
-
-    if (!activeUserId) return; // Precisa do user pra criar
+    const contexto = await capturarContextoSync(supabase.auth, criarClienteParaToken);
+    if (!contexto) return;
+    const { client, userId: activeUserId } = contexto;
 
     for (const cond of [...fila]) {
       try {
+        contexto.assertActive();
+        if (donoDoItem(cond) !== activeUserId || !periodoDoItem({ mes_referencia: cond.mes_referencia })) continue;
         // Formata para o Supabase
         const dbCond = {
            id: cond.id,
@@ -265,13 +256,12 @@ export const sincronizarCondominiosOffline = async () => {
            telefone_sindico: cond.contatoSindico || null,
         };
 
-        const { error: insertErr } = await supabase.from('condominios').insert(dbCond);
+        const { error: insertErr } = await client.from('condominios').insert(dbCond);
         
         if (!insertErr || insertErr.code === '23505') { // 23505 = unique_violation (já existe)
            // Cria a leitura do mês no formato canônico, somente se ainda não existir.
-           const hoje = new Date();
-           const mesReferencia = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
-           const { data: leituraExistente, error: leituraConsultaError } = await supabase
+           const mesReferencia = cond.mes_referencia;
+           const { data: leituraExistente, error: leituraConsultaError } = await client
              .from('leituras')
              .select('id')
              .eq('condominio_id', cond.id)
@@ -286,7 +276,7 @@ export const sincronizarCondominiosOffline = async () => {
            }
 
            if (!leituraExistente || leituraExistente.length === 0) {
-             const { error: leituraInsertError } = await supabase.from('leituras').insert({
+             const { error: leituraInsertError } = await client.from('leituras').insert({
                condominio_id: cond.id,
                user_id: activeUserId,
                mes_referencia: mesReferencia,
@@ -301,8 +291,8 @@ export const sincronizarCondominiosOffline = async () => {
            }
 
            // Remove da fila
-           const filaAtualizada = lerFilaCondominios().filter((c) => c.id !== cond.id);
-           gravarFilaCondominios(filaAtualizada);
+           contexto.assertActive();
+           removerItemConfirmado(FILA_COND_KEY, cond);
         } else {
            console.warn(`[syncOffline] Falha ao inserir condomínio ${cond.nome}:`, insertErr);
            if (!(await temConexaoInternetUtil(2500))) break;

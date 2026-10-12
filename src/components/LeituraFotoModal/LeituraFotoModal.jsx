@@ -11,6 +11,7 @@ import { StorageService } from '../../services/storageService';
 import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { salvarLeituraOffline } from '../../services/syncService';
+import { lerFilaPersistida, exigirContaOffline, periodoDoItem, obterIdentificadorLeitura } from '../../services/offlineQueueStorage';
 import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
 import { filesystemService } from '../../services/filesystemService';
 import { FotoLeituraService } from '../../services/fotoLeituraService';
@@ -1416,11 +1417,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       // PREPARA DADOS PARA LEITURAS_DETALHES
       // -------------------------------------------------
       etapaAtual = 'MONTAR_PAYLOAD';
-      const filaAtual = JSON.parse(localStorage.getItem('fila_sync_auto') || '[]');
+      const filaAtual = lerFilaPersistida('fila_sync_auto');
       const leiturasDbIds = JSON.parse(localStorage.getItem('leituras_db_ids') || '{}');
 
       const ano = leitura?.ano_referencia || new Date().getFullYear();
       const mes = leitura?.mes_referencia || (new Date().getMonth() + 1);
+      const mesReferencia = leitura?.mesReferencia
+        || (/^\d{4}-\d{2}$/.test(String(mes)) ? String(mes) : `${ano}-${String(mes).padStart(2, '0')}`);
+      if (!periodoDoItem({ mes_referencia: mesReferencia })) throw new Error('Mês da leitura inválido.');
+      const owner = exigirContaOffline();
 
       // -------------------------------------------------
       // PROCESSA CADA SERVIÇO
@@ -1465,8 +1470,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (!srvUpper) throw new Error('servico ausente');
         if (!ano) throw new Error('ano_referencia ausente');
         if (!mes) throw new Error('mes_referencia ausente');
-        const chaveLeitura = `${condId}|${apString}|${srvUpper}|${ano}|${mes}`;
-
         // -----------------------
         // GERAR UUID
         // -----------------------
@@ -1474,21 +1477,12 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
           throw new Error('crypto.randomUUID indisponível neste ambiente');
         }
-        let dbIdExistente = leiturasDbIds[chaveLeitura];
+        const { key: chaveLeitura, id: dbIdExistente } = obterIdentificadorLeitura({
+          leiturista_id: owner, condominio_id: condId, unidade_id: apString,
+          servico: srvUpper, mes_referencia: mesReferencia,
+        }, filaAtual, leiturasDbIds, () => crypto.randomUUID());
 
-        if (!dbIdExistente) {
-          const itemPendente = filaAtual.find(f =>
-            f.unidade_id === apString &&
-            f.servico === srvUpper &&
-            f.condominio_id === condId
-          );
-          if (itemPendente && itemPendente.db_id) {
-            dbIdExistente = itemPendente.db_id;
-          }
-        }
-
-        if (!dbIdExistente) {
-          dbIdExistente = crypto.randomUUID();
+        if (leiturasDbIds[chaveLeitura] !== dbIdExistente) {
           leiturasDbIds[chaveLeitura] = dbIdExistente;
           localStorage.setItem('leituras_db_ids', JSON.stringify(leiturasDbIds));
         }
@@ -1500,7 +1494,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           unidade_id: apString,
           servico: srvUpper,
           leitura_atual: valNumerico,
-          leiturista_id: null,
+          leiturista_id: owner,
+          mes_referencia: mesReferencia,
           data_leitura: new Date().toISOString(),
           fileName: localFileName,
           photoPath: photoPathReal,
