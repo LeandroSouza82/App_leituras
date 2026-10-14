@@ -13,7 +13,7 @@ export const ShareIntentService = {
    * Inicializa o listener para capturar arquivos quando o app é aberto por um Intent externo.
    * @param {Function} onFileReceived - Callback executado quando um arquivo é processado.
    */
-  async init(onFileReceived) {
+  async init(onFileReceived, onError) {
     const generation = ++listenerGeneration;
 
     if (listenerHandle) {
@@ -21,44 +21,35 @@ export const ShareIntentService = {
       listenerHandle = null;
     }
 
-    // Listener para o evento de abertura via URL/File URI
-    const handle = await App.addListener('appUrlOpen', async (data) => {
+    // Cada entrega nativa tem URI própria; evita duplicação entre evento e abertura inicial.
+    const entregas = new Set();
+    const receberArquivo = async (data) => {
+      const fileUri = data?.url;
+      if (typeof fileUri !== 'string' ||
+          (!fileUri.startsWith('content://') && !fileUri.startsWith('file://'))) return;
+      if (generation !== listenerGeneration || entregas.has(fileUri)) return;
+      entregas.add(fileUri);
 
       try {
-        const fileUri = data.url;
-
-        // Valida se o URI é de um arquivo (content:// ou file://)
-        if (!fileUri.startsWith('content://') && !fileUri.startsWith('file://')) {
-          return;
+        // No Android, a leitura nativa respeita o ContentResolver e dispensa fetch(file://).
+        const resultado = await Filesystem.readFile({ path: fileUri });
+        if (typeof resultado?.data !== 'string' || !resultado.data) {
+          throw new Error('O arquivo recebido está vazio ou indisponível.');
         }
-
-        let arrayBuffer;
-        try {
-          // Tenta buscar o arquivo via fetch (muito comum em Intents do Android)
-          const response = await fetch(fileUri);
-          const blob = await response.blob();
-          arrayBuffer = await blob.arrayBuffer();
-        } catch (e) {
-          // Fallback usando o Filesystem do Capacitor se necessário
-          const readFileResult = await Filesystem.readFile({ path: fileUri });
-          if (readFileResult && readFileResult.data) {
-            arrayBuffer = 'data:application/octet-stream;base64,' + readFileResult.data;
-          }
-        }
-
-        let fileName = fileUri.substring(fileUri.lastIndexOf('/') + 1) || `shared_${Date.now()}.xlsx`;
-        fileName = decodeURIComponent(fileName.split('?')[0]);
-
-        if (arrayBuffer && onFileReceived) {
-          onFileReceived({
-            name: fileName,
-            data: arrayBuffer,
-            originalUri: fileUri
-          });
-        }
+        const fileName = decodeURIComponent(fileUri.substring(fileUri.lastIndexOf('/') + 1).split('?')[0]);
+        if (generation !== listenerGeneration) return;
+        await onFileReceived?.({
+          name: fileName || `shared_${Date.now()}.xlsx`,
+          data: 'data:application/octet-stream;base64,' + resultado.data,
+          originalUri: fileUri,
+        });
       } catch (error) {
+        entregas.delete(fileUri);
+        console.warn('[ShareIntentService] Falha ao receber planilha:', error);
+        if (generation === listenerGeneration) await onError?.(error);
       }
-    });
+    };
+    const handle = await App.addListener('appUrlOpen', receberArquivo);
 
     if (generation !== listenerGeneration) {
       await handle.remove();
@@ -66,6 +57,13 @@ export const ShareIntentService = {
     }
 
     listenerHandle = handle;
+    try {
+      // Recupera também o arquivo que abriu o app antes da montagem da tela autenticada.
+      await receberArquivo(await App.getLaunchUrl());
+    } catch (error) {
+      console.warn('[ShareIntentService] Falha ao consultar abertura inicial:', error);
+      if (generation === listenerGeneration) await onError?.(error);
+    }
     return handle;
   },
 

@@ -1,12 +1,14 @@
 package com.fastleituras.app;
 
 import android.content.ContentResolver;
+import android.content.ClipData;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.util.Log;
+import android.widget.Toast;
 import com.getcapacitor.BridgeActivity;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,8 +19,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // O Bridge captura a URI inicial durante super.onCreate: prepare o arquivo antes.
         handleIntent(getIntent());
+        super.onCreate(savedInstanceState);
     }
 
     @Override
@@ -46,6 +49,19 @@ public class MainActivity extends BridgeActivity {
             incomingUri = (Uri) intent.getParcelableExtra(Intent.EXTRA_STREAM);
         } else if (Intent.ACTION_VIEW.equals(action)) {
             incomingUri = intent.getData();
+            if (incomingUri != null && !"content".equals(incomingUri.getScheme()) && !"file".equals(incomingUri.getScheme())) return;
+        }
+
+        if (Intent.ACTION_SEND.equals(action) && incomingUri == null) {
+            ClipData clipData = intent.getClipData();
+            if (clipData != null && clipData.getItemCount() > 0) {
+                incomingUri = clipData.getItemAt(0).getUri();
+            }
+            if (incomingUri == null) incomingUri = intent.getData();
+        }
+
+        if (Intent.ACTION_SEND.equals(action) && incomingUri == null) {
+            Toast.makeText(this, "Nenhum arquivo recebido. Baixe a planilha e compartilhe pelo aplicativo Arquivos.", Toast.LENGTH_LONG).show();
         }
 
         if (incomingUri != null) {
@@ -61,9 +77,12 @@ public class MainActivity extends BridgeActivity {
                     if (getBridge() != null) {
                         getBridge().onNewIntent(intent);
                     }
+                } else {
+                    Toast.makeText(this, "Não foi possível acessar a planilha. Baixe o arquivo novamente e tente compartilhar.", Toast.LENGTH_LONG).show();
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Erro ao processar URI de compartilhamento", e);
+                Toast.makeText(this, "Não foi possível receber a planilha. Tente compartilhar pelo aplicativo Arquivos.", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -75,32 +94,34 @@ public class MainActivity extends BridgeActivity {
             if (fileName == null || fileName.isEmpty()) {
                 fileName = "shared_" + System.currentTimeMillis() + ".xlsx";
             }
+            fileName = fileName.replace('\\', '_').replace('/', '_');
 
             File targetDir = new File(getFilesDir(), "planilhas_recebidas");
             if (!targetDir.exists()) {
-                targetDir.mkdirs();
+                if (!targetDir.mkdirs()) throw new java.io.IOException("Não foi possível criar a pasta de recebimento");
             }
 
-            File destFile = new File(targetDir, fileName);
+            File deliveryDir = new File(targetDir, java.util.UUID.randomUUID().toString());
+            if (!deliveryDir.mkdirs()) throw new java.io.IOException("Não foi possível criar a pasta do arquivo");
+            File destFile = new File(deliveryDir, fileName);
 
-            InputStream inputStream = resolver.openInputStream(uri);
-            FileOutputStream outputStream = new FileOutputStream(destFile);
-
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
+            try (InputStream inputStream = resolver.openInputStream(uri)) {
+                if (inputStream == null) throw new java.io.IOException("Arquivo indisponível");
+                try (FileOutputStream outputStream = new FileOutputStream(destFile)) {
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                    }
+                }
             }
-
-            outputStream.flush();
-            outputStream.close();
-            inputStream.close();
+            if (destFile.length() == 0) throw new java.io.IOException("Arquivo vazio");
 
             Log.d(TAG, "Arquivo copiado com sucesso para: " + destFile.getAbsolutePath());
             return Uri.fromFile(destFile);
         } catch (Exception e) {
             Log.e(TAG, "Falha ao copiar URI para armazenamento interno: " + uri, e);
-            return uri;
+            return null;
         }
     }
 
