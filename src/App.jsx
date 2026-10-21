@@ -67,6 +67,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     deletarLeitura,
     editarLeitura,
     recarregarCondominios,
+    preparandoCiclos,
   } = useLeituras(showToast);
   const { isOnline, pendentesCount, revisaoOffline, salvarLeituraOffline } = useOfflineSync();
   const totalPendentes = useMemo(
@@ -279,6 +280,12 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     setFocarAtrasadoAuto(true);
     onNotificationActionHandled?.();
   }, [pendingNotificationAction, leituras.length, onNotificationActionHandled]);
+
+  if (preparandoCiclos) {
+    return <div className="app-shell" role="status" aria-live="polite">
+      <p>Preparando as leituras do mês e preservando o ciclo anterior…</p>
+    </div>;
+  }
 
   return (
     <>

@@ -8,17 +8,18 @@ const bundled = await build({
     contents: `export * from './src/services/syncService.js';
       export * from './src/services/syncOfflineService.js';
       export * from './src/services/offlineQueueStorage.js';
-      export * from './src/hooks/useOfflineSync.js';`,
+      export * from './src/hooks/useOfflineSync.js';
+      export { cicloMensalService } from './src/services/cicloMensalService.js';`,
     resolveDir: process.cwd(),
   },
   bundle: true, write: false, platform: 'node', format: 'esm',
   plugins: [{ name: 'offline-test-boundaries', setup(plugin) {
-    plugin.onResolve({ filter: /supabase$|networkQualityService$|CustomPrompt$|^@capacitor\/(network|filesystem)$|^react$/ }, args =>
+    plugin.onResolve({ filter: /supabase(?:\.js)?$|networkQualityService(?:\.js)?$|CustomPrompt$|^@capacitor\/(network|filesystem)$|^react$/ }, args =>
       ({ path: args.path, namespace: 'offline-test' }));
     plugin.onLoad({ filter: /.*/, namespace: 'offline-test' }, args => {
       const prefix = 'const f = globalThis.__offlineFixture; ';
-      if (/supabase$/.test(args.path)) return { contents: prefix + 'export const supabase=f.supabase; export const criarClienteParaToken=f.createClient;' };
-      if (/networkQualityService$/.test(args.path)) return { contents: prefix + 'export const temConexaoInternetUtil=async()=>f.online;' };
+      if (/supabase(?:\.js)?$/.test(args.path)) return { contents: prefix + 'export const supabase=f.supabase; export const criarClienteParaToken=f.createClient;' };
+      if (/networkQualityService(?:\.js)?$/.test(args.path)) return { contents: prefix + 'export const temConexaoInternetUtil=async()=>f.online;' };
       if (/CustomPrompt$/.test(args.path)) return { contents: 'export const customAlert=async()=>{};' };
       if (/filesystem$/.test(args.path)) return { contents: prefix + 'export const Filesystem=f.files; export const Directory={Data:"DATA",Cache:"CACHE"}; export const Encoding={UTF8:"utf8"};' };
       if (/network$/.test(args.path)) return { contents: 'export const Network={addListener:async()=>({remove(){}})};' };
@@ -265,4 +266,40 @@ test('SDK oficial conserva token A mesmo se a sessão global mudar e bloqueia fe
     globalThis.fetch = originalFetch;
     production.supabase.auth.stopAutoRefresh();
   }
+});
+
+
+test('virada mensal completa offline mantém fila antiga, arquiva foto e enfileira a anterior no mês novo', async () => {
+  const { f, mod } = await fixture();
+  const condominio = { id: 'cond-1', nome: 'Condo' };
+  await mod.cicloMensalService.processar({ condominio, mesAtual: '2026-09' });
+  const leituraAntiga = leitura({ photoPath: 'Backups/Condo/AptoA-101_AGUA.jpg', photoDirectory: 'DATA' });
+  assert.equal(await mod.salvarLeituraOffline(leituraAntiga), true);
+  const filaAnterior = structuredClone(mod.readFilaSync());
+  localStorage.setItem('valor_cond-1_A-101_agua', '228.665');
+  localStorage.setItem('concluido_cond-1_A-101_agua', 'true');
+  localStorage.setItem('foto_path_cond-1_A-101_agua', leituraAntiga.photoPath);
+  const disco = new Map([['DATA/' + leituraAntiga.photoPath, 'foto anterior']]);
+  Object.assign(f.files, {
+    readdir: async () => ({ files: [] }),
+    mkdir: async () => {},
+    stat: async ({ path, directory }) => {
+      const data = disco.get(`${directory}/${path}`);
+      if (!data) throw new Error('File does not exist');
+      return { size: data.length };
+    },
+    copy: async ({ from, directory, to, toDirectory }) => disco.set(`${toDirectory}/${to}`, disco.get(`${directory}/${from}`)),
+    writeFile: async ({ path, directory, data }) => disco.set(`${directory}/${path}`, data),
+    readFile: async ({ path, directory }) => ({ data: disco.get(`${directory}/${path}`) }),
+  });
+  assert.equal((await mod.cicloMensalService.processar({ condominio, mesAtual: '2026-10' })).promovidas, 1);
+  assert.equal(localStorage.getItem('valor_cond-1_A-101_agua'), null);
+  assert.deepEqual(mod.readFilaSync(), filaAnterior);
+  const lote = JSON.parse(localStorage.getItem('fila_sync_leituras_anteriores'))[0];
+  assert.equal(lote.mes_referencia, '2026-10');
+  assert.equal(lote._offline_user_id, 'conta-A');
+  assert.equal(lote.leituras[0].leitura_anterior, 228.665);
+  assert.equal(disco.get('DATA/' + leituraAntiga.photoPath), 'foto anterior');
+  assert.equal([...disco.keys()].some(key => /2026-09.*AptoA-101_AGUA.jpg/.test(key)), true);
+  assert.equal(f.requests.length, 0);
 });
