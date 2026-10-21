@@ -166,6 +166,8 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
         await customAlert('Erro ao importar planilha compartilhada: ' + (err?.message || ''));
         showToast('Erro ao importar planilha: ' + (err?.message || ''), 'error');
       }
+    }, () => {
+      showToast('Não foi possível ler a planilha compartilhada. Baixe o arquivo novamente ou importe pelo aplicativo Arquivos.', 'error');
     }).catch((error) => {
       console.warn('[App] Falha ao iniciar recebimento de planilhas:', error);
     });
