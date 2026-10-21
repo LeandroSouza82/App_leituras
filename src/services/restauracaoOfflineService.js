@@ -123,6 +123,8 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
 
   for (const [chaveGrupo, leituras] of gruposApp) {
     const [condominioId, servico] = chaveGrupo.split('__');
+    // Um ciclo local (inclusive ainda offline) é mais recente que a restauração.
+    if (localStorage.getItem(`leituras_anteriores_${condominioId}_${servico}`) !== null) continue;
     localStorage.setItem(
       `leituras_anteriores_${condominioId}_${servico}`,
       JSON.stringify(leituras)

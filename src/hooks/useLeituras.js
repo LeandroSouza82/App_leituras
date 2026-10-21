@@ -10,6 +10,7 @@ import { NotificationService } from '../services/notificationService';
 import { useDataLeituras } from './useDataLeituras';
 import { lerFilaPersistida, gravarFilaPersistida, exigirContaOffline, contaOfflineAtiva, donoDoItem } from '../services/offlineQueueStorage';
 import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
+import { cicloMensalService } from '../services/cicloMensalService';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -42,39 +43,71 @@ export const useLeituras = (onFeedback = () => {}) => {
     [dadosLeituras, mesReferencia]
   );
   const [reloadKey, setReloadKey] = useState(0);
+  const [mesPreparado, setMesPreparado] = useState(null);
+  const [preparandoCiclos, setPreparandoCiclos] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-
-    // 1. CARREGAMENTO INSTANTÂNEO OFF-LINE (CACHE)
-    try {
-      const cachedData = localStorage.getItem('condominios_cache');
-      if (cachedData && isMounted) {
-        setLeituras(aplicarMesAtual(JSON.parse(cachedData), mesReferencia));
+    setPreparandoCiclos(true);
+    const prepararCiclos = async dados => {
+      const preparados = [];
+      for (const condominio of dados) {
+        if (!isMounted) return [];
+        try {
+          await cicloMensalService.processar({ condominio, mesAtual: mesReferencia });
+          preparados.push({ ...condominio, cicloPendente: null });
+        } catch (error) {
+          preparados.push({ ...condominio, cicloPendente: error.message });
+          onFeedback(`${condominio.nome}: ${error.message}`, 'warning');
+        }
       }
-    } catch (e) {
-      console.warn("Erro ao ler cache local de condominios", e);
-    }
-    setCacheCarregado(true);
+      return preparados;
+    };
 
-    // 2. BUSCA EM BACKGROUND NO SUPABASE (Silenciosa)
-    buscarCondominios(mesReferencia)
-      .then((dados) => {
-        if (isMounted) {
-          const atuais = aplicarMesAtual(dados, mesReferencia);
-          setLeituras(atuais);
-          localStorage.setItem('condominios_cache', JSON.stringify(atuais));
+    const carregar = async () => {
+      let preparados = [];
+      // Finaliza primeiro os ciclos locais, inclusive sem rede, antes de abrir cards.
+      try {
+        const cachedData = localStorage.getItem('condominios_cache');
+        if (cachedData && isMounted) {
+          preparados = await prepararCiclos(JSON.parse(cachedData));
+          if (isMounted) setLeituras(aplicarMesAtual(preparados, mesReferencia));
         }
-      })
-      .catch((error) => {
-        // Se houver erro de rede, mas já temos cache, silencie o erro para não travar a UI
-        if (isMounted) {
-          const hasCache = !!localStorage.getItem('condominios_cache');
-          if (!hasCache) {
-             onFeedback(error.message, 'error');
+      } catch (e) {
+        console.warn("Erro ao ler cache local de condominios", e);
+      }
+      if (!isMounted) return;
+      setCacheCarregado(true);
+      setMesPreparado(mesReferencia);
+      setPreparandoCiclos(false);
+
+      // 2. BUSCA EM BACKGROUND NO SUPABASE (Silenciosa)
+      buscarCondominios(mesReferencia)
+        .then(async (dados) => {
+          if (isMounted) {
+            // Não repetir uma limpeza em background enquanto o usuário edita.
+            const conhecidos = new Map(preparados.map(item => [String(item.id), item]));
+            const novos = await prepararCiclos(dados.filter(item => !conhecidos.has(String(item.id))));
+            if (!isMounted) return;
+            const ciclos = new Map(novos.map(item => [String(item.id), item]));
+            const atuais = aplicarMesAtual(dados.map(item => ({ ...item,
+              cicloPendente: (conhecidos.get(String(item.id)) || ciclos.get(String(item.id)))?.cicloPendente || null,
+            })), mesReferencia);
+            setLeituras(atuais);
+            localStorage.setItem('condominios_cache', JSON.stringify(atuais));
           }
-        }
-      });
+        })
+        .catch((error) => {
+          // Se houver erro de rede, mas já temos cache, silencie o erro para não travar a UI
+          if (isMounted) {
+            const hasCache = !!localStorage.getItem('condominios_cache');
+            if (!hasCache) {
+               onFeedback(error.message, 'error');
+            }
+          }
+        });
+    };
+    carregar();
 
     return () => {
       isMounted = false;
@@ -101,6 +134,8 @@ export const useLeituras = (onFeedback = () => {}) => {
   const adicionarLeitura = async (novaLeitura) => {
     try {
       const leitura = await salvarCondominio(novaLeitura);
+      try { await cicloMensalService.processar({ condominio: leitura, mesAtual: getCurrentMonthKey() }); }
+      catch (error) { onFeedback(error.message, 'warning'); }
       setLeituras((previous) => [leitura, ...previous]);
       return leitura;
     } catch (error) {
@@ -277,5 +312,6 @@ export const useLeituras = (onFeedback = () => {}) => {
     deletarLeitura,
     editarLeitura,
     recarregarCondominios,
+    preparandoCiclos: preparandoCiclos || mesPreparado !== mesReferencia,
   };
 };

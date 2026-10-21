@@ -12,7 +12,7 @@ import { ImageStampService } from '../../services/imageStampService';
 import { supabase } from '../../services/supabase';
 import { salvarLeituraOffline } from '../../services/syncService';
 import { lerFilaPersistida, exigirContaOffline, periodoDoItem, obterIdentificadorLeitura } from '../../services/offlineQueueStorage';
-import { sincronizarLeiturasNuvemParaLocal, rotacionarLeituraAnteriorLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
+import { sincronizarLeiturasNuvemParaLocal, obterLeituraAnterior, obterMapaLeiturasAnteriores, deduplicarGavetaAnteriores } from '../../services/leiturasAnterioresService';
 import { filesystemService } from '../../services/filesystemService';
 import { FotoLeituraService } from '../../services/fotoLeituraService';
 import { UCondoImportService } from '../../services/ucondoImportService';
@@ -21,6 +21,8 @@ import CustomCamera from '../CustomCamera/CustomCamera';
 import { parseLeituraNumerica, formatarLeitura4Casas } from '../../utils/leituraNumerica';
 import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
 import { obterServicosAtivos } from '../../utils/servicosCondominio';
+import { cicloMensalService, cicloJaFinalizado } from '../../services/cicloMensalService';
+import { getCurrentMonthKey } from '../../utils/mesLeituras';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -361,6 +363,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     if (isOpen && leitura) {
       const carregarDadosIniciais = async () => {
         try {
+          const cicloCondId = leitura?.id || leitura?.condominio_id;
+          if (!localStorage.getItem(`ciclo_mensal_${cicloCondId}`)) {
+            await cicloMensalService.processar({ condominio: leitura, mesAtual: getCurrentMonthKey() });
+          }
           // 1. Carregar status das fotos salvas no FS
           verificarFotosSalvas();
 
@@ -580,39 +586,88 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         capturadas[foto.unidade][foto.servico] = foto.webUrl;
       }
 
-      // 1. LER DA NOVA PASTA (Organizada)
-      try {
-        const { files: pastaFiles } = await Filesystem.readdir({
-          path: pastaCondominio,
-          directory: Directory.Cache
-        });
+      if (!cicloJaFinalizado(leitura.id)) {
+        // 1. LER DA NOVA PASTA (Organizada)
+        try {
+          const { files: pastaFiles } = await Filesystem.readdir({
+            path: pastaCondominio,
+            directory: Directory.Cache
+          });
 
-        for (const fileObj of pastaFiles) {
-          const fileName = fileObj.name || fileObj;
-          if (fileName.endsWith('.jpg')) {
-            const match = fileName.match(/^Apto(.+)_([a-zA-Z]+)\.jpg$/);
-            if (match) {
-              const unidade = match[1];
-              const servico = match[2].toLowerCase();
-              const fullPath = `${pastaCondominio}/${fileName}`;
+          for (const fileObj of pastaFiles) {
+            const fileName = fileObj.name || fileObj;
+            if (fileName.endsWith('.jpg')) {
+              const match = fileName.match(/^Apto(.+)_([a-zA-Z]+)\.jpg$/);
+              if (match) {
+                const unidade = match[1];
+                const servico = match[2].toLowerCase();
+                const fullPath = `${pastaCondominio}/${fileName}`;
 
+                if (capturadas[unidade]?.[servico]) continue;
+                const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
+                origensFotosRef.current[chaveLocal] = { path: fullPath, directory: Directory.Cache };
+                try {
+                  await FotoLeituraService.garantirFoto({
+                    chaveLocal,
+                    condominioNome: leitura.nome,
+                    fileName,
+                    origem: { path: fullPath, directory: Directory.Cache },
+                  });
+                } catch (err) {
+                  falhasBackup.push(`${unidade} (${servico.toUpperCase()})`);
+                }
+
+                const fileUriResult = await Filesystem.getUri({
+                  path: fullPath,
+                  directory: Directory.Cache
+                });
+                const webUrl = Capacitor.convertFileSrc(fileUriResult.uri);
+
+                if (!capturadas[unidade]) capturadas[unidade] = {};
+                capturadas[unidade][servico] = webUrl;
+
+                if (chaveLocal) {
+                  const localVal = localStorage.getItem(`valor_${chaveLocal}`);
+                  if (localVal) {
+                    if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
+                    valoresSalvos[unidade][servico] = formatarLeituraLocal(localVal);
+                    valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(localVal);
+                  }
+                }
+              }
+            }
+          }
+        } catch (err) {
+        }
+
+        // 2. LER DO PADRÃO ANTIGO (Fallback na Raiz)
+        const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_`);
+        for (const fileName of filesAntigos) {
+          const partes = fileName.replace('.jpg', '').split('_');
+          if (partes.length >= 6) {
+            const unidade = partes[3];
+            const servico = partes[4].toLowerCase();
+
+            try {
+              // Se já achou na nova pasta, ignora o antigo
               if (capturadas[unidade]?.[servico]) continue;
+
               const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
-              origensFotosRef.current[chaveLocal] = { path: fullPath, directory: Directory.Cache };
+              origensFotosRef.current[chaveLocal] = { path: fileName, directory: Directory.Data };
               try {
                 await FotoLeituraService.garantirFoto({
                   chaveLocal,
                   condominioNome: leitura.nome,
-                  fileName,
-                  origem: { path: fullPath, directory: Directory.Cache },
+                  fileName: `Apto${unidade}_${servico.toUpperCase()}.jpg`,
+                  origem: { path: fileName, directory: Directory.Data },
                 });
               } catch (err) {
                 falhasBackup.push(`${unidade} (${servico.toUpperCase()})`);
               }
 
               const fileUriResult = await Filesystem.getUri({
-                path: fullPath,
-                directory: Directory.Cache
+                path: fileName,
+                directory: Directory.Data
               });
               const webUrl = Capacitor.convertFileSrc(fileUriResult.uri);
 
@@ -627,57 +682,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(localVal);
                 }
               }
+            } catch (readErr) {
             }
           }
         }
-      } catch (err) {
-      }
 
-      // 2. LER DO PADRÃO ANTIGO (Fallback na Raiz)
-      const filesAntigos = await StorageService.listFiles(`leitura_foto_${leitura.id}_`);
-      for (const fileName of filesAntigos) {
-        const partes = fileName.replace('.jpg', '').split('_');
-        if (partes.length >= 6) {
-          const unidade = partes[3];
-          const servico = partes[4].toLowerCase();
-
-          try {
-            // Se já achou na nova pasta, ignora o antigo
-            if (capturadas[unidade]?.[servico]) continue;
-
-            const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, servico);
-            origensFotosRef.current[chaveLocal] = { path: fileName, directory: Directory.Data };
-            try {
-              await FotoLeituraService.garantirFoto({
-                chaveLocal,
-                condominioNome: leitura.nome,
-                fileName: `Apto${unidade}_${servico.toUpperCase()}.jpg`,
-                origem: { path: fileName, directory: Directory.Data },
-              });
-            } catch (err) {
-              falhasBackup.push(`${unidade} (${servico.toUpperCase()})`);
-            }
-
-            const fileUriResult = await Filesystem.getUri({
-              path: fileName,
-              directory: Directory.Data
-            });
-            const webUrl = Capacitor.convertFileSrc(fileUriResult.uri);
-
-            if (!capturadas[unidade]) capturadas[unidade] = {};
-            capturadas[unidade][servico] = webUrl;
-
-            if (chaveLocal) {
-              const localVal = localStorage.getItem(`valor_${chaveLocal}`);
-              if (localVal) {
-                if (!valoresSalvos[unidade]) valoresSalvos[unidade] = {};
-                valoresSalvos[unidade][servico] = formatarLeituraLocal(localVal);
-                valoresSalvos[`${unidade}_${servico}`] = formatarLeituraLocal(localVal);
-              }
-            }
-          } catch (readErr) {
-          }
-        }
       }
 
       // Varre também todo o localStorage para garantir que qualquer valor salvo (mesmo sem foto física) seja carregado
@@ -1161,62 +1170,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     await handleDispararCamera(activeApto);
   };
 
-  // Reset do estado ativo/temporário das unidades do condomínio atual (encerramento do ciclo)
-  const resetarEstadoLeiturasAtivas = async (condominioId) => {
-    if (!condominioId) return;
-
-    try {
-      // 1. Limpa o estado ativo dos cards em memória
-      setFotosCapturadas({});
-      setConcluidosMemoria({});
-      setLeiturasValores({});
-
-      // 2. Limpa cache e chaves locais temporárias relacionadas ao ciclo ativo deste condomínio
-      // (Preserva o banco de dados Supabase e registros sincronizados intactos)
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) {
-          if (
-            key.startsWith(`valor_${condominioId}_`) ||
-            key.startsWith(`concluido_${condominioId}_`) ||
-            key.startsWith(`foto_path_${condominioId}_`) ||
-            key.startsWith(`foto_directory_${condominioId}_`) ||
-            key.startsWith(`foto_pendente_${condominioId}_`) ||
-            key.startsWith(`temp_leituras_${condominioId}`) ||
-            key.startsWith(`fotos_temp_${condominioId}`)
-          ) {
-            keysToRemove.push(key);
-          }
-        }
-      }
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
-
-      // 3. Remove arquivos temporários de fotos locais do ciclo
-      try {
-        const safeCondName = sanitizeName(leitura.nome);
-        const pastaCondominio = `FastLeituras/${safeCondName}`;
-
-        await Filesystem.rmdir({
-          path: pastaCondominio,
-          directory: Directory.Cache,
-          recursive: true
-        });
-      } catch (fsErr) {
-      }
-
-      // 3.5. Limpa cache legado na raiz se existir
-      try {
-        const filesAntigos = await StorageService.listFiles(`leitura_foto_${condominioId}_`);
-        for (const file of filesAntigos) {
-          await StorageService.deleteFile(file);
-        }
-      } catch (fsErr) {}
-
-    } catch (e) {
-    }
-  };
-
   const handleExportar = () => {
     const abaExclusiva = obterAbaExclusivaDoCondominio(leitura);
 
@@ -1301,6 +1254,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const executeExport = async (scope) => {
+    const cicloSalvo = JSON.parse(localStorage.getItem(`ciclo_mensal_${leitura.id}`) || 'null');
+    if (cicloSalvo && cicloSalvo.mes !== getCurrentMonthKey()) {
+      await customAlert('Este condomínio ainda possui um ciclo anterior aberto. Confira as pendências e use “Limpar / Iniciar Próximo Mês” antes de enviar leituras do mês novo.');
+      return;
+    }
     // Etapa de diagnóstico
     let etapaAtual = 'INICIO';
 
@@ -1387,7 +1345,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const condId = leitura?.id || leitura?.condominio_id;
 
       // listaDeUnidades: fonte canônica de unidades para o loop de processarServico.
-      // Exportar NÃO rotaciona leitura anterior — isso é responsabilidade da lixeira (Fase 3B).
+      // A promoção pertence ao fechamento de ciclo, automático ou manual.
       const listaDeUnidades = listaCompleta.map(unidade => ({ unidade: String(unidade).trim() }));
 
       // Confirma todas as fotos físicas antes de enfileirar a primeira leitura.
@@ -1630,66 +1588,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
     setIsProcessing(true);
 
-    const condId = leitura?.id || leitura?.condominio_id;
     try {
-      let gavetaAnteriores = [];
-      try {
-        const rawGav = localStorage.getItem(`leituras_anteriores_${condId}`);
-        if (rawGav) gavetaAnteriores = JSON.parse(rawGav) || [];
-        if (!Array.isArray(gavetaAnteriores)) gavetaAnteriores = [];
-      } catch {}
-
-      const promocoes = [];
-
-      for (const apStr of listaCompleta) {
-        for (const srv of servicosAtivos) {
-          const valPersistido = obterLeituraAtualPersistida(condId, apStr, srv);
-          const servicoKey = normalizarServicoLocal(srv);
-          const valState = leiturasValores[`${apStr}_${servicoKey}`] ?? leiturasValores[apStr]?.[servicoKey];
-          const valStr = valPersistido ?? valState;
-
-          const numVal = parseLeituraNum(valStr);
-          if (numVal !== null) {
-            const leitAnt = obterLeituraAnterior(condId, apStr, srv);
-            if (leitAnt !== null) {
-              const atFixed = Math.round(numVal * 10000);
-              const antFixed = Math.round(leitAnt * 10000);
-              if (atFixed < antFixed) {
-                 const fmtAnt = String(leitAnt).replace('.', ',');
-                 const fmtAt  = String(numVal).replace('.', ',');
-                 await customAlert(
-                   `Não é possível finalizar o ciclo.\n\nA unidade ${apStr} (${srv.toUpperCase()}) possui leitura atual (${fmtAt}) menor que a anterior (${fmtAnt}).\n\nCorrija o valor antes de continuar.`,
-                   'Leitura inválida'
-                 );
-                 return;
-              }
-            }
-            promocoes.push({ unidade: apStr, servico: srv, valor: numVal });
-          }
-        }
-      }
-
-      let algumaFalha = false;
-      for (const promo of promocoes) {
-        const result = rotacionarLeituraAnteriorLocal(condId, promo.unidade, promo.servico, promo.valor);
-        if (!result || !result.ok) {
-          algumaFalha = true;
-          break;
-        }
-      }
-
-      if (algumaFalha) {
-         await customAlert('Falha ao promover algumas leituras localmente. A limpeza foi cancelada para evitar perda de dados.', 'Erro de Persistência');
-         return;
-      }
-
-      await resetarEstadoLeiturasAtivas(condId);
-
+      const resultado = await cicloMensalService.processar({
+        condominio: leitura, mesAtual: getCurrentMonthKey(), manual: true,
+      });
       setFotosCapturadas({});
       setConcluidosMemoria({});
       setLeiturasValores({});
-
-      await customAlert(`${promocoes.length} leituras promovidas!\nCondomínio limpo e finalizado com sucesso. Pronto para o próximo mês.`);
+      await customAlert(`${resultado.promovidas} leituras promovidas!\nCiclo finalizado. As fotos anteriores estão preservadas nos backups.`);
       onClose();
     } catch (err) {
       await customAlert('Erro inesperado ao finalizar condomínio: ' + err.message);
@@ -1701,6 +1607,14 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // 3. TRAVA DE SEGURANÇA (APÓS TODOS OS HOOKS)
   if (!isOpen || !leitura) return null;
 
+  if (localStorage.getItem(`ciclo_mensal_diario_${leitura.id}`)) {
+    return <div className="foto-modal-overlay"><div className="foto-modal-container" role="alert">
+      <p>O fechamento deste ciclo foi interrompido. As leituras e fotos estão preservadas. Retome o fechamento antes de editar.</p>
+      <button type="button" disabled={isProcessing} onClick={handleLimparMes}>Tentar novamente</button>
+      <button type="button" onClick={onClose}>Fechar</button>
+    </div></div>;
+  }
+
   const showAgua = servicosAtivos.includes('agua');
   const showGas = servicosAtivos.includes('gas');
   const showEnergia = servicosAtivos.includes('energia');
@@ -1711,6 +1625,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       {!customCameraOpen && (
         <div className="foto-modal-overlay" onClick={onClose}>
           <div className="foto-modal-container" onClick={(e) => e.stopPropagation()}>
+            {leitura.cicloPendente && <div className="offline-banner offline" role="alert">
+              O ciclo anterior aguarda conferência: {leitura.cicloPendente} Após corrigir, use “Limpar / Iniciar Próximo Mês” ou reabra o aplicativo.
+            </div>}
             <header className="foto-modal-header">
               <div className="foto-modal-title">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
