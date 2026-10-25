@@ -13,3 +13,11 @@ android/**/build/
 *.jks
 # Propriedades locais de senha (evitar commit de senhas)
 **/key.properties
+.qa/
+.qa-guia/
+artifacts-guia*.log
+supabase/.temp/
+artifacts/
+android/key.properties
+android/local.properties
+artifacts-ucondo*.log

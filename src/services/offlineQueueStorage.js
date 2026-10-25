@@ -100,7 +100,7 @@ const temDadosOffline = (storage) => {
     if (OFFLINE_QUEUE_KEYS.includes(key)) {
       // JSON corrompido também precisa ser preservado/reconciliado.
       if ((storage.getItem(key) || '').trim() !== '[]') return true;
-    } else if (/^(condominios_cache|leituras_db_ids|foto_|valor_|concluido_|unidades_|leituras_anteriores_)/.test(key || '')) {
+    } else if (/^(condominios_cache|leituras_db_ids|foto_|valor_|concluido_|unidades_|leituras_anteriores_|fastleituras_envios_ucondo_v1_)/.test(key || '')) {
       return true;
     }
   }

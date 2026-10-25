@@ -4,16 +4,8 @@ import { supabase } from '../services/supabase';
 import { Capacitor } from '@capacitor/core';
 import { useGoogleLogin } from '@react-oauth/google';
 import { loginGoogleNativo } from '../services/googleAuthService';
+import { criarFluxoEmail, traduzirErroAuth } from '../services/authEmailService';
 import './Login.css';
-
-const traduzirErroAuth = (err) => {
-  const msg = (err?.message || '').toLowerCase();
-  if (msg.includes('error sending confirmation email')) return 'Não foi possível enviar o e-mail de confirmação. Tente novamente.';
-  if (msg.includes('email rate limit exceeded'))        return 'Limite temporário de envio de e-mails atingido. Aguarde alguns minutos e tente novamente.';
-  if (msg.includes('invalid login credentials'))       return 'E-mail ou senha incorretos.';
-  if (msg.includes('email not confirmed'))             return 'Confirme seu e-mail antes de entrar.';
-  return 'Não foi possível concluir a operação. Tente novamente.';
-};
 
 const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   const [etapa, setEtapa] = useState(1);
@@ -163,6 +155,8 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
 };
 
 const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
+  const [fluxoEmail] = useState(() => criarFluxoEmail(supabase.auth));
+  const [segundosEmail, setSegundosEmail] = useState(0);
   const [modoCadastro, setModoCadastro] = useState(false);
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [nomeCompleto, setNomeCompleto] = useState('');
@@ -172,6 +166,32 @@ const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [feedback, setFeedback] = useState(null);
+
+  const aguardandoEmail = segundosEmail > 0;
+  useEffect(() => {
+    if (!aguardandoEmail) return;
+    const timer = setInterval(() => setSegundosEmail(fluxoEmail.segundosRestantes()), 1000);
+    return () => clearInterval(timer);
+  }, [aguardandoEmail, fluxoEmail]);
+
+  const handleReenviar = async () => {
+    if (carregando) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setFeedback({ tipo: 'erro', mensagem: 'Informe um e-mail válido para solicitar a confirmação.' });
+      return;
+    }
+    setCarregando(true);
+    setFeedback(null);
+    try {
+      const resultado = await fluxoEmail.reenviar(email);
+      setFeedback({ tipo: 'sucesso', mensagem: resultado.mensagem });
+    } catch (err) {
+      setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
+    } finally {
+      setSegundosEmail(fluxoEmail.segundosRestantes());
+      setCarregando(false);
+    }
+  };
 
   // Retorno via deep link de confirmação de e-mail: garante modo login ativo.
   // Reage mesmo com o app já aberto/em background (retornoConfirmacao é Date.now()).
@@ -257,29 +277,22 @@ const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
 
     try {
       if (modoCadastro) {
-        const { data, error } = await supabase.auth.signUp({
+        const resultado = await fluxoEmail.cadastrar({
           email: emailNormalizado,
-          password: senha,
-          options: {
-            emailRedirectTo: 'https://fastleitura.appviper.com.br/confirmacao-email',
-            data: {
-              full_name: nomeNormalizado,
-              phone: celularNormalizado,
-            },
-          },
+          senha,
+          nome: nomeNormalizado,
+          celular: celularNormalizado,
         });
-
-        if (error) throw error;
 
         setFeedback({
           tipo: 'sucesso',
-          mensagem: data?.session
+          mensagem: resultado.session
             ? 'Conta criada com sucesso!'
-            : 'Conta criada! Confira seu e-mail para confirmar o acesso.',
+            : resultado.mensagem,
         });
 
-        if (data?.session && onLoginSuccess) {
-          onLoginSuccess(data.session);
+        if (resultado.session && onLoginSuccess) {
+          onLoginSuccess(resultado.session);
         }
         return;
       }
@@ -308,6 +321,7 @@ const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
     } catch (err) {
       setFeedback({ tipo: 'erro', mensagem: traduzirErroAuth(err) });
     } finally {
+      setSegundosEmail(fluxoEmail.segundosRestantes());
       setCarregando(false);
     }
   };
@@ -407,9 +421,12 @@ const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
             </div>
           </label>
 
-          <button className="login-submit" type="submit" disabled={carregando}>
+          <button className="login-submit" type="submit" disabled={carregando || (modoCadastro && aguardandoEmail)}>
             {modoCadastro ? <UserPlus size={18} /> : <LogIn size={18} />}
             {carregando ? 'Aguarde...' : modoCadastro ? 'Criar conta' : 'Entrar'}
+          </button>
+          <button className="login-mode-toggle" type="button" onClick={handleReenviar} disabled={carregando || aguardandoEmail}>
+            {aguardandoEmail ? `Solicitar novo e-mail em ${segundosEmail}s` : 'Reenviar confirmação de e-mail'}
           </button>
           
           <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>

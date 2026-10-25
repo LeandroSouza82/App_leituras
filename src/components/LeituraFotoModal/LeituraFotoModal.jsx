@@ -23,6 +23,7 @@ import { ordenarUnidadesNatural } from '../../utils/ordenarUnidades';
 import { obterServicosAtivos } from '../../utils/servicosCondominio';
 import { cicloMensalService, cicloJaFinalizado } from '../../services/cicloMensalService';
 import { getCurrentMonthKey } from '../../utils/mesLeituras';
+import { registrarEnvioUcondo } from '../../services/ucondoTransferService';
 import './LeituraFotoModal.css';
 
 // Helper de sanitização resiliente a acentos para nomes de diretórios/arquivos
@@ -228,6 +229,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [fotosCapturadas, setFotosCapturadas] = useState({});
   const origensFotosRef = useRef({});
   const [concluidosMemoria, setConcluidosMemoria] = useState({});
+  const [avisoEnvioUcondo, setAvisoEnvioUcondo] = useState(null);
   const [leiturasValores, setLeiturasValores] = useState({});
   const [exportando, setExportando] = useState(false);
   const [torreAtiva, setTorreAtiva] = useState(null);
@@ -1170,6 +1172,43 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     await handleDispararCamera(activeApto);
   };
 
+  const handleEnviarUcondo = async () => {
+    try {
+      const cicloSalvo = JSON.parse(localStorage.getItem(`ciclo_mensal_${leitura.id}`) || 'null');
+      if (cicloSalvo && cicloSalvo.mes !== getCurrentMonthKey()) throw new Error('Este condomínio ainda possui um ciclo anterior aberto. Confira as pendências antes de enviar leituras do mês novo.');
+      const periodo = leitura?.mesReferencia || getCurrentMonthKey();
+      if (periodo !== getCurrentMonthKey()) throw new Error('Confira o mês das leituras antes de solicitar o envio.');
+      if (servicosAtivos.includes('energia')) throw new Error('O robô atual atende água e gás. Energia ainda precisa ser enviada pelo fluxo atual.');
+      const validacao = validarLeiturasLote('todos', leitura, listaCompleta, leiturasValores, fotosCapturadas);
+      if (!validacao.isValid) throw new Error(`Confira a leitura e a foto da unidade ${validacao.unidade} (${validacao.servico.toUpperCase()}) antes de enviar.`);
+      const owner = exigirContaOffline();
+      const fila = lerFilaPersistida('fila_sync_auto');
+      const ids = JSON.parse(localStorage.getItem('leituras_db_ids') || '{}');
+      const itens = [];
+      for (const unidade of listaCompleta) {
+        for (const srv of servicosAtivos) {
+          const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, srv);
+          const servico = srv.toUpperCase();
+          const identidade = { leiturista_id: owner, condominio_id: leitura.id, unidade_id: String(unidade).trim(), servico, mes_referencia: periodo };
+          const { key, id } = obterIdentificadorLeitura(identidade, fila, ids, () => crypto.randomUUID());
+          ids[key] = id;
+          itens.push({ ...identidade, db_id: id, condominio_nome: leitura.nome,
+            leitura_atual: parseLeituraNum(obterLeituraAtualPersistida(leitura.id, unidade, srv) ?? obterLeituraAtualLocal(leiturasValores, unidade, srv)),
+            data_leitura: new Date().toISOString(), fileName: `Apto${unidade}_${servico}.jpg`,
+            photoPath: localStorage.getItem(`foto_path_${chaveLocal}`),
+            photoDirectory: localStorage.getItem(`foto_directory_${chaveLocal}`) || 'DATA',
+          });
+        }
+      }
+      localStorage.setItem('leituras_db_ids', JSON.stringify(ids));
+      registrarEnvioUcondo({ userId: owner, condominioId: leitura.id, nome: leitura.nome, periodo,
+        servicos: servicosAtivos.map(s => s.toUpperCase()), itens });
+      setAvisoEnvioUcondo({ condominioId: leitura.id, mensagem: 'Envio solicitado. Acompanhe em “Envios para o uCondo” na tela principal. Você pode continuar o próximo condomínio.' });
+    } catch (error) {
+      await customAlert(error.message || 'Não foi possível guardar o pedido. Suas leituras e fotos foram preservadas.', 'Enviar para o uCondo');
+    }
+  };
+
   const handleExportar = () => {
     const abaExclusiva = obterAbaExclusivaDoCondominio(leitura);
 
@@ -1790,6 +1829,11 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
             </div>
 
             <footer className="foto-modal-footer">
+              <button type="button" className="btn-enviar-ucondo" onClick={handleEnviarUcondo}
+                disabled={unidadesConcluidasCount === 0 || isProcessing}>
+                <Upload size={18} /> Enviar para o uCondo
+              </button>
+              {avisoEnvioUcondo?.condominioId === leitura.id && <p role="status">{avisoEnvioUcondo.mensagem}</p>}
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                   type="button"

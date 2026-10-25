@@ -1,0 +1,13 @@
+.ucondo-transferencias { margin: 12px 16px; padding: 14px; border: 1px solid #bbd8eb; border-radius: 16px; background: #f5faff; color: #16324f; }
+.ucondo-transferencias-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ucondo-transferencias-titulo button { margin-left: auto; background: transparent; border: 0; color: #155e91; font: inherit; text-decoration: underline; min-height: 40px; cursor: pointer; }
+.ucondo-transferencia-card { margin-top: 12px; padding: 12px; border: 1px solid #dbe7ef; border-radius: 12px; background: white; }
+.ucondo-transferencia-heading { display: flex; justify-content: space-between; gap: 8px; }
+.ucondo-transferencia-card p { margin: 8px 0 0; line-height: 1.45; font-size: 14px; }
+.ucondo-transferencia-etapa { display: flex; justify-content: space-between; gap: 10px; }
+.ucondo-transferencia-card progress { width: 100%; height: 12px; margin-top: 8px; accent-color: #087b52; }
+.ucondo-transferencia-detalhe { color: #526276; }
+.ucondo-transferencia-aviso, .ucondo-transferencia-card.tem-erro { color: #8b4a0b; }
+.ucondo-ver-fila { min-height: 40px; border: 0; background: transparent; color: #155e91; font: inherit; text-decoration: underline; cursor: pointer; }
+.btn-enviar-ucondo { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 12px; margin-bottom: 10px; border: 0; border-radius: 10px; background: #076a4d; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+.btn-enviar-ucondo:disabled { background: #718b83; cursor: default; }
