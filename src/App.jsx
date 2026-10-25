@@ -27,6 +27,7 @@ import { useOfflineSync } from './hooks/useOfflineSync';
 import { ShareIntentService } from './services/shareIntentService';
 import { UCondoImportService } from './services/ucondoImportService';
 import AutoSyncIndicator from './components/AutoSyncIndicator/AutoSyncIndicator';
+import TransferenciasUcondo from './components/TransferenciasUcondo/TransferenciasUcondo';
 import { iniciarObservadorRede } from './services/syncService';
 import BackupFotosMenu from './components/BackupFotosMenu/BackupFotosMenu';
 import { Capacitor } from '@capacitor/core';
@@ -290,6 +291,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
   return (
     <>
       <div className="app-shell app-has-navigation">
+        <TransferenciasUcondo key={userId} userId={userId} />
         {!isOnline && (
           <div className={`offline-banner offline`}>
             Offline - Sincronização pendente para o banco de dados

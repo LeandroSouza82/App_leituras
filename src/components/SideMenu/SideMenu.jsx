@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { 
   X, 
   Layers, 
@@ -10,16 +10,20 @@ import {
   Star, 
   MessageSquare,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  BookOpen,
+  Globe
 } from 'lucide-react';
 import { readFilaSync, sincronizarFilaEmBackground } from '../../services/syncService';
 import { customAlert, customConfirm } from '../CustomPrompt/CustomPrompt';
 import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
+import GuiaLeituristaModal from '../GuiaLeiturista/GuiaLeituristaModal';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
-import { SUPPORT_URL } from '../../config/publicUrls';
+import { SUPPORT_URL, ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
+import { version as appVersion } from '../../../package.json';
 
 const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
@@ -27,6 +31,13 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
+  const fecharGuia = useCallback(() => setShowGuide(false), []);
+
+  const abrirSiteRobo = async () => {
+    try { await Browser.open({ url: ROBOT_DASHBOARD_URL }); }
+    catch { window.open(ROBOT_DASHBOARD_URL, '_blank', 'noopener,noreferrer'); }
+  };
 
   const handleForceSync = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -93,6 +104,8 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     {
       title: 'Suporte',
       items: [
+        { id: 'guide', label: 'Como usar o aplicativo', icon: BookOpen, onClick: () => setShowGuide(true) },
+        { id: 'robot-site', label: 'Abrir site do robô', icon: Globe, onClick: abrirSiteRobo },
         { id: 'support', label: 'Suporte Técnico', icon: Headset, onClick: handleSuporteTecnico },
         { id: 'rating', label: 'Avaliar o App', icon: Star, onClick: handleAvaliarApp },
         { id: 'feedback', label: 'Enviar Feedback', icon: MessageSquare, onClick: () => setFeedbackModalOpen(true) },
@@ -112,7 +125,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
   return (
     <>
-      <div className="side-menu-overlay" onClick={onClose}>
+      <div className="side-menu-overlay" onClick={onClose} aria-hidden={showGuide || undefined} inert={showGuide ? '' : undefined}>
         <aside className="side-menu-container" onClick={(e) => e.stopPropagation()}>
           <header className="side-menu-header">
             <div className="side-menu-brand">
@@ -169,10 +182,12 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
               <LogOut size={18} />
               <span>Sair da conta</span>
             </button>
-            <p className="side-menu-version">Versão 1.0.5 • Fast Leituras</p>
+            <p className="side-menu-version">Versão {appVersion} • Fast Leituras</p>
           </footer>
         </aside>
       </div>
+
+      <GuiaLeituristaModal isOpen={showGuide} onClose={fecharGuia} onOpenRobot={abrirSiteRobo} />
 
       <CameraSettingsModal 
         isOpen={isCameraModalOpen} 

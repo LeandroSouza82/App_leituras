@@ -415,7 +415,11 @@ export async function sincronizarFilaEmBackground() {
               const identificadorRemoto = sanitizarNomeStorage(
                 item.db_id || item.id || `${item.condominio_id}_${item.unidade_id}_${item.servico}`
               );
-              remotePath = `leituras/${identificadorRemoto}_${nomeStorage}`;
+              // Immutable content reference: a retaken photo must not overwrite
+              // the object an already accepted AWS transfer is reading.
+              const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+              const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+              remotePath = `leituras/${identificadorRemoto}_${hash}_${nomeStorage}`;
               contexto.assertActive();
               atualizarItemPersistido(FILA_SYNC_KEY, item, { remotePath });
             }

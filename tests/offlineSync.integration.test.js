@@ -82,6 +82,21 @@ const leitura = extra => ({
   data_leitura: '2026-09-15T12:00:00Z', mes_referencia: '2026-09', ...extra,
 });
 
+test('foto nova com o mesmo nome ganha referência imutável sem sobrescrever o objeto do robô', async () => {
+  const { f, mod } = await fixture();
+  const item = leitura({ fileName: 'foto.jpg', photoPath: 'Backups/Condo/foto.jpg', photoDirectory: 'DATA' });
+  await mod.salvarLeituraOffline(item); f.online = true;
+  await mod.sincronizarFilaEmBackground();
+  const primeira = f.requests.find(r => r.action === 'upload').path;
+  f.online = false;
+  f.files.readFile = async () => ({ data: Buffer.from('nova captura da mesma unidade').toString('base64') });
+  await mod.salvarLeituraOffline(item); f.online = true;
+  await mod.sincronizarFilaEmBackground();
+  const uploads = f.requests.filter(r => r.action === 'upload');
+  assert.notEqual(uploads.at(-1).path, primeira);
+  assert.ok(uploads.at(-1).path.includes(item.db_id));
+});
+
 test('serviço real retorna false sob quota, sem evento de sucesso nem exclusão da foto', async () => {
   const { f, mod } = await fixture();
   f.data.set('foto_path_cond-1_A-101_agua', 'Backups/Condo/AptoA-101_AGUA.jpg');
