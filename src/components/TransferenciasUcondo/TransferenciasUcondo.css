@@ -1,13 +1,432 @@
-.ucondo-transferencias { margin: 12px 16px; padding: 14px; border: 1px solid #bbd8eb; border-radius: 16px; background: #f5faff; color: #16324f; }
-.ucondo-transferencias-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ucondo-transferencias-titulo button { margin-left: auto; background: transparent; border: 0; color: #155e91; font: inherit; text-decoration: underline; min-height: 40px; cursor: pointer; }
-.ucondo-transferencia-card { margin-top: 12px; padding: 12px; border: 1px solid #dbe7ef; border-radius: 12px; background: white; }
-.ucondo-transferencia-heading { display: flex; justify-content: space-between; gap: 8px; }
-.ucondo-transferencia-card p { margin: 8px 0 0; line-height: 1.45; font-size: 14px; }
-.ucondo-transferencia-etapa { display: flex; justify-content: space-between; gap: 10px; }
-.ucondo-transferencia-card progress { width: 100%; height: 12px; margin-top: 8px; accent-color: #087b52; }
-.ucondo-transferencia-detalhe { color: #526276; }
-.ucondo-transferencia-aviso, .ucondo-transferencia-card.tem-erro { color: #8b4a0b; }
-.ucondo-ver-fila { min-height: 40px; border: 0; background: transparent; color: #155e91; font: inherit; text-decoration: underline; cursor: pointer; }
-.btn-enviar-ucondo { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 12px; margin-bottom: 10px; border: 0; border-radius: 10px; background: #076a4d; color: white; font: inherit; font-weight: 600; cursor: pointer; }
-.btn-enviar-ucondo:disabled { background: #718b83; cursor: default; }
+/* ==========================================================================
+   PÍLULA FLUTUANTE (ESTADO PADRÃO)
+   ========================================================================== */
+
+.ucondo-pill {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9990;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid #bbd8eb;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(15, 34, 58, 0.15);
+  color: #16324f;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  overflow: hidden;
+  max-width: calc(100vw - 32px);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.ucondo-pill:active {
+  cursor: grabbing;
+}
+
+.ucondo-pill-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.ucondo-pill-icone {
+  flex-shrink: 0;
+}
+
+.ucondo-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Barra de progresso interna na base da pílula */
+.ucondo-pill-progresso-trilho {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(8, 123, 82, 0.15);
+  border-radius: 0 0 999px 999px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ucondo-pill-progresso-barra {
+  display: block;
+  height: 100%;
+  background: #087b52;
+  transition: width 200ms ease-out;
+}
+
+/* Variação Concluído */
+.ucondo-pill.ucondo-pill-concluido {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #065f46;
+}
+
+.ucondo-pill.ucondo-pill-concluido .ucondo-pill-progresso-trilho {
+  display: none;
+}
+
+/* Variação Alerta / Erro */
+.ucondo-pill.ucondo-pill-alerta {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #8b4a0b;
+}
+
+.ucondo-pill.ucondo-pill-alerta .ucondo-pill-progresso-barra {
+  background: #d97706;
+}
+
+/* ==========================================================================
+   ALVO CIRCULAR "X" DE DESCARTE
+   ========================================================================== */
+
+.ucondo-dismiss-target {
+  position: fixed;
+  left: 50%;
+  bottom: calc(85px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%) scale(0.6);
+  opacity: 0;
+  pointer-events: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(30, 41, 59, 0.9);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 9980;
+  transition: transform 150ms ease-out, opacity 150ms ease-out, background-color 150ms ease-out;
+}
+
+.ucondo-dismiss-target.ativo {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+.ucondo-dismiss-target.ativo.hover {
+  transform: translateX(-50%) scale(1.22);
+  background: #b91c1c;
+  box-shadow: 0 6px 20px rgba(185, 28, 28, 0.45);
+}
+
+/* ==========================================================================
+   MODAL COM O CARD COMPLETO ORIGINAL
+   ========================================================================== */
+
+.ucondo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: ucondoOverlayIn 160ms ease-out;
+}
+
+.ucondo-modal-dialog {
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid #bbd8eb;
+  border-radius: 18px;
+  background: #f5faff;
+  color: #16324f;
+  box-shadow: 0 12px 32px rgba(15, 34, 58, 0.25);
+  animation: ucondoDialogIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.ucondo-transferencias-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ucondo-transferencias-titulo .ucondo-btn-historico {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: #155e91;
+  font: inherit;
+  font-size: 13.5px;
+  text-decoration: underline;
+  min-height: 38px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.ucondo-modal-fechar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #526276;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.ucondo-modal-fechar:hover,
+.ucondo-modal-fechar:focus-visible {
+  background: rgba(15, 34, 58, 0.08);
+  color: #16324f;
+  outline: none;
+}
+
+.ucondo-modal-lista-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.ucondo-transferencia-card {
+  padding: 12px;
+  border: 1px solid #dbe7ef;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.ucondo-transferencia-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.ucondo-transferencia-card p {
+  margin: 8px 0 0;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+.ucondo-transferencia-etapa {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ucondo-transferencia-card progress {
+  width: 100%;
+  height: 12px;
+  margin-top: 8px;
+  accent-color: #087b52;
+}
+
+.ucondo-transferencia-detalhe {
+  color: #526276;
+}
+
+.ucondo-transferencia-aviso,
+.ucondo-transferencia-card.tem-erro {
+  color: #8b4a0b;
+}
+
+.ucondo-ver-fila {
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: #155e91;
+  font: inherit;
+  font-size: 13.5px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 6px;
+  display: block;
+  text-align: left;
+}
+
+.ucondo-modal-concluidos-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 16px;
+  margin-top: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe7ef;
+  border-radius: 12px;
+}
+
+.ucondo-icone-concluido-destaque {
+  color: #087b52;
+  margin-bottom: 8px;
+}
+
+.ucondo-texto-concluidos-resumo {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: #16324f;
+}
+
+.ucondo-btn-ver-concluidos {
+  background: transparent;
+  border: 1px solid #155e91;
+  color: #155e91;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.ucondo-btn-ver-concluidos:hover,
+.ucondo-btn-ver-concluidos:focus-visible {
+  background: #f0f7fc;
+  outline: none;
+}
+
+.ucondo-modal-vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 36px 16px;
+  margin-top: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe7ef;
+  border-radius: 12px;
+  color: #64748b;
+}
+
+.ucondo-icone-vazio {
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ucondo-modal-vazio p {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.ucondo-modal-rodape {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #dbe7ef;
+  display: flex;
+  justify-content: center;
+}
+
+.ucondo-btn-ocultar {
+  background: transparent;
+  border: 0;
+  color: #526276;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.ucondo-btn-ocultar:hover,
+.ucondo-btn-ocultar:focus-visible {
+  color: #16324f;
+  background: rgba(15, 34, 58, 0.06);
+  outline: none;
+}
+
+/* Botão de envio disparado nas telas de condomínio */
+.btn-enviar-ucondo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #076a4d;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-enviar-ucondo:disabled {
+  background: #718b83;
+  cursor: default;
+}
+
+/* ==========================================================================
+   ANIMAÇÕES E PREFERS-REDUCED-MOTION
+   ========================================================================== */
+
+@keyframes ucondoOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ucondoDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ucondo-pill,
+  .ucondo-dismiss-target,
+  .ucondo-modal-overlay,
+  .ucondo-modal-dialog,
+  .ucondo-pill-progresso-barra {
+    animation: none !important;
+    transition: opacity 100ms ease, background-color 100ms ease, color 100ms ease !important;
+  }
+
+  .ucondo-dismiss-target.ativo {
+    transform: translateX(-50%) !important;
+  }
+
+  .ucondo-dismiss-target.ativo.hover {
+    transform: translateX(-50%) !important;
+  }
+}
