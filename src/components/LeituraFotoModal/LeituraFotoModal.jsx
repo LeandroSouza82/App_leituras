@@ -1,3 +1,4 @@
+import { carregarUnidadesSemMedidor, definirUnidadeSemMedidor, lerUnidadesSemMedidor } from '../../services/unidadesSemMedidorService';
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Camera as CameraIcon, X, CheckCircle, Settings, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -225,6 +226,32 @@ const UnidadeCard = ({ apto, concluido, thumbnail, leituraAnterior, onLongPress,
 };
 
 const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
+  const [semMedidor, setSemMedidor] = useState({});
+  const [configurandoMedidor, setConfigurandoMedidor] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !leitura?.id) return;
+    let ativo = true;
+    setSemMedidor(lerUnidadesSemMedidor(leitura.id));
+    carregarUnidadesSemMedidor(leitura.id).then(mapa => { if (ativo) setSemMedidor(mapa); })
+      .catch(() => {}); // Offline: mantém a última configuração confirmada da conta.
+    return () => { ativo = false; };
+  }, [isOpen, leitura?.id]);
+  const semMedidorNoServico = (unidade, srv) => semMedidor[String(unidade)]?.includes(srv.toUpperCase()) === true;
+  const configurarMedidor = async (unidade, srv, dispensada) => {
+    setConfigurandoMedidor(true);
+    try {
+      if (dispensada) {
+        const anterior = obterLeituraAnterior(leitura.id, unidade, srv);
+        const atual = parseLeituraNum(obterLeituraAtualPersistida(leitura.id, unidade, srv));
+        if ((anterior !== null && anterior !== 0) || (atual !== null && atual !== 0)) {
+          throw new Error('Esta unidade possui leitura diferente de zero. Confira antes de marcar como sem medidor.');
+        }
+        if (!await customConfirm(`A unidade ${unidade} não possui medidor de ${srv.toUpperCase()}? Ela ficará com zero, sem exigir foto nos próximos meses.`)) return;
+      }
+      setSemMedidor(await definirUnidadeSemMedidor(leitura.id, unidade, srv, dispensada));
+    } catch (erro) { await customAlert(erro.message || 'Não foi possível salvar a configuração.'); }
+    finally { setConfigurandoMedidor(false); }
+  };
   // 1. DECLARAÇÃO DE TODOS OS HOOKS NO TOPO ABSOLUTO
   const [fotosCapturadas, setFotosCapturadas] = useState({});
   const origensFotosRef = useRef({});
@@ -564,9 +591,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   // Foto preservada com leitura pendente não representa uma unidade concluída.
   const unidadesConcluidasCount = useMemo(() => {
     return unidadesExibidas.filter(apto =>
-      Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo])
+      semMedidorNoServico(apto, tipoMedicaoAtivo) || Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo])
     ).length;
-  }, [unidadesExibidas, concluidosMemoria, tipoMedicaoAtivo]);
+  }, [unidadesExibidas, concluidosMemoria, tipoMedicaoAtivo, semMedidor]);
 
   // 2. FUNÇÕES AUXILIARES E HANDLERS
   const verificarFotosSalvas = async () => {
@@ -754,6 +781,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   };
 
   const handleUnitClick = (apto) => {
+    if (semMedidorNoServico(apto, tipoMedicaoAtivo)) {
+      void customAlert('Unidade sem medidor: leitura zero e foto dispensada. Altere em Unidades sem medidor se necessário.');
+      return;
+    }
     setActiveApto(apto);
     // Verifica se realmente existe a foto no estado local
     const temFoto = fotosCapturadas[apto] && fotosCapturadas[apto][tipoMedicaoAtivo];
@@ -1189,13 +1220,15 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         for (const srv of servicosAtivos) {
           const chaveLocal = gerarChaveLeituraLocal(leitura.id, unidade, srv);
           const servico = srv.toUpperCase();
+          const dispensada = semMedidorNoServico(unidade, srv);
           const identidade = { leiturista_id: owner, condominio_id: leitura.id, unidade_id: String(unidade).trim(), servico, mes_referencia: periodo };
           const { key, id } = obterIdentificadorLeitura(identidade, fila, ids, () => crypto.randomUUID());
           ids[key] = id;
           itens.push({ ...identidade, db_id: id, condominio_nome: leitura.nome,
-            leitura_atual: parseLeituraNum(obterLeituraAtualPersistida(leitura.id, unidade, srv) ?? obterLeituraAtualLocal(leiturasValores, unidade, srv)),
-            data_leitura: new Date().toISOString(), fileName: `Apto${unidade}_${servico}.jpg`,
-            photoPath: localStorage.getItem(`foto_path_${chaveLocal}`),
+            sem_medidor: dispensada,
+            leitura_atual: dispensada ? 0 : parseLeituraNum(obterLeituraAtualPersistida(leitura.id, unidade, srv) ?? obterLeituraAtualLocal(leiturasValores, unidade, srv)),
+            data_leitura: new Date().toISOString(), fileName: dispensada ? null : `Apto${unidade}_${servico}.jpg`,
+            photoPath: dispensada ? null : localStorage.getItem(`foto_path_${chaveLocal}`),
             photoDirectory: localStorage.getItem(`foto_directory_${chaveLocal}`) || 'DATA',
           });
         }
@@ -1234,6 +1267,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const apStr = String(uni.unidade || uni.nome || uni).trim();
       for (const srv of servicosParaValidar) {
         const srvKey = normalizarServicoLocal(srv);
+        if (semMedidorNoServico(apStr, srv)) continue;
 
         // ── FASE 1: verificar leitura atual ───────────────────────────────
         // Consulta as mesmas fontes já existentes: estado em memória e localStorage.
@@ -1393,6 +1427,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       const fotosPreparadas = new Map();
       for (const { unidade } of listaDeUnidades) {
         for (const srv of servicosParaExportar) {
+          if (semMedidorNoServico(unidade, srv)) continue;
           const chaveLocal = gerarChaveLeituraLocal(condId, unidade, srv);
           const fileName = `Apto${unidade}_${srv.toUpperCase()}.jpg`;
           const foto = fotosCapturadas[unidade]?.[srv];
@@ -1436,7 +1471,8 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           ?? leiturasValores[apString]?.[servicoKey]
           ?? null;
 
-        const valStr = valorPersistido ?? valorState;
+        const dispensada = semMedidorNoServico(apString, servicoAtual);
+        const valStr = dispensada ? 0 : (valorPersistido ?? valorState);
 
         if (valStr === null || valStr === undefined || valStr === '') {
           return;
@@ -1454,7 +1490,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         const chaveLocal = gerarChaveLeituraLocal(leitura.id, apString, servicoAtual);
         const photoPathReal = fotosPreparadas.get(chaveLocal);
 
-        if (!photoPathReal) {
+        if (!photoPathReal && !dispensada) {
           throw new Error(`Foto não confirmada para ${apString} (${srvUpper}).`);
         }
 
@@ -1494,8 +1530,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
           leiturista_id: owner,
           mes_referencia: mesReferencia,
           data_leitura: new Date().toISOString(),
-          fileName: localFileName,
-          photoPath: photoPathReal,
+          sem_medidor: dispensada,
+          fileName: dispensada ? null : localFileName,
+          photoPath: dispensada ? null : photoPathReal,
           photoDirectory: 'DATA'
         };
 
@@ -1504,7 +1541,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         // -----------------------
         etapaAtual = 'ENFILEIRAR';
 
-        const enfileirada = await salvarLeituraOffline(payload, null, localFileName);
+        const enfileirada = await salvarLeituraOffline(payload, null, dispensada ? null : localFileName);
         if (!enfileirada) throw new Error(`Não foi possível enfileirar ${apString} (${srvUpper}). A foto permanece no backup offline.`);
       };
 
@@ -1538,6 +1575,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
 
         const validarServico = (srv) => {
            if (servico !== srv && servico !== 'todos') return;
+           if (semMedidorNoServico(apString, srv)) return;
            const srvUpper = srv.toUpperCase();
            const servicoKey = normalizarServicoLocal(srv);
            const valAtualStr = leiturasValores[`${apString}_${servicoKey}`]
@@ -1797,13 +1835,23 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
                   </div>
                 </div>
               )}
+              <details>
+                <summary>Unidades sem medidor ({tipoMedicaoAtivo.toUpperCase()})</summary>
+                <p>Marque somente unidades que ficam sempre zeradas neste serviço. A configuração exige internet e dispensa leitura e foto.</p>
+                {unidadesExibidas.map(unidade => <label key={unidade} style={{ display: 'block', padding: 6 }}>
+                  <input type="checkbox" checked={semMedidorNoServico(unidade, tipoMedicaoAtivo)}
+                    disabled={configurandoMedidor}
+                    onChange={e => configurarMedidor(unidade, tipoMedicaoAtivo, e.target.checked)} />
+                  {unidade}: sem medidor
+                </label>)}
+              </details>
               <div className="apartamentos-grid">
                 {[...unidadesExibidas]
                   .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }))
                   .map((apto) => {
                   const status = fotosCapturadas[apto] || {};
-                  const thumbnail = status[tipoMedicaoAtivo];
-                  const concluido = Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
+                  const thumbnail = semMedidorNoServico(apto, tipoMedicaoAtivo) ? null : status[tipoMedicaoAtivo];
+                  const concluido = semMedidorNoServico(apto, tipoMedicaoAtivo) || Boolean(concluidosMemoria[apto]?.[tipoMedicaoAtivo]);
 
                   return (
                     <UnidadeCard

@@ -1,3 +1,4 @@
+import { unidadeSemMedidor } from './unidadesSemMedidorService';
 import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -25,6 +26,7 @@ export const LeituraService = {
    * em todas as camadas de persistência (Memória > LocalStorage > Fila Offline > Filesystem).
    */
   obterValorLeitura(condominioId, unidade, servico, valoresMemoria = {}) {
+    if (unidadeSemMedidor(condominioId, unidade, servico)) return 0;
     const servicoKey = String(servico || '').trim().toLowerCase();
     const unidadeStr = String(unidade || '').trim();
     const condIdStr = String(condominioId || '').trim();
@@ -253,6 +255,7 @@ export const LeituraService = {
         const srvUpper = srv.toUpperCase();
 
         unidades.forEach(unidade => {
+          if (unidadeSemMedidor(condId, unidade, srv)) return;
           const nomeOriginal = typeof unidade === 'object'
             ? String(unidade.nome || unidade.numero || unidade.identificador || unidade.unidade || '').trim()
             : String(unidade || '').trim();

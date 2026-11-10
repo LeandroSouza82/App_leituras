@@ -1,4 +1,6 @@
-import { customAlert, customConfirmDestrutivo } from '../../components/CustomPrompt/CustomPrompt';
+import { encontrarCondominioDaPlanilha } from '../../services/ucondoSpreadsheetMetadata';
+import { sincronizarNomePlanilhaUcondo } from '../../services/ucondoNomeService';
+import { customAlert, customConfirm, customConfirmDestrutivo } from '../../components/CustomPrompt/CustomPrompt';
 import React, { useState, useRef } from 'react';
 import { X, Upload, Hash, Plus, Save, Settings2, Trash2, Loader2 } from 'lucide-react';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -11,6 +13,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
   const [tab, setAba] = useState('importar'); // 'importar' | 'gerar' | 'avulso'
   const [unidadesTemp, setUnidadesTemp] = useState([]);
   const [paresImportados, setParesImportados] = useState([]);
+  const [nomeOficial, setNomeOficial] = useState(null);
   const [servicoExtraido, setServicoExtraido] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef(null);
@@ -37,7 +40,11 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
         throw new Error('Nenhuma unidade identificada na planilha.');
       }
 
+      if (metadados.nome && condominioNome && !encontrarCondominioDaPlanilha([{ nome: condominioNome }], metadados.nome)) {
+        if (!await customConfirm(`A planilha é de "${metadados.nome}", mas você está em "${condominioNome}". Deseja vincular esta planilha aqui?`)) return;
+      }
       setParesImportados(pares);
+      setNomeOficial(metadados.nomeOficial || null);
 
       const servicoDetectado = metadados?.servico || null;
       setServicoExtraido(servicoDetectado);
@@ -148,6 +155,7 @@ const ModalGerenciarUnidades = ({ isOpen, onClose, condominioId, condominioNome,
       }
 
       await UCondoImportService.persistirUnidadesLocal(condominioId, paresParaSalvar, servicoParaSalvar);
+      await sincronizarNomePlanilhaUcondo(condominioId, nomeOficial).catch(() => {});
 
       onUnidadesAtualizadas(unidadesTemp);
       await customAlert('✅ Unidades salvas permanentemente no dispositivo!');

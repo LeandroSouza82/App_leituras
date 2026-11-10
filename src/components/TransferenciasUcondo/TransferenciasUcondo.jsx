@@ -75,7 +75,8 @@ export default function TransferenciasUcondo({ userId }) {
       <progress value={card.percentual} max="100" aria-label={`${card.nome}: ${card.etapa}`} />
       {card.remoto ? <p className="ucondo-transferencia-contagens">
         Leituras confirmadas: <strong>{card.leituras} de {card.total}</strong><br />
-        Fotos confirmadas: <strong>{card.fotos} de {card.total}</strong>
+        Fotos confirmadas: <strong>{card.fotos} de {card.total - (card.semFoto || 0)}</strong>
+        {card.semFoto > 0 && <><br />Fotos dispensadas: <strong>{card.semFoto}</strong></>}
       </p> : <p>Leituras e fotos sincronizadas: <strong>{card.sincronizadas} de {card.total}</strong></p>}
       <p className="ucondo-transferencia-detalhe">{card.erroPedido || card.detalhe}</p>
       {card.atualizadoEm && <p className="ucondo-transferencia-detalhe">Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}</p>}

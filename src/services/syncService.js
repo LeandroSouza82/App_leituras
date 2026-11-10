@@ -147,7 +147,8 @@ export async function salvarLeituraOffline(payload, base64Image = null, fileName
       leitura_atual: payload.leitura_atual !== undefined ? parseFloat(payload.leitura_atual) : null,
       leiturista_id: resolvedUserId,
       data_leitura: payload.data_leitura || new Date().toISOString(),
-      fileName: fileName || payload.fileName || null,
+      sem_medidor: payload.sem_medidor === true,
+      fileName: payload.sem_medidor === true ? null : (fileName || payload.fileName || null),
       photoPath: payload.photoPath || null,
       photoDirectory: payload.photoDirectory || null,
       timestamp: Date.now(),
@@ -381,7 +382,7 @@ export async function sincronizarFilaEmBackground() {
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
-        if (item.fileName) {
+        if (item.fileName && !item.sem_medidor) {
           let fileResult;
           try {
             etapaSync = 'LOCALIZAR_FOTO';

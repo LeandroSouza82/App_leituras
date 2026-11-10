@@ -21,15 +21,17 @@ export const confirmarEtapasTrabalho = trabalho => {
     return match && Number(match[2]) === total && Number(match[1]) <= total ? Number(match[1]) : null;
   };
   let leituras = obter(/Leituras conferidas:\s*(\d+)\/(\d+) unidades/i);
+  let semFoto = 0;
   let fotos = obter(/Fotos confirmadas:\s*(\d+)\/(\d+) unidades/i);
   const final = mensagem.match(/Fluxo completo concluído[^:]*:\s*(\d+) unidades com leituras conferidas\s*\((\d+) fotos confirmadas,\s*(\d+) marcadas sem foto\)/i);
   if (final && Number(final[1]) === total && Number(final[2]) <= total) {
     leituras = total;
     fotos = Number(final[2]);
+    semFoto = Number(final[3]);
   }
   const completo = total > 0 && trabalho.status === 'concluida' && !trabalho.erros && !trabalho.pendencias
-    && leituras === total && fotos === total;
-  return { leituras, fotos, completo, total };
+    && leituras === total && fotos + semFoto === total;
+  return { leituras, fotos, semFoto, completo, total };
 };
 
 export const progressoTransferencia = (pedido, trabalhos, lote, agora = Date.now()) => {
@@ -39,8 +41,9 @@ export const progressoTransferencia = (pedido, trabalhos, lote, agora = Date.now
   const etapas = selecionados.map(confirmarEtapasTrabalho);
   const leituras = etapas.reduce((n,e) => n + (e.leituras || 0), 0);
   const fotos = etapas.reduce((n,e) => n + (e.fotos || 0), 0);
+  const semFoto = etapas.reduce((n,e) => n + e.semFoto, 0);
   const completo = esperados > 0 && ids.length === pedido.servicos?.length && selecionados.length === ids.length
-    && etapas.every(e => e.completo) && leituras === esperados && fotos === esperados && lote?.status === 'concluido';
+    && etapas.every(e => e.completo) && leituras === esperados && fotos + semFoto === esperados && lote?.status === 'concluido';
   const falhou = pedido.status === 'erro' || ['erro','cancelado'].includes(lote?.status)
     || selecionados.some(t => ['erro','cancelada','concluida_com_pendencias'].includes(t.status));
   const ativo = selecionados.find(t => t.status === 'em_andamento');
@@ -53,8 +56,8 @@ export const progressoTransferencia = (pedido, trabalhos, lote, agora = Date.now
     : ativo ? (etapas.some(e => e.leituras) ? 'Enviando e conferindo fotos' : 'Enviando e conferindo leituras')
     : 'Aguardando o robô';
   if (lote?.status === 'concluido' && !completo && !falhou) etapa = 'Conferir confirmação final';
-  const percentual = completo ? 100 : esperados ? Math.min(99, Math.floor((leituras + fotos) * 100 / (2 * esperados))) : 0;
-  return { etapa, percentual, leituras, fotos, total: esperados, completo, falhou,
+  const percentual = completo ? 100 : esperados ? Math.min(99, Math.floor((leituras + fotos + semFoto) * 100 / (2 * esperados))) : 0;
+  return { etapa, percentual, leituras, fotos, semFoto, total: esperados, completo, falhou,
     atualizadoEm: selecionados.map(t => t.heartbeat_at).filter(Boolean).sort().at(-1),
     detalhe: completo ? 'Leituras e fotos confirmadas no uCondo.' : falhou ? 'Confira as pendências no AutoFast antes de tentar novamente.'
       : semSinal ? 'As últimas contagens foram mantidas. O envio não foi declarado concluído.'
@@ -65,4 +68,4 @@ export const contarSincronizadas = (itens, registros) => itens.filter(item => re
   row.id === item.db_id && row.leiturista_id === item.leiturista_id && row.servico === item.servico
   && row.unidade_id === item.unidade_id && row.condominio_nome === item.condominio_nome
   && Math.round(Number(row.leitura_atual) * 10000) === Math.round(Number(item.leitura_atual) * 10000)
-  && Boolean(row.foto_url))).length;
+  && (Boolean(row.foto_url) || (item.sem_medidor === true && Number(row.leitura_atual) === 0)))).length;
