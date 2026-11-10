@@ -1,13 +1,13 @@
 import React, { useCallback, useState } from 'react';
-import { 
-  X, 
-  Layers, 
-  LogOut, 
-  Camera, 
-  User, 
+import {
+  X,
+  Layers,
+  LogOut,
+  Camera,
+  User,
   ShieldCheck,
-  Headset, 
-  Star, 
+  Headset,
+  Star,
   MessageSquare,
   Cloud,
   RefreshCw,
@@ -20,6 +20,7 @@ import CameraSettingsModal from '../CameraSettingsModal/CameraSettingsModal';
 import FeedbackModal from '../FeedbackModal/FeedbackModal';
 import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
 import GuiaLeituristaModal from '../GuiaLeiturista/GuiaLeituristaModal';
+import { getUcondoStatus } from '../../utils/ucondoPillUtils';
 import './SideMenu.css';
 import { Browser } from '@capacitor/browser';
 import { SUPPORT_URL, ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
@@ -33,6 +34,20 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const fecharGuia = useCallback(() => setShowGuide(false), []);
+  const [ucondoStatus, setUcondoStatusState] = useState(() => getUcondoStatus());
+
+  React.useEffect(() => {
+    const onStatusChange = (e) => {
+      if (e?.detail) setUcondoStatusState(e.detail);
+    };
+    window.addEventListener('ucondo_status_alterado', onStatusChange);
+    return () => window.removeEventListener('ucondo_status_alterado', onStatusChange);
+  }, []);
+
+  const handleAbrirUcondo = () => {
+    onClose();
+    window.dispatchEvent(new CustomEvent('abrir_envios_ucondo'));
+  };
 
   const abrirSiteRobo = async () => {
     try { await Browser.open({ url: ROBOT_DASHBOARD_URL }); }
@@ -97,6 +112,16 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     {
       title: 'Sistema',
       items: [
+        {
+          id: 'ucondo',
+          label: 'Envios para o uCondo',
+          icon: Cloud,
+          onClick: handleAbrirUcondo,
+          badge: ucondoStatus.ativosCount > 0 && !ucondoStatus.temErro ? ucondoStatus.ativosCount : null,
+          badgeType: 'ativo',
+          dot: ucondoStatus.temErro,
+          dotType: 'alerta'
+        },
         { id: 'sync', label: 'Sincronização e Status', icon: RefreshCw, onClick: () => setShowSyncModal(true) },
         { id: 'privacy', label: 'Política de Privacidade e Termos', icon: ShieldCheck, onClick: () => setShowPrivacyModal(true) },
       ]
@@ -117,7 +142,7 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
   const handleLogout = async () => {
     if (!await customConfirm('Deseja realmente sair da sua conta?')) return;
-    
+
     if (onLogout) {
       await onLogout();
     }
@@ -156,13 +181,21 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
                     const Icon = item.icon;
                     return (
                       <li key={item.id}>
-                        <button 
-                          type="button" 
-                          className="side-menu-item" 
+                        <button
+                          type="button"
+                          className="side-menu-item"
                           onClick={item.onClick}
                         >
                           <Icon size={20} color="#64748b" />
                           <span>{item.label}</span>
+                          {item.badge && (
+                            <span className={`side-menu-badge ${item.badgeType || ''}`}>
+                              {item.badge}
+                            </span>
+                          )}
+                          {item.dot && (
+                            <span className={`side-menu-dot ${item.dotType || ''}`} aria-label="Alerta nos envios" />
+                          )}
                         </button>
                       </li>
                     );
@@ -189,14 +222,14 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
 
       <GuiaLeituristaModal isOpen={showGuide} onClose={fecharGuia} onOpenRobot={abrirSiteRobo} />
 
-      <CameraSettingsModal 
-        isOpen={isCameraModalOpen} 
-        onClose={() => setCameraModalOpen(false)} 
+      <CameraSettingsModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setCameraModalOpen(false)}
       />
 
-      <FeedbackModal 
-        isOpen={isFeedbackModalOpen} 
-        onClose={() => setFeedbackModalOpen(false)} 
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
       />
 
       {showSyncModal && (
@@ -215,9 +248,9 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: '#0f172a', marginBottom: '20px', fontWeight: '500' }}>
               A sincronização precisa de conexão com a internet.
             </div>
-            <button 
-              type="button" 
-              onClick={handleForceSync} 
+            <button
+              type="button"
+              onClick={handleForceSync}
               disabled={isSyncing}
               style={{ width: '100%', padding: '10px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#0f172a', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer' }}
             >

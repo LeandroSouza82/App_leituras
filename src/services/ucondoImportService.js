@@ -1,3 +1,5 @@
+import { encontrarCondominioDaPlanilha } from './ucondoSpreadsheetMetadata';
+import { sincronizarNomePlanilhaUcondo } from './ucondoNomeService';
 import * as XLSX from 'xlsx';
 import { salvarArquivoSeguro } from './filesystemService';
 import { salvarCondominio } from './condominioService';
@@ -379,23 +381,10 @@ export const UCondoImportService = {
               .select('*');
 
             if (!fetchError && Array.isArray(todosConds)) {
-              condExistente = todosConds.find(c => {
-                const nomeBanco = normalizarNome(c.nome);
-                if (!nomeBanco || !nomeLimpoPlanilha) return false;
-
-                if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
-                  return true;
-                }
-
-                const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
-                if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
-                  return true;
-                }
-
-                return false;
-              }) || null;
+              condExistente = encontrarCondominioDaPlanilha(todosConds, nomeExtraido);
             }
           } catch (errDb) {
+            if (errDb.message?.includes('cadastros duplicados')) throw errDb;
           }
         }
 
@@ -408,21 +397,7 @@ export const UCondoImportService = {
               if (cacheData) listaLocal = JSON.parse(cacheData) || [];
             } catch (e) {}
           }
-          condExistente = listaLocal.find(c => {
-            const nomeBanco = normalizarNome(c.nome);
-            if (!nomeBanco || !nomeLimpoPlanilha) return false;
-
-            if (nomeBanco === nomeLimpoPlanilha || nomeBanco.includes(nomeLimpoPlanilha) || nomeLimpoPlanilha.includes(nomeBanco)) {
-              return true;
-            }
-
-            const distancia = calcularDistanciaLevenstein(nomeBanco, nomeLimpoPlanilha);
-            if (nomeLimpoPlanilha.length > 8 && distancia <= 2) {
-              return true;
-            }
-
-            return false;
-          }) || null;
+          condExistente = encontrarCondominioDaPlanilha(listaLocal, nomeExtraido);
         }
 
         // 4. Se o condomínio já existe: Pergunta se deseja substituir
@@ -439,6 +414,7 @@ export const UCondoImportService = {
 
           // Atualiza as unidades locais no serviço correto
           await this.persistirUnidadesLocal(condExistente.id, pares, servicoPlanilha);
+          await sincronizarNomePlanilhaUcondo(condExistente.id, metadados.nomeOficial).catch(() => {});
 
           // Atualiza contagem no Supabase
           if (supabase) {
@@ -466,6 +442,7 @@ export const UCondoImportService = {
 
           const novoCondominioData = {
             nome: nomeExtraido,
+            nome_ucondo: metadados.nomeOficial || null,
             tipoLeitura: tipoLeituraCondominio,
             diaLeitura: '10',
             apartamentos: unidades.length,
@@ -550,10 +527,7 @@ export const UCondoImportService = {
 
       // 2. Validação de Segurança: Checa se o nome de dentro do Excel bate com o condomínio atual
       if (metadados.nome && condominoAtualNome) {
-        const nomePlanilhaNorm = normalizarNome(metadados.nome);
-        const nomeAtualNorm = normalizarNome(condominoAtualNome);
-
-        const temCorrespondencia = nomePlanilhaNorm.includes(nomeAtualNorm) || nomeAtualNorm.includes(nomePlanilhaNorm);
+        const temCorrespondencia = Boolean(encontrarCondominioDaPlanilha([{ nome: condominoAtualNome }], metadados.nome));
 
         if (!temCorrespondencia) {
           const confirmarDivergencia = await customConfirm(
@@ -578,6 +552,7 @@ export const UCondoImportService = {
 
       // 3. Persistência canônica
       await this.persistirUnidadesLocal(condominioId, pares, servico);
+      await sincronizarNomePlanilhaUcondo(condominioId, metadados.nomeOficial).catch(() => {});
 
       return {
         unidades: novasUnidades,

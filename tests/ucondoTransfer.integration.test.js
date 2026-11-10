@@ -9,13 +9,13 @@ const bundled=await build({stdin:{contents:"export * from './src/services/ucondo
       const f='const f=globalThis.__transferFixture;';
       return {contents:f+(/supabase$/.test(args.path)?'export const supabase=f.supabase;export const criarClienteParaToken=()=>f.client;'
         :/syncService$/.test(args.path)?'export const salvarLeituraOffline=async i=>{f.uploads.push(i);return true};export const sincronizarFilaEmBackground=async()=>{};export const readFilaSync=()=>f.pendentes;'
-        :/offlineQueueStorage$/.test(args.path)?'export const exigirContaOffline=id=>{if(id!==f.user)throw new Error("conta mudou");return id};'
+        :/offlineQueueStorage$/.test(args.path)?'export const exigirContaOffline=id=>{id ??= f.user;if(id!==f.user)throw new Error("conta mudou");return id};export const capturarContextoSync=async()=>({client:f.client,assertActive:()=>{}});'
         :'export const temConexaoInternetUtil=async()=>f.online;')};
     });
   },
 }]});
 async function fixture(){
-  const storage=new Map(); globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)};
+  const storage=new Map(); globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
   globalThis.window={dispatchEvent(){}};
   const f={user:'A',online:false,uploads:[],calls:[],records:[],pendentes:[]};
   f.supabase={auth:{getSession:async()=>({data:{session:{user:{id:f.user},access_token:'fixture'}}})}};
@@ -42,4 +42,34 @@ test('leaving a condo and collecting another does not cancel or replace the firs
   const second=api.registrarEnvioUcondo({...f.input,condominioId:'next',itens:[{...f.input.itens[0],db_id:'next',condominio_id:'next'}]});
   assert.notEqual(first.id,second.id);assert.equal(api.registrarEnvioUcondo(f.input).id,first.id);
   f.user='B';f.online=true;await assert.rejects(api.processarEnviosUcondo('A'));assert.equal(f.calls.length,0);
+});
+
+test('unidade explicitamente sem medidor envia zero sem foto e mantém a confirmação do servidor', async()=>{
+  const {f,api,item}=await fixture();
+  const dispensada={...item,sem_medidor:true,leitura_atual:0,photoPath:null};
+  f.input.itens=[dispensada];
+  api.registrarEnvioUcondo(f.input);
+  f.online=true;
+  f.records=[{...dispensada,id:dispensada.db_id,foto_url:''}];
+  await api.processarEnviosUcondo('A');
+  assert.equal(f.uploads[0].sem_medidor,true);
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].name,'solicitar_transferencia_ucondo');
+});
+
+test('nome original pendente sincroniza no cadastro antes de solicitar a transferência', async()=>{
+  const {f,api,item}=await fixture();
+  api.registrarEnvioUcondo(f.input);
+  globalThis.localStorage.setItem('nome_ucondo_planilha_A_condo','Hamburgo*');
+  f.client.from=table=>{
+    const q={update(patch){f.nome=patch;return q},select(){return q},eq(){return q},
+      in(){return Promise.resolve({data:f.records})},
+      then(resolve,reject){return Promise.resolve({data:[{id:'condo'}]}).then(resolve,reject)}};
+    return q;
+  };
+  f.online=true;f.records=[{...item,id:item.db_id,foto_url:'https://fixture.test/foto'}];
+  await api.processarEnviosUcondo('A');
+  assert.deepEqual(f.nome,{nome_ucondo:'Hamburgo*'});
+  assert.equal(globalThis.localStorage.getItem('nome_ucondo_planilha_A_condo'),null);
+  assert.equal(f.calls.length,1);
 });
