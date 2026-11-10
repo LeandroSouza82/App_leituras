@@ -14,6 +14,14 @@ select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002'
 do $test$
 declare dados jsonb; normal jsonb;
 begin
+  if (select nome_ucondo from public.condominios where id='00000000-0000-0000-0000-000000000001')<>'Hamburgo' then
+    raise exception 'Legacy insert must fill the missing official name';
+  end if;
+  update public.condominios set nome_ucondo='Hamburgo*' where id='00000000-0000-0000-0000-000000000001';
+  update public.condominios set nome=nome where id='00000000-0000-0000-0000-000000000001';
+  if (select nome_ucondo from public.condominios where id='00000000-0000-0000-0000-000000000001')<>'Hamburgo*' then
+    raise exception 'Explicit official names must not be overwritten';
+  end if;
   normal:=public.manifesto_transferencia_ucondo(auth.uid(),'00000000-0000-0000-0000-000000000001','2026-11',array['AGUA']);
   if exists(select 1 from jsonb_array_elements(normal) e where e ? 'sem_medidor') then
     raise exception 'Normal units must retain the existing manifesto shape';

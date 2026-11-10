@@ -6,6 +6,8 @@ Na tela das unidades, abra **Unidades sem medidor**, escolha o serviço e marque
 
 No envio completo, a unidade dispensada permanece na planilha com `0.0000`, sem foto. O progresso distingue fotos confirmadas de fotos dispensadas. Imagens antigas ficam preservadas no armazenamento, mas o worker atualizado ignora as imagens das unidades dispensadas.
 
+A migração `20261110133515_ucondo_nome_automatico_legado.sql` também foi aplicada em 10/11/2026. Ela preenche o nome oficial ausente nos novos cadastros dos aplicativos antigos, preservando nomes oficiais explícitos. Foram corrigidos 14 cadastros vazios da conta atendida, sem alterar o vínculo já existente de Hamburgo. O nome de cadastro continua sujeito à confirmação exata do destino pelo robô.
+
 ## Implantação
 
 1. Aplicar `20261110131603_ucondo_nome_e_unidades_sem_medidor.sql`. Aplicada ao projeto Fast Leituras em 10/11/2026; teste transacional com as quatro unidades reais de Hamburgo aprovado e revertido.
