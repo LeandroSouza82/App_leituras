@@ -61,7 +61,7 @@
   right: 0;
   bottom: 0;
   height: 3px;
-  background: rgba(8, 123, 82, 0.15);
+  background: rgba(21, 94, 145, 0.15);
   border-radius: 0 0 999px 999px;
   overflow: hidden;
   pointer-events: none;
@@ -70,7 +70,7 @@
 .ucondo-pill-progresso-barra {
   display: block;
   height: 100%;
-  background: #087b52;
+  background: #155e91;
   transition: width 200ms ease-out;
 }
 
@@ -93,7 +93,7 @@
 }
 
 .ucondo-pill.ucondo-pill-alerta .ucondo-pill-progresso-barra {
-  background: #d97706;
+  background: #b91c1c;
 }
 
 /* ==========================================================================
@@ -240,19 +240,32 @@
 }
 
 .ucondo-transferencia-card progress {
+  --ucondo-progresso-cor: #155e91;
   width: 100%;
   height: 12px;
   margin-top: 8px;
-  accent-color: #087b52;
+  accent-color: var(--ucondo-progresso-cor);
+}
+
+.ucondo-transferencia-card.concluido progress {
+  --ucondo-progresso-cor: #087b52;
+}
+
+.ucondo-transferencia-card.tem-erro progress {
+  --ucondo-progresso-cor: #b91c1c;
 }
 
 .ucondo-transferencia-detalhe {
   color: #526276;
 }
 
-.ucondo-transferencia-aviso,
-.ucondo-transferencia-card.tem-erro {
+.ucondo-transferencia-aviso {
   color: #8b4a0b;
+}
+
+.ucondo-transferencia-card.tem-erro {
+  color: #991b1b;
+  border-color: #fecaca;
 }
 
 .ucondo-ver-fila {

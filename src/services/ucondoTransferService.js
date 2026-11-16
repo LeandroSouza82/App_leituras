@@ -106,7 +106,7 @@ export const consultarEnviosUcondo = async userId => {
   const ids = [...new Set(pedidos.data.flatMap(p => p.trabalhos_ids || []))];
   const lotes = [...new Set(pedidos.data.map(p => p.solicitacao_id).filter(Boolean))];
   const [trabalhos, solicitacoes] = await Promise.all([
-    ids.length ? client.from('automacoes_fila').select('id,user_id,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
+    ids.length ? client.from('automacoes_fila').select('id,user_id,servico,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
     lotes.length ? client.from('solicitacoes_lote').select('id,status').eq('user_id',userId).in('id',lotes) : { data: [] },
   ]);
   assertActive();

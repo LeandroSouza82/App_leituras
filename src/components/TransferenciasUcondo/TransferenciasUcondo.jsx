@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, X } from 'lucide-react';
-import { lerEnvios, progressoTransferencia } from '../../services/ucondoTransferModel';
+import { lerEnvios, progressoTransferencia, separarHistoricoTransferencias } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
 import {
   getDefaultPosition,
@@ -116,6 +116,8 @@ export default function TransferenciasUcondo({ userId }) {
     id: p.id,
     nome: p.condominio_nome,
     periodo: p.periodo,
+    condominioId: p.condominio_id,
+    servicos: p.servicos || [],
     ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
     erroPedido: p.mensagem,
     remoto: true
@@ -137,8 +139,9 @@ export default function TransferenciasUcondo({ userId }) {
 
   const todos = [...locaisPendentes, ...cards];
   const concluidos = todos.filter(p => p.completo);
-  const ativos = todos.filter(p => !p.completo).sort((a,b) => Number(!a.atualizadoEm) - Number(!b.atualizadoEm));
-  const visiveis = [...(verTodos ? ativos : ativos.slice(0, 1)), ...(verHistorico ? concluidos : [])];
+  const { atuais, historico } = separarHistoricoTransferencias(cards);
+  const ativos = [...locaisPendentes, ...atuais].sort((a,b) => Number(!a.atualizadoEm) - Number(!b.atualizadoEm));
+  const visiveis = [...(verTodos ? ativos : ativos.slice(0, 1)), ...(verHistorico ? historico : [])];
 
   const temErroGeral = Boolean(erro) || ativos.some(a => a.falhou || a.erroPedido);
 
@@ -612,7 +615,7 @@ export default function TransferenciasUcondo({ userId }) {
                   className="ucondo-btn-historico"
                   onClick={() => setVerHistorico(v => !v)}
                 >
-                  {verHistorico ? 'Ocultar concluídos' : `${concluidos.length} concluído(s)`}
+                  {verHistorico ? 'Ocultar histórico' : 'Ver histórico'}
                 </button>
               )}
               <button
@@ -652,7 +655,7 @@ export default function TransferenciasUcondo({ userId }) {
                     {visiveis.map(card => (
                       <article
                         key={card.id}
-                        className={`ucondo-transferencia-card ${card.falhou ? 'tem-erro' : ''}`}
+                        className={`ucondo-transferencia-card ${card.completo ? 'concluido' : card.falhou ? 'tem-erro' : ''}`}
                       >
                         <div className="ucondo-transferencia-heading">
                           <strong>{card.nome} · {card.periodo}</strong>
@@ -663,7 +666,7 @@ export default function TransferenciasUcondo({ userId }) {
                           ) : null}
                         </div>
                         <p className="ucondo-transferencia-etapa">
-                          {card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
+                          {card.tentativaAnterior ? 'Tentativa anterior' : card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
                         </p>
                         <progress
                           value={card.percentual}
@@ -672,7 +675,7 @@ export default function TransferenciasUcondo({ userId }) {
                         />
                         {card.remoto ? (
                           <p className="ucondo-transferencia-contagens">
-                            Leituras confirmadas: <strong>{card.leituras} de {card.total}</strong><br />
+                            Leituras confirmadas: <strong>{card.leituras} de {card.total - card.foraGrade}</strong><br />
                             Fotos confirmadas: <strong>{card.fotos} de {card.total - (card.semFoto || 0)}</strong>
                             {card.semFoto > 0 && <><br />Fotos dispensadas: <strong>{card.semFoto}</strong></>}
                           </p>
@@ -681,7 +684,10 @@ export default function TransferenciasUcondo({ userId }) {
                             Leituras e fotos sincronizadas: <strong>{card.sincronizadas} de {card.total}</strong>
                           </p>
                         )}
-                        <p className="ucondo-transferencia-detalhe">{card.erroPedido || card.detalhe}</p>
+                        <p className="ucondo-transferencia-detalhe">
+                          {card.tentativaAnterior ? 'Serviços pendentes confirmados em uma tentativa posterior.'
+                            : (card.falhou && card.erroPedido) || card.detalhe}
+                        </p>
                         {card.atualizadoEm && (
                           <p className="ucondo-transferencia-detalhe">
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
