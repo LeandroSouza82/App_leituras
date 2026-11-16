@@ -59,8 +59,11 @@ export const progressoTransferencia = (pedido, trabalhos, lote, agora = Date.now
   const completo = esperados > 0 && pedido.status !== 'erro' && loteFinalizado
     && ids.length === pedido.servicos?.length && new Set(ids).size === ids.length && selecionados.length === ids.length
     && etapas.every(e => e.completo) && leituras + foraGrade === esperados && fotos + semFoto === esperados;
-  const falhou = !completo && (pedido.status === 'erro' || ['erro','cancelado'].includes(lote?.status)
-    || selecionados.some(t => ['erro','cancelada','concluida_com_pendencias'].includes(t.status)));
+  const emRetomada = pedido.status === 'despachada'
+    && selecionados.some(t => ['aguardando', 'em_andamento'].includes(t.status));
+  const falhou = !completo && (pedido.status === 'erro'
+    || (!emRetomada && ['erro', 'cancelado'].includes(lote?.status))
+    || selecionados.some(t => ['erro', 'cancelada', 'concluida_com_pendencias'].includes(t.status)));
   const ativo = selecionados.find(t => t.status === 'em_andamento');
   const aguardaDecisao = ativo && /aguardando[^.]*decis[aã]o|aguardando[^.]*substitui/i.test(ativo.resultado_mensagem || '');
   const semSinal = ativo && (!ativo.heartbeat_at || agora - new Date(ativo.heartbeat_at).getTime() > 90000);

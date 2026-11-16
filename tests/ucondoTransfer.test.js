@@ -57,6 +57,32 @@ test('San Sebastian: conclusão comprovada no trabalho retomado supera erro do l
   assert.equal(progressoTransferencia(p, [{ ...concluido, status: 'em_andamento' }], lote).completo, false);
 });
 
+test('Le Parque: mantém o progresso real na retomada e encerra em 100% sem carregar o erro antigo', () => {
+  const p = { ...pedido, servicos: ['AGUA', 'GAS'], trabalhos_ids: ['job', 'gas'], total_leituras: 96 };
+  const loteOriginal = { status: 'erro' };
+  const agua = { ...job, servico: 'AGUA', status: 'concluida', total_unidades: 48, erros: 0, pendencias: 0,
+    resultado_mensagem: 'Fluxo completo concluído (AGUA): 48 unidades com leituras conferidas (48 fotos confirmadas, 0 marcadas sem foto).' };
+  const gas = { ...agua, id: 'gas', servico: 'GAS', status: 'erro', erros: 1, erro_mensagem: 'Janela da foto APTO-1204',
+    resultado_mensagem: 'Leituras conferidas: 48/48 unidades. Fotos confirmadas: 47/48 unidades.' };
+  const antes = progressoTransferencia(p, [agua, gas], loteOriginal);
+  assert.equal(antes.falhou, true);
+  assert.equal(antes.fotos, 95);
+
+  const aguardando = progressoTransferencia(p, [agua, { ...gas, status: 'aguardando' }], loteOriginal);
+  assert.equal(aguardando.etapa, 'Aguardando o robô');
+  assert.equal(aguardando.falhou, false);
+  assert.equal(aguardando.percentual, 99);
+
+  const executando = progressoTransferencia(p, [agua, { ...gas, status: 'em_andamento' }], loteOriginal);
+  assert.equal(executando.etapa, 'Enviando e conferindo fotos');
+  assert.equal(executando.falhou, false);
+  assert.equal(executando.fotos, 95);
+
+  const final = progressoTransferencia(p, [agua, { ...gas, status: 'concluida', erros: 0,
+    resultado_mensagem: 'Fluxo completo concluído (GAS): 48 unidades com leituras conferidas (48 fotos confirmadas, 0 marcadas sem foto).' }], loteOriginal);
+  assert.deepEqual([final.leituras, final.fotos, final.percentual, final.completo, final.falhou], [96, 96, 100, true, false]);
+});
+
 test('só uma conclusão mais recente para os mesmos serviços arquiva um erro antigo', () => {
   const base = { condominioId: 'khiva', periodo: '2026-11', servicos: ['AGUA', 'GAS'] };
   const novo = { ...base, completo: true };
