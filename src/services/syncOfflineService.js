@@ -247,6 +247,7 @@ export const sincronizarCondominiosOffline = async () => {
            id: cond.id,
            user_id: activeUserId,
            nome: String(cond.nome || '').trim(),
+           ...(cond.nome_ucondo ? { nome_ucondo: cond.nome_ucondo } : {}),
            tipo_leitura: cond.tipoLeitura || 'Água e Gás',
            dia_leitura: String(cond.diaLeitura || '').trim(),
            apartamentos: Number(cond.apartamentos || 0),

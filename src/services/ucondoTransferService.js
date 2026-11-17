@@ -1,3 +1,4 @@
+import { sincronizarNomePlanilhaUcondo } from './ucondoNomeService';
 import { supabase, criarClienteParaToken } from './supabase';
 import { salvarLeituraOffline, sincronizarFilaEmBackground, readFilaSync } from './syncService';
 import { exigirContaOffline } from './offlineQueueStorage';
@@ -13,7 +14,7 @@ export const registrarEnvioUcondo = ({ userId, condominioId, nome, periodo, serv
     || servicos.some(s => !['AGUA','GAS'].includes(s))) throw new Error('Confira o condomínio, mês e serviços. O robô atual atende água e gás.');
   if (itens.some(i => i.leiturista_id !== userId || i.condominio_id !== condominioId || i.mes_referencia !== periodo
     || i.condominio_nome !== nome || !servicos.includes(i.servico) || !i.unidade_id
-    || !i.photoPath || !i.db_id || !Number.isFinite(i.leitura_atual))) throw new Error('Todas as leituras e fotos deste condomínio e mês precisam estar salvas no aparelho.');
+    || (!i.photoPath && !(i.sem_medidor === true && i.leitura_atual === 0)) || !i.db_id || !Number.isFinite(i.leitura_atual))) throw new Error('Todas as leituras e fotos deste condomínio e mês precisam estar salvas no aparelho.');
   const fila = lerEnvios(userId);
   const existente = fila.find(p => p.condominioId === condominioId && p.periodo === periodo && !p.serverId && !p.erro);
   if (existente) return existente;
@@ -47,6 +48,7 @@ export const processarEnviosUcondo = async userId => {
     const { client, assertActive } = await contexto(userId);
     for (const pedido of lerEnvios(userId).filter(p => !p.serverId && !p.erro)) {
       assertActive();
+      await sincronizarNomePlanilhaUcondo(pedido.condominioId, null, client);
       if (!pedido.preparadas) {
         let preparadas = true;
         for (const item of pedido.itens) {
@@ -104,7 +106,7 @@ export const consultarEnviosUcondo = async userId => {
   const ids = [...new Set(pedidos.data.flatMap(p => p.trabalhos_ids || []))];
   const lotes = [...new Set(pedidos.data.map(p => p.solicitacao_id).filter(Boolean))];
   const [trabalhos, solicitacoes] = await Promise.all([
-    ids.length ? client.from('automacoes_fila').select('id,user_id,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
+    ids.length ? client.from('automacoes_fila').select('id,user_id,servico,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
     lotes.length ? client.from('solicitacoes_lote').select('id,status').eq('user_id',userId).in('id',lotes) : { data: [] },
   ]);
   assertActive();

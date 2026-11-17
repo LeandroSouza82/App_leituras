@@ -11,6 +11,7 @@ import { useDataLeituras } from './useDataLeituras';
 import { lerFilaPersistida, gravarFilaPersistida, exigirContaOffline, contaOfflineAtiva, donoDoItem } from '../services/offlineQueueStorage';
 import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
 import { cicloMensalService } from '../services/cicloMensalService';
+import { calcularTotalFaturado } from '../utils/faturamento';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -279,6 +280,8 @@ export const useLeituras = (onFeedback = () => {}) => {
     [leituras]
   );
 
+  const totalFaturado = useMemo(() => calcularTotalFaturado(leituras), [leituras]);
+
   const percentualConcluido = useMemo(() => {
     if (leituras.length === 0) {
       return 0;
@@ -302,6 +305,7 @@ export const useLeituras = (onFeedback = () => {}) => {
     leituras,
     mesAnoFormatado,
     totalValor,
+    totalFaturado,
     totalConcluidos,
     percentualConcluido,
     leiturasHoje,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -14,6 +14,7 @@ import {
 import { supabase } from '../../services/supabase';
 import { customConfirm } from '../../components/CustomPrompt/CustomPrompt';
 import './Perfil.css';
+import AvatarPerfil from './AvatarPerfil';
 
 const FALLBACK_USER = {
   id: 'fallback-user',
@@ -24,13 +25,6 @@ const FALLBACK_USER = {
   phone: '',
   avatar: null,
 };
-
-const getInitials = (name) => String(name || '')
-  .split(' ')
-  .filter(Boolean)
-  .slice(0, 2)
-  .map((part) => part[0].toUpperCase())
-  .join('') || 'L';
 
 const getUserData = (user) => ({
   id: user?.id || FALLBACK_USER.id,
@@ -147,7 +141,6 @@ const Perfil = ({ onShowToast, onNavigate, onLogout }) => {
     };
   }, [onShowToast]);
 
-  const initials = useMemo(() => getInitials(user.name), [user.name]);
   const perfilName = user.name || 'Leiturista não identificado';
   const perfilRole = user.role || 'Leiturista';
 
@@ -244,9 +237,7 @@ const Perfil = ({ onShowToast, onNavigate, onLogout }) => {
   return (
     <main className="perfil-page" aria-labelledby="perfil-title">
       <header className="perfil-header" style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--primary-color)', padding: '24px 16px 16px', marginBottom: 0 }}>
-        <div className="perfil-avatar" aria-hidden="true">
-          {user.avatar ? <img src={user.avatar} alt="Avatar" className="perfil-avatar-img" /> : (initials || <UserRound size={30} />)}
-        </div>
+        <AvatarPerfil key={`${user.id}|${user.avatar || ''}`} userId={user.id} nome={user.name} url={user.avatar} />
         <div className="perfil-heading">
           <span className="perfil-eyebrow">Minha conta</span>
           <h1 id="perfil-title">{loadingUser ? 'Leiturista não identificado' : perfilName}</h1>

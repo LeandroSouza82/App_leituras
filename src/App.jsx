@@ -58,6 +58,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     leituras,
     mesAnoFormatado,
     totalValor,
+    totalFaturado,
     totalConcluidos,
     percentualConcluido,
     leiturasHoje,
@@ -291,7 +292,6 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
   return (
     <>
       <div className="app-shell app-has-navigation">
-        <TransferenciasUcondo key={userId} userId={userId} />
         {!isOnline && (
           <div className={`offline-banner offline`}>
             Offline - Sincronização pendente para o banco de dados
@@ -320,6 +320,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
               totalConcluidos={totalConcluidos}
               percentualConcluido={percentualConcluido}
               totalValor={totalValor}
+              totalFaturado={totalFaturado}
               leituras={leituras}
               totalPendentes={totalPendentes}
               onOpenAlerts={handleOpenAlerts}
@@ -438,6 +439,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
         <BottomNavbar activeTab={abaAtiva} onChange={setAbaAtiva} />
       </div>
       <AutoSyncIndicator />
+      <TransferenciasUcondo key={userId} userId={userId} />
       <Toast {...toast} onClose={dismissToast} />
       <BackupFotosMenu 
         isOpen={showBackupFotosModal} 

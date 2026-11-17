@@ -318,3 +318,21 @@ test('virada mensal completa offline mantém fila antiga, arquiva foto e enfilei
   assert.equal([...disco.keys()].some(key => /2026-09.*AptoA-101_AGUA.jpg/.test(key)), true);
   assert.equal(f.requests.length, 0);
 });
+
+test('unidade sem medidor persiste a dispensa e sincroniza zero sem ler ou enviar foto antiga', async () => {
+  const { f, mod } = await fixture();
+  const item = leitura({ sem_medidor: true, leitura_atual: 0, fileName: 'chao.jpg', photoPath: 'Backups/Condo/chao.jpg' });
+  f.files.readFile = async () => { throw new Error('A foto dispensada não deve ser lida'); };
+  assert.equal(await mod.salvarLeituraOffline(item), true);
+  const pendente = JSON.parse(f.data.get('fila_sync_auto'))[0];
+  assert.equal(pendente.sem_medidor, true);
+  assert.equal(pendente.fileName, null);
+  f.online = true;
+  await mod.sincronizarFilaEmBackground();
+  assert.equal(f.requests.some(r => r.table === 'storage'), false);
+  const request = f.requests.find(r => r.table === 'leituras_detalhes' && r.action === 'upsert');
+  assert.equal(request.payload[0].leitura_atual, 0);
+  assert.equal(request.payload[0].foto_url, '');
+  assert.equal(request.payload[0].id, item.db_id);
+  assert.deepEqual(JSON.parse(f.data.get('fila_sync_auto')), []);
+});

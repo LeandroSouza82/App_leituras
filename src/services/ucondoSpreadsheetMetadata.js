@@ -110,6 +110,7 @@ export const extrairServicoDeTexto = (tipoBruto) => {
 // O segundo argumento permanece aceito para compatibilidade com integrações antigas.
 export const extrairMetadadosPlanilha = (rawData, _nomeArquivo = '') => {
   let nomeExtraido = '';
+  let nomeOficial = '';
   let tipoMedicaoBruto = '';
 
   if (Array.isArray(rawData)) {
@@ -125,11 +126,13 @@ export const extrairMetadadosPlanilha = (rawData, _nomeArquivo = '') => {
         if (cellValue.includes('condominio')) {
           const partsCond = String(row[j]).split(':');
           if (partsCond.length > 1 && partsCond[1].trim()) {
-            nomeExtraido = partsCond[1].replace(/\*/g, '').trim();
+            nomeOficial = partsCond.slice(1).join(':').trim();
+            nomeExtraido = nomeOficial.replace(/\*/g, '').trim();
           } else {
             for (let k = j + 1; k < Math.min(j + 5, row.length); k++) {
               if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
-                nomeExtraido = String(row[k]).replace(/\*/g, '').trim();
+                nomeOficial = String(row[k]).trim();
+                nomeExtraido = nomeOficial.replace(/\*/g, '').trim();
                 break;
               }
             }
@@ -167,7 +170,19 @@ export const extrairMetadadosPlanilha = (rawData, _nomeArquivo = '') => {
 
   return {
     nome: nomeExtraido,
+    nomeOficial,
     tipoMedicao: tipoMedicaoBruto,
     servico,
   };
+};
+
+// Matching may ignore only the uCondo marker, accents, case and whitespace.
+// Never associate a new sheet by substring or spelling similarity.
+export const encontrarCondominioDaPlanilha = (condominios, nome) => {
+  const normalizar = valor => normalizarTexto(valor).replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+  const alvo = normalizar(nome);
+  if (!alvo) return null;
+  const encontrados = condominios.filter(c => [c.nome, c.nome_ucondo].some(n => normalizar(n) === alvo));
+  if (encontrados.length > 1) throw new Error('Mais de um condomínio corresponde ao nome da planilha. Confira os cadastros duplicados.');
+  return encontrados[0] || null;
 };

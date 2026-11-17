@@ -114,6 +114,11 @@
   line-height: 1;
 }
 
+.header-valor-legenda {
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
 /* ===== MÉTRICAS SECUNDÁRIAS ===== */
 .header-metricas {
   display: grid;

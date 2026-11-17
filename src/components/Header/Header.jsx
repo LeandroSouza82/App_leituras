@@ -29,6 +29,7 @@ const Header = ({
   totalConcluidos,
   percentualConcluido,
   totalValor,
+  totalFaturado,
   leituras,
   totalPendentes,
   onOpenAlerts,
@@ -129,6 +130,7 @@ const Header = ({
         <strong className="header-valor-numero">
           {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
         </strong>
+        <span className="header-valor-legenda">Total previsto do mês</span>
       </div>
 
       {/* Linha 3: Progresso mensal */}
@@ -198,7 +200,7 @@ const Header = ({
         >
           <span className="header-metrica-label header-metrica-label--faturamento">Faturado</span>
           <strong className="header-metrica-valor header-metrica-valor--faturamento">
-            {mostrarValor ? formatCurrency(totalValor) : 'R$ ••••'}
+            {mostrarValor ? formatCurrency(totalFaturado) : 'R$ ••••'}
           </strong>
           <svg
             className="header-faturamento-ilustracao"

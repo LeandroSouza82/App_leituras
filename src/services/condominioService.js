@@ -33,6 +33,7 @@ const getAuthenticatedUserId = async () => {
 const toDatabaseCondominio = (data, userId) => ({
   ...(userId ? { user_id: userId } : {}),
   nome: String(data.nome || '').trim(),
+  ...(data.nome_ucondo ? { nome_ucondo: String(data.nome_ucondo).trim() } : {}),
   tipo_leitura: data.tipoLeitura || 'Água e Gás',
   dia_leitura: String(data.diaLeitura || '').trim(),
   apartamentos: Number(data.apartamentos),
@@ -48,6 +49,7 @@ const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey()) => {
   return {
     id: row.id,
     nome: row.nome,
+    nome_ucondo: row.nome_ucondo || null,
     data: row.created_at || new Date().toISOString(),
     apartamentos: Number(row.apartamentos || 0),
     valor: Number(row.valor || 0),
