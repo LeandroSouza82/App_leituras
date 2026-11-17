@@ -251,6 +251,12 @@
   --ucondo-progresso-cor: #087b52;
 }
 
+.ucondo-transferencia-card.concluido {
+  color: #065f46;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .ucondo-transferencia-card.tem-erro progress {
   --ucondo-progresso-cor: #b91c1c;
 }
@@ -266,6 +272,7 @@
 .ucondo-transferencia-card.tem-erro {
   color: #991b1b;
   border-color: #fecaca;
+  background: #fef2f2;
 }
 
 .ucondo-ver-fila {
