@@ -58,6 +58,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     leituras,
     mesAnoFormatado,
     totalValor,
+    totalFaturado,
     totalConcluidos,
     percentualConcluido,
     leiturasHoje,
@@ -319,6 +320,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
               totalConcluidos={totalConcluidos}
               percentualConcluido={percentualConcluido}
               totalValor={totalValor}
+              totalFaturado={totalFaturado}
               leituras={leituras}
               totalPendentes={totalPendentes}
               onOpenAlerts={handleOpenAlerts}
