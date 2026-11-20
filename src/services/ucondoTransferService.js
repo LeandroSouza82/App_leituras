@@ -11,7 +11,7 @@ let processando = false;
 export const registrarEnvioUcondo = ({ userId, condominioId, nome, periodo, servicos, itens }) => {
   exigirContaOffline(userId);
   if (!condominioId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo) || !itens.length || !servicos.length
-    || servicos.some(s => !['AGUA','GAS'].includes(s))) throw new Error('Confira o condomínio, mês e serviços. O robô atual atende água e gás.');
+    || servicos.some(s => !['AGUA', 'GAS', 'ENERGIA'].includes(s))) throw new Error('Confira o condomínio, mês e serviços.');
   if (itens.some(i => i.leiturista_id !== userId || i.condominio_id !== condominioId || i.mes_referencia !== periodo
     || i.condominio_nome !== nome || !servicos.includes(i.servico) || !i.unidade_id
     || (!i.photoPath && !(i.sem_medidor === true && i.leitura_atual === 0)) || !i.db_id || !Number.isFinite(i.leitura_atual))) throw new Error('Todas as leituras e fotos deste condomínio e mês precisam estar salvas no aparelho.');

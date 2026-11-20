@@ -2,9 +2,10 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, X } from 'lucide-react';
+import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, RotateCcw, X } from 'lucide-react';
 import { lerEnvios, progressoTransferencia } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
+import { retomarEnvioUcondo } from '../../services/ucondoResumeService';
 import {
   getDefaultPosition,
   calculateSnapPosition,
@@ -15,10 +16,24 @@ import {
   devePermanecerDispensada,
   setUcondoStatus
 } from '../../utils/ucondoPillUtils';
+import { getCurrentMonthKey } from '../../utils/mesLeituras';
 import './TransferenciasUcondo.css';
 
 const STORAGE_KEY = 'ucondo_pill_pos';
 const STORAGE_DISPENSA_KEY = 'ucondo_pill_dispensada_v1';
+const TARGET_RADIUS_PADRAO = 26;
+
+// Centro e raio do X de descarte a partir do elemento renderizado (inclui a área segura do Android).
+const medirAlvo = (el) => {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+    radius: (el.offsetWidth || rect.width) / 2 || TARGET_RADIUS_PADRAO
+  };
+};
 
 export default function TransferenciasUcondo({ userId }) {
   const [locais, setLocais] = useState([]);
@@ -26,6 +41,8 @@ export default function TransferenciasUcondo({ userId }) {
   const [erro, setErro] = useState('');
   const [verHistorico, setVerHistorico] = useState(false);
   const [verTodos, setVerTodos] = useState(false);
+  const [retomandoId, setRetomandoId] = useState(null);
+  const [feedbackRetomada, setFeedbackRetomada] = useState({});
 
   // Estados da interface flutuante
   const [modalAberto, setModalAberto] = useState(false);
@@ -35,7 +52,7 @@ export default function TransferenciasUcondo({ userId }) {
       const raw = localStorage.getItem(STORAGE_DISPENSA_KEY);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
-      const periodoAtual = new Date().toISOString().slice(0, 7);
+      const periodoAtual = getCurrentMonthKey();
       return devePermanecerDispensada({
         assinaturaSalva: parsed,
         envios: [],
@@ -58,6 +75,11 @@ export default function TransferenciasUcondo({ userId }) {
 
   const abertoEmRef = useRef(0);
   const overlayPointerDownRef = useRef(false);
+  // Cópia em memória da preferência visual: garante o descarte na sessão atual mesmo se o localStorage falhar.
+  const assinaturaMemoriaRef = useRef(null);
+  const todosRef = useRef([]);
+  const atualizarRef = useRef(null);
+  const retomandoRef = useRef(false);
 
   const posRef = useRef({ x: 0, y: 0 });
 
@@ -97,6 +119,7 @@ export default function TransferenciasUcondo({ userId }) {
         if (!encerrado) setErro('Sem atualização do servidor. As últimas contagens foram mantidas; seus dados locais continuam salvos.');
       } finally { ocupado = false; lerLocais(); }
     };
+    atualizarRef.current = atualizar;
     lerLocais();
     void atualizar();
     const timer = setInterval(atualizar, 5000);
@@ -104,6 +127,7 @@ export default function TransferenciasUcondo({ userId }) {
     window.addEventListener('online', atualizar);
     return () => {
       encerrado = true;
+      atualizarRef.current = null;
       clearInterval(timer);
       window.removeEventListener('envios_ucondo_atualizados', lerLocais);
       window.removeEventListener('online', atualizar);
@@ -118,10 +142,15 @@ export default function TransferenciasUcondo({ userId }) {
     periodo: p.periodo,
     ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
     erroPedido: p.mensagem,
-    remoto: true
+    remoto: true,
+    solicitacaoId: p.solicitacao_id,
+    trabalhosIds: p.trabalhos_ids || [],
+    // Id local do mesmo pedido antes da confirmação no servidor (não conta como pedido novo)
+    aliases: locais.filter(l => l.serverId === p.id).map(l => l.id)
   }));
   const locaisPendentes = locais.filter(p => !remotosIds.has(p.serverId)).map(p => ({
     id: p.id,
+    aliases: p.serverId ? [p.serverId] : [],
     nome: p.nome,
     periodo: p.periodo,
     total: p.itens.length,
@@ -141,6 +170,7 @@ export default function TransferenciasUcondo({ userId }) {
   const visiveis = [...(verTodos ? ativos : ativos.slice(0, 1)), ...(verHistorico ? concluidos : [])];
 
   const temErroGeral = Boolean(erro) || ativos.some(a => a.falhou || a.erroPedido);
+  todosRef.current = todos;
 
   // Notifica ouvintes globais (SideMenu) e avalia persistência da dispensa
   useEffect(() => {
@@ -151,24 +181,26 @@ export default function TransferenciasUcondo({ userId }) {
       const raw = localStorage.getItem(STORAGE_DISPENSA_KEY);
       if (raw) assinaturaSalva = JSON.parse(raw);
     } catch {}
+    if (!assinaturaSalva) assinaturaSalva = assinaturaMemoriaRef.current;
 
     if (!assinaturaSalva) {
       setDispensada(false);
       return;
     }
 
-    const periodo = todos[0]?.periodo || new Date().toISOString().slice(0, 7);
+    // Ocultar é preferência visual: envio ativo, com erro ou com progresso novo não reexibe;
+    // só um pedido realmente novo ou a virada do mês.
     const deveOcultar = devePermanecerDispensada({
       assinaturaSalva,
       envios: todos,
-      periodoAtual: periodo,
-      temErro: temErroGeral,
+      periodoAtual: getCurrentMonthKey(),
       carregado
     });
 
     if (!deveOcultar) {
       if (carregado || !assinaturaSalva?.itens) {
         try { localStorage.removeItem(STORAGE_DISPENSA_KEY); } catch {}
+        assinaturaMemoriaRef.current = null;
       }
       setDispensada(false);
     } else {
@@ -188,13 +220,13 @@ export default function TransferenciasUcondo({ userId }) {
 
   // Salvar dispensa com persistência segura
   const dispensarComAssinatura = useCallback(() => {
-    const periodo = todos[0]?.periodo || new Date().toISOString().slice(0, 7);
-    const assinatura = gerarAssinaturaDispensa({ envios: todos, periodo });
+    const assinatura = gerarAssinaturaDispensa({ envios: todosRef.current, periodo: getCurrentMonthKey() });
+    assinaturaMemoriaRef.current = assinatura;
     try {
       localStorage.setItem(STORAGE_DISPENSA_KEY, JSON.stringify(assinatura));
     } catch {}
     setDispensada(true);
-  }, [todos]);
+  }, []);
 
   // Inicialização e recuperação de posição da pílula
   const aplicarPosicao = useCallback((pos, animar = false) => {
@@ -252,6 +284,27 @@ export default function TransferenciasUcondo({ userId }) {
   }, [aplicarPosicao]);
 
   // Gestos Pointer Events na pílula
+  // O alvo é medido no elemento renderizado, então acompanha bottom + env(safe-area-inset-bottom).
+  const estaSobreAlvo = (pillX, pillY) => {
+    const pillWidth = pillRef.current?.offsetWidth || 150;
+    const pillHeight = pillRef.current?.offsetHeight || 38;
+    const alvo = medirAlvo(targetRef.current) || {
+      x: window.innerWidth / 2,
+      y: window.innerHeight - 85 - TARGET_RADIUS_PADRAO,
+      radius: TARGET_RADIUS_PADRAO
+    };
+    return isInsideTarget({
+      pillX,
+      pillY,
+      pillWidth,
+      pillHeight,
+      targetX: alvo.x,
+      targetY: alvo.y,
+      targetRadius: alvo.radius,
+      thresholdMargin: 48
+    });
+  };
+
   const onPointerDown = (e) => {
     if (e.button !== 0) return;
 
@@ -303,22 +356,7 @@ export default function TransferenciasUcondo({ userId }) {
       const currentX = state.startPillX + deltaX;
       const currentY = state.startPillY + deltaY;
 
-      const pillWidth = pillRef.current?.offsetWidth || 150;
-      const pillHeight = pillRef.current?.offsetHeight || 38;
-
-      const targetX = window.innerWidth / 2;
-      const targetY = window.innerHeight - 85 - (pillHeight / 2);
-
-      const inside = isInsideTarget({
-        pillX: currentX,
-        pillY: currentY,
-        pillWidth,
-        pillHeight,
-        targetX,
-        targetY,
-        targetRadius: 26,
-        thresholdMargin: 48
-      });
+      const inside = estaSobreAlvo(currentX, currentY);
 
       state.isInsideTarget = inside;
 
@@ -375,11 +413,18 @@ export default function TransferenciasUcondo({ userId }) {
       return;
     }
 
-    // Arrastou ou segurou: NUNCA abre modal
-    if (state.isInsideTarget) {
+    // Arrastou ou segurou: NUNCA abre modal.
+    // Decide pela posição final do gesto (pointerup), não apenas pelo último pointermove.
+    const soltouNoAlvo = estaSobreAlvo(state.startPillX + deltaX, state.startPillY + deltaY);
+    state.isInsideTarget = false;
+    state.hasVibratedInside = false;
+    if (soltouNoAlvo) {
       if (pillRef.current) {
-        const targetX = window.innerWidth / 2 - (pillRef.current.offsetWidth / 2);
-        const targetY = window.innerHeight - 85;
+        const alvo = medirAlvo(targetRef.current);
+        const pillW = pillRef.current.offsetWidth;
+        const pillH = pillRef.current.offsetHeight;
+        const targetX = (alvo ? alvo.x : window.innerWidth / 2) - pillW / 2;
+        const targetY = (alvo ? alvo.y : window.innerHeight - 85 - TARGET_RADIUS_PADRAO) - pillH / 2;
         pillRef.current.style.transition = 'transform 180ms ease-out, opacity 180ms ease-out';
         pillRef.current.style.transform = `translate3d(${targetX}px, ${targetY}px, 0) scale(0)`;
         pillRef.current.style.opacity = '0';
@@ -434,6 +479,29 @@ export default function TransferenciasUcondo({ userId }) {
     setModalAberto(false);
     dispensarComAssinatura();
   }, [dispensarComAssinatura]);
+
+  const handleRetomarEnvio = useCallback(async (card) => {
+    if (retomandoRef.current || !card?.falhou) return;
+    retomandoRef.current = true;
+    setRetomandoId(card.id);
+    setFeedbackRetomada(prev => ({ ...prev, [card.id]: null }));
+    try {
+      const res = await retomarEnvioUcondo({ userId, card });
+      setFeedbackRetomada(prev => ({
+        ...prev,
+        [card.id]: { tipo: 'sucesso', texto: res.mensagem }
+      }));
+      await atualizarRef.current?.();
+    } catch (e) {
+      setFeedbackRetomada(prev => ({
+        ...prev,
+        [card.id]: { tipo: 'erro', texto: e?.message || 'Não foi possível retomar o envio.' }
+      }));
+    } finally {
+      retomandoRef.current = false;
+      setRetomandoId(null);
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (!modalAberto) {
@@ -686,6 +754,27 @@ export default function TransferenciasUcondo({ userId }) {
                           <p className="ucondo-transferencia-detalhe">
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
                           </p>
+                        )}
+                        {card.falhou && !card.completo && (
+                          <div className="ucondo-retomada-bloco">
+                            <button
+                              type="button"
+                              className="ucondo-btn-retomar"
+                              disabled={retomandoId !== null}
+                              onClick={() => handleRetomarEnvio(card)}
+                            >
+                              <RotateCcw size={14} aria-hidden="true" />
+                              {retomandoId === card.id ? 'Retomando...' : 'Retomar envio'}
+                            </button>
+                            {feedbackRetomada[card.id] && (
+                              <p
+                                className={`ucondo-retomada-feedback ${feedbackRetomada[card.id].tipo}`}
+                                role="status"
+                              >
+                                {feedbackRetomada[card.id].texto}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </article>
                     ))}

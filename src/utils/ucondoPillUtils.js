@@ -187,12 +187,23 @@ export function classificarGesto({
 }
 
 /**
+ * Chaves estáveis de um envio: o próprio id e os aliases (ex.: id local do pedido
+ * e id definitivo atribuído pelo servidor), para que a confirmação no servidor de um
+ * pedido que já estava na fila local não conte como pedido novo.
+ */
+const chavesDoEnvio = (e) =>
+  [e?.id, ...(Array.isArray(e?.aliases) ? e.aliases : [])]
+    .filter(v => v !== undefined && v !== null && v !== '')
+    .map(String);
+
+/**
  * Gera uma assinatura serializável do estado atual dos envios ao dispensar a pílula.
- * Usa estritamente campos estáveis (ID e status simplificado), ignorando campos voláteis.
+ * Usa estritamente campos estáveis (ID, aliases e status simplificado), ignorando campos voláteis.
  */
 export function gerarAssinaturaDispensa({ envios = [], periodo = '' } = {}) {
   const itens = (envios || []).map(e => ({
     id: String(e.id),
+    aliases: chavesDoEnvio(e).filter(k => k !== String(e.id)),
     status: (e.falhou || e.erroPedido) ? 'erro' : (e.completo ? 'concluido' : 'ativo')
   })).sort((a, b) => a.id.localeCompare(b.id));
 
@@ -204,19 +215,19 @@ export function gerarAssinaturaDispensa({ envios = [], periodo = '' } = {}) {
 
 /**
  * Verifica se a pílula de envios deve permanecer escondida com base na assinatura salva.
- * Continua escondida SOMENTE se:
- * - Se os dados ainda não carregaram (carregado = false): mantém escondida se a assinatura salva for válida
- * - Não há erro geral nem envio com erro
- * - Não há envio ativo
- * - Nenhum envio novo surgiu nem mudou de status
- * - O mês/período é o mesmo
- * Caso contrário, retorna false (reaparece e a assinatura é descartada).
+ * Ocultar é só uma preferência visual ("Ocultar até o próximo envio"). Continua escondida se:
+ * - Os dados ainda não carregaram (carregado = false) e a assinatura é válida para o mês; ou
+ * - O mês é o mesmo e todos os envios atuais já eram conhecidos no momento do descarte
+ *   (por id ou alias), independentemente de estarem ativos, com erro ou de terem
+ *   avançado o progresso/status.
+ * Reaparece (retorna false) apenas com dado corrompido, mês diferente ou pedido realmente novo.
+ * O parâmetro temErro é aceito por compatibilidade, mas não reexibe a pílula: os avisos
+ * continuam visíveis no painel e no item "Envios para o uCondo" do menu.
  */
 export function devePermanecerDispensada({
   assinaturaSalva,
   envios = [],
   periodoAtual = '',
-  temErro = false,
   carregado = true
 } = {}) {
   // 1. Validação estrutural de integridade do dado salvo (ignora dados corrompidos)
@@ -233,34 +244,13 @@ export function devePermanecerDispensada({
     return true;
   }
 
-  // 4. Erro de envio sempre força o reaparecimento
-  if (temErro) return false;
-
-  // 5. Se houver envio ativo ou com erro no estado atual carregado, reaparece
-  const temAtivoAtual = (envios || []).some(e => !e.completo && !e.falhou && !e.erroPedido);
-  const temErroAtual = (envios || []).some(e => e.falhou || e.erroPedido);
-  if (temAtivoAtual || temErroAtual) return false;
-
-  // 6. Gera lista ordenada atual para comparação usando apenas ID e status estável
-  const itensAtuais = (envios || []).map(e => ({
-    id: String(e.id),
-    status: (e.falhou || e.erroPedido) ? 'erro' : (e.completo ? 'concluido' : 'ativo')
-  })).sort((a, b) => a.id.localeCompare(b.id));
-
-  if (itensAtuais.length !== assinaturaSalva.itens.length) return false;
-
-  for (let i = 0; i < itensAtuais.length; i++) {
-    const atual = itensAtuais[i];
-    const salvo = assinaturaSalva.itens[i];
+  // 4. Conjunto de chaves conhecidas no momento do descarte
+  const conhecidas = new Set();
+  for (const salvo of assinaturaSalva.itens) {
     if (!salvo || typeof salvo !== 'object') return false;
-    if (atual.id !== salvo.id || atual.status !== salvo.status) {
-      return false;
-    }
-    // Apenas envios concluídos podem permanecer ocultos
-    if (atual.status !== 'concluido') {
-      return false;
-    }
+    chavesDoEnvio(salvo).forEach(k => conhecidas.add(k));
   }
 
-  return true;
+  // 5. Só um pedido realmente novo (nenhuma chave conhecida) faz a pílula reaparecer
+  return (envios || []).every(e => chavesDoEnvio(e).some(k => conhecidas.has(k)));
 }

@@ -1209,7 +1209,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       if (cicloSalvo && cicloSalvo.mes !== getCurrentMonthKey()) throw new Error('Este condomínio ainda possui um ciclo anterior aberto. Confira as pendências antes de enviar leituras do mês novo.');
       const periodo = leitura?.mesReferencia || getCurrentMonthKey();
       if (periodo !== getCurrentMonthKey()) throw new Error('Confira o mês das leituras antes de solicitar o envio.');
-      if (servicosAtivos.includes('energia')) throw new Error('O robô atual atende água e gás. Energia ainda precisa ser enviada pelo fluxo atual.');
       const validacao = validarLeiturasLote('todos', leitura, listaCompleta, leiturasValores, fotosCapturadas);
       if (!validacao.isValid) throw new Error(`Confira a leitura e a foto da unidade ${validacao.unidade} (${validacao.servico.toUpperCase()}) antes de enviar.`);
       const owner = exigirContaOffline();
