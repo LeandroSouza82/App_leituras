@@ -73,3 +73,16 @@ test('nome original pendente sincroniza no cadastro antes de solicitar a transfe
   assert.equal(globalThis.localStorage.getItem('nome_ucondo_planilha_A_condo'),null);
   assert.equal(f.calls.length,1);
 });
+
+test('serviço ENERGIA segue o mesmo fluxo de envio para o robô uCondo sem bloqueio', async()=>{
+  const {f,api,item}=await fixture();
+  const itemEnergia={...item,db_id:'reading-energia',servico:'ENERGIA'};
+  api.registrarEnvioUcondo({...f.input,servicos:['ENERGIA'],itens:[itemEnergia]});
+  f.online=true;
+  f.records=[{...itemEnergia,id:itemEnergia.db_id,foto_url:'https://fixture.test/foto-energia'}];
+  await api.processarEnviosUcondo('A');
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].name,'solicitar_transferencia_ucondo');
+  assert.deepEqual(f.calls[0].args.p_servicos,['ENERGIA']);
+  assert.deepEqual(f.calls[0].args.p_leituras_ids,['reading-energia']);
+});

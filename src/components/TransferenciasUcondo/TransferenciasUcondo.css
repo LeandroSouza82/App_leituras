@@ -388,6 +388,55 @@
   outline: none;
 }
 
+.ucondo-retomada-bloco {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.ucondo-btn-retomar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid #d97706;
+  background: #fffbeb;
+  color: #8b4a0b;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.ucondo-btn-retomar:hover:not(:disabled),
+.ucondo-btn-retomar:focus-visible:not(:disabled) {
+  background: #fef3c7;
+  outline: none;
+}
+
+.ucondo-btn-retomar:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ucondo-retomada-feedback {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ucondo-retomada-feedback.sucesso {
+  color: #065f46;
+}
+
+.ucondo-retomada-feedback.erro {
+  color: #b91c1c;
+}
+
 /* Botão de envio disparado nas telas de condomínio */
 .btn-enviar-ucondo {
   display: flex;

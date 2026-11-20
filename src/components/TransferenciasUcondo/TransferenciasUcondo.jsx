@@ -2,9 +2,10 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, X } from 'lucide-react';
+import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, RotateCcw, X } from 'lucide-react';
 import { lerEnvios, progressoTransferencia, separarHistoricoTransferencias } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
+import { retomarEnvioUcondo } from '../../services/ucondoResumeService';
 import {
   getDefaultPosition,
   calculateSnapPosition,
@@ -40,6 +41,8 @@ export default function TransferenciasUcondo({ userId }) {
   const [erro, setErro] = useState('');
   const [verHistorico, setVerHistorico] = useState(false);
   const [verTodos, setVerTodos] = useState(false);
+  const [retomandoId, setRetomandoId] = useState(null);
+  const [feedbackRetomada, setFeedbackRetomada] = useState({});
 
   // Estados da interface flutuante
   const [modalAberto, setModalAberto] = useState(false);
@@ -75,6 +78,8 @@ export default function TransferenciasUcondo({ userId }) {
   // Cópia em memória da preferência visual: garante o descarte na sessão atual mesmo se o localStorage falhar.
   const assinaturaMemoriaRef = useRef(null);
   const todosRef = useRef([]);
+  const atualizarRef = useRef(null);
+  const retomandoRef = useRef(false);
 
   const posRef = useRef({ x: 0, y: 0 });
 
@@ -114,6 +119,7 @@ export default function TransferenciasUcondo({ userId }) {
         if (!encerrado) setErro('Sem atualização do servidor. As últimas contagens foram mantidas; seus dados locais continuam salvos.');
       } finally { ocupado = false; lerLocais(); }
     };
+    atualizarRef.current = atualizar;
     lerLocais();
     void atualizar();
     const timer = setInterval(atualizar, 5000);
@@ -121,6 +127,7 @@ export default function TransferenciasUcondo({ userId }) {
     window.addEventListener('online', atualizar);
     return () => {
       encerrado = true;
+      atualizarRef.current = null;
       clearInterval(timer);
       window.removeEventListener('envios_ucondo_atualizados', lerLocais);
       window.removeEventListener('online', atualizar);
@@ -138,6 +145,8 @@ export default function TransferenciasUcondo({ userId }) {
     ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
     erroPedido: p.mensagem,
     remoto: true,
+    solicitacaoId: p.solicitacao_id,
+    trabalhosIds: p.trabalhos_ids || [],
     // Id local do mesmo pedido antes da confirmação no servidor (não conta como pedido novo)
     aliases: locais.filter(l => l.serverId === p.id).map(l => l.id)
   }));
@@ -474,6 +483,29 @@ export default function TransferenciasUcondo({ userId }) {
     dispensarComAssinatura();
   }, [dispensarComAssinatura]);
 
+  const handleRetomarEnvio = useCallback(async (card) => {
+    if (retomandoRef.current || !card?.falhou) return;
+    retomandoRef.current = true;
+    setRetomandoId(card.id);
+    setFeedbackRetomada(prev => ({ ...prev, [card.id]: null }));
+    try {
+      const res = await retomarEnvioUcondo({ userId, card });
+      setFeedbackRetomada(prev => ({
+        ...prev,
+        [card.id]: { tipo: 'sucesso', texto: res.mensagem }
+      }));
+      await atualizarRef.current?.();
+    } catch (e) {
+      setFeedbackRetomada(prev => ({
+        ...prev,
+        [card.id]: { tipo: 'erro', texto: e?.message || 'Não foi possível retomar o envio.' }
+      }));
+    } finally {
+      retomandoRef.current = false;
+      setRetomandoId(null);
+    }
+  }, [userId]);
+
   useEffect(() => {
     if (!modalAberto) {
       if (pillBtnRef.current && pillBtnRef.current.isConnected) {
@@ -728,6 +760,27 @@ export default function TransferenciasUcondo({ userId }) {
                           <p className="ucondo-transferencia-detalhe">
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
                           </p>
+                        )}
+                        {card.falhou && !card.completo && !card.tentativaAnterior && (
+                          <div className="ucondo-retomada-bloco">
+                            <button
+                              type="button"
+                              className="ucondo-btn-retomar"
+                              disabled={retomandoId !== null}
+                              onClick={() => handleRetomarEnvio(card)}
+                            >
+                              <RotateCcw size={14} aria-hidden="true" />
+                              {retomandoId === card.id ? 'Retomando...' : 'Retomar envio'}
+                            </button>
+                            {feedbackRetomada[card.id] && (
+                              <p
+                                className={`ucondo-retomada-feedback ${feedbackRetomada[card.id].tipo}`}
+                                role="status"
+                              >
+                                {feedbackRetomada[card.id].texto}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </article>
                     ))}
