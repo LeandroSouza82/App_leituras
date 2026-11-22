@@ -112,41 +112,21 @@ test('retomarEnvioUcondo usa RPC transacional quando disponível', async () => {
   });
 });
 
-test('retomarEnvioUcondo no fallback recoloca apenas trabalhos com falha preservando concluídos e sem duplicar', async () => {
+test('retomar com tela desatualizada mostra que o envio já foi concluído sem outro comando', async () => {
   const { f, api } = await createFixture();
-  f.rpcResult = { error: { code: 'PGRST202', message: 'Could not find the function' } };
-  f.trabalhos = [
-    { id: 'job-ok', status: 'concluida' },
-    { id: 'job-fail', status: 'erro' }
-  ];
-
-  const res = await api.retomarEnvioUcondo({
-    userId: 'A',
-    card: { id: 'req-1', remoto: true, falhou: true, solicitacaoId: 'lote-1', trabalhosIds: ['job-ok', 'job-fail'] }
-  });
-
-  assert.equal(res.modo, 'fallback');
-  assert.equal(f.updates.length, 2);
-  assert.equal(f.updates[0].table, 'automacoes_fila');
-  assert.deepEqual(f.updates[0].patch, { status: 'aguardando', erro_mensagem: null });
-  assert.deepEqual(f.updates[0].filters.find(x => x.op === 'in').val, ['job-fail']);
-  assert.equal(f.updates[1].table, 'solicitacoes_lote');
-  assert.deepEqual(f.updates[1].patch, { status: 'pendente', finalizado_em: null });
+  f.rpcResult = { error: { code: '22023', message: 'Este envio já foi concluído' } };
+  const res = await api.retomarEnvioUcondo({ userId: 'A', card: { id: 'req-1', remoto: true, falhou: true } });
+  assert.deepEqual(res, { modo: 'concluido', mensagem: 'Este envio já foi concluído' });
+  assert.equal(f.rpcCalls.length, 1);
+  assert.deepEqual(f.updates, []);
 });
 
-test('retomarEnvioUcondo bloqueia fallback se já houver outro lote ativo', async () => {
+test('retomar remoto sem RPC transacional preserva a fila', async () => {
   const { f, api } = await createFixture();
-  f.rpcResult = { error: { code: '42883', message: 'function does not exist' } };
-  f.lotesAtivos = [{ id: 'outro-lote' }];
-
-  await assert.rejects(
-    api.retomarEnvioUcondo({
-      userId: 'A',
-      card: { id: 'req-1', remoto: true, falhou: true, solicitacaoId: 'lote-1', trabalhosIds: ['job-fail'] }
-    }),
-    /Já existe outro envio em andamento/
-  );
-  assert.equal(f.updates.length, 0);
+  f.rpcResult = { error: { code: 'PGRST202', message: 'Could not find the function' } };
+  await assert.rejects(api.retomarEnvioUcondo({ userId: 'A', card: { id: 'req-1', remoto: true, falhou: true } }),
+    /Could not find the function/);
+  assert.deepEqual(f.updates, []);
 });
 
 test('retomarEnvioUcondo limpa erro de pedido local e reprocessa sem duplicar', async () => {
@@ -194,4 +174,30 @@ test('continuarEnvioUcondo impede pedidos inelegíveis e mostra a recusa do banc
   await assert.rejects(api.continuarEnvioUcondo({ userId: 'A', card: { ...card, podeContinuar: true } }),
     /Aguarde o outro envio terminar/);
   assert.deepEqual(f.updates, []);
+});
+
+test('continuar com tela desatualizada devolve aviso de envio concluído', async () => {
+  const { f, api } = await createFixture();
+  f.rpcResult = { error: { code: '22023', message: 'Este envio já foi concluído' } };
+  const res = await api.continuarEnvioUcondo({ userId: 'A', card: { id: 'req-1', remoto: true, podeContinuar: true } });
+  assert.deepEqual(res, { modo: 'concluido', mensagem: 'Este envio já foi concluído' });
+  assert.equal(f.rpcCalls.length, 1);
+  assert.deepEqual(f.updates, []);
+});
+
+test('card concluído nunca dispara comando de retomada nem de continuação', async () => {
+  const {f,api}=await createFixture();
+  const card={id:'req-1',remoto:true,falhou:true,podeContinuar:true,completo:true};
+  assert.equal((await api.retomarEnvioUcondo({userId:'A',card})).modo,'concluido');
+  assert.equal((await api.continuarEnvioUcondo({userId:'A',card})).modo,'concluido');
+  assert.deepEqual(f.rpcCalls,[]);
+  assert.deepEqual(f.updates,[]);
+});
+
+test('cadastro que exige conferência não é recolocado na fila', async () => {
+  const {f,api}=await createFixture();
+  const card={id:'req-1',remoto:true,falhou:true,bloqueiaRetomada:true,podeContinuar:true};
+  await assert.rejects(api.retomarEnvioUcondo({userId:'A',card}),/conferência/);
+  await assert.rejects(api.continuarEnvioUcondo({userId:'A',card}),/conferência/);
+  assert.deepEqual(f.rpcCalls,[]);
 });

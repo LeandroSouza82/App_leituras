@@ -4,9 +4,6 @@ import { temConexaoInternetUtil } from './networkQualityService';
 import { lerEnvios, gravarEnvios } from './ucondoTransferModel';
 import { processarEnviosUcondo } from './ucondoTransferService';
 
-const STATUS_TRABALHO_FALHA = ['erro', 'cancelada', 'concluida_com_pendencias'];
-const STATUS_LOTE_FALHA = ['erro', 'cancelado'];
-const STATUS_LOTE_ATIVO = ['pendente', 'em_andamento'];
 
 const avisar = () => {
   if (typeof window !== 'undefined') {
@@ -24,14 +21,13 @@ const contextoAutenticado = async (userId) => {
   return { client: criarClienteParaToken(data.session.access_token, assertActive), assertActive };
 };
 
-const rpcAusente = (error) => {
-  const code = String(error?.code || '');
-  const msg = String(error?.message || '').toLowerCase();
-  return code === 'PGRST202' || code === '42883' || msg.includes('could not find the function');
-};
+const respostaEnvioConcluido = (erro) => erro?.code === '22023' && erro.message === 'Este envio já foi concluído'
+  ? { modo: 'concluido', mensagem: erro.message } : null;
 
 export const continuarEnvioUcondo = async ({ userId, card }) => {
   exigirContaOffline(userId);
+  if (card?.completo) return { modo: 'concluido', mensagem: 'Este envio já foi concluído' };
+  if (card?.bloqueiaRetomada) throw new Error('Este envio exige conferência no AutoFast antes de continuar.');
   if (!card?.id || !card.remoto || !card.podeContinuar) {
     throw new Error('Este envio não pode ser continuado agora.');
   }
@@ -41,6 +37,8 @@ export const continuarEnvioUcondo = async ({ userId, card }) => {
   const { client, assertActive } = await contextoAutenticado(userId);
   const { data, error } = await client.rpc('continuar_transferencia_ucondo', { p_transferencia_id: card.id });
   assertActive();
+  const concluido = respostaEnvioConcluido(error);
+  if (concluido) return concluido;
   if (error) throw new Error(error.message || 'Não foi possível continuar o envio.');
   return {
     mensagem: data === 'ja_na_fila' ? 'O envio já está na fila do robô.' : 'Envio recolocado na fila do robô.'
@@ -50,12 +48,12 @@ export const continuarEnvioUcondo = async ({ userId, card }) => {
 /**
  * Retoma um envio para o uCondo que esteja em erro/falha.
  * - Pedido local com falha: limpa o erro local e dispara o reprocessamento sem duplicar.
- * - Pedido remoto no Supabase: chama o RPC `retomar_transferencia_ucondo` (se disponível)
- *   ou recoloca apenas os trabalhos com falha em `aguardando` e o lote em `pendente`,
- *   preservando os checkpoints concluídos e sem criar trabalhos duplicados.
+ * - Pedido remoto: a retomada e a conferência final são transacionais no servidor.
  */
 export const retomarEnvioUcondo = async ({ userId, card }) => {
   exigirContaOffline(userId);
+  if (card?.completo) return { modo: 'concluido', mensagem: 'Este envio já foi concluído' };
+  if (card?.bloqueiaRetomada) throw new Error('Este envio exige conferência no AutoFast antes de retomar.');
   if (!card?.id || !card?.falhou) {
     throw new Error('Este envio não está em estado de erro para retomada.');
   }
@@ -84,72 +82,8 @@ export const retomarEnvioUcondo = async ({ userId, card }) => {
   });
   assertActive();
 
-  if (!rpc.error) {
-    return {
-      modo: 'rpc',
-      mensagem: 'Envio recolocado na fila. Os checkpoints concluídos foram preservados.'
-    };
-  }
-
-  if (!rpcAusente(rpc.error)) {
-    throw new Error(rpc.error.message || 'Não foi possível retomar o envio.');
-  }
-
-  // Fallback seguro caso o RPC ainda não tenha sido aplicado no banco:
-  // recoloca em 'aguardando' apenas os trabalhos com falha e reativa o lote existente.
-  const trabalhosIds = Array.isArray(card.trabalhosIds) ? card.trabalhosIds.filter(Boolean) : [];
-  if (!trabalhosIds.length) {
-    throw new Error('Este envio falhou antes de entrar na fila do robô. Solicite um novo envio pelo condomínio.');
-  }
-
-  const lotesAtivos = await client
-    .from('solicitacoes_lote')
-    .select('id')
-    .eq('user_id', userId)
-    .in('status', STATUS_LOTE_ATIVO)
-    .limit(1);
-  assertActive();
-  if (lotesAtivos.error) throw lotesAtivos.error;
-  if (lotesAtivos.data?.length) {
-    throw new Error('Já existe outro envio em andamento. Aguarde ele terminar para retomar.');
-  }
-
-  const trabalhos = await client
-    .from('automacoes_fila')
-    .select('id,status')
-    .eq('user_id', userId)
-    .in('id', trabalhosIds);
-  assertActive();
-  if (trabalhos.error) throw trabalhos.error;
-
-  const falhosIds = (trabalhos.data || [])
-    .filter(t => STATUS_TRABALHO_FALHA.includes(t.status))
-    .map(t => t.id);
-
-  if (falhosIds.length) {
-    const updTrabalhos = await client
-      .from('automacoes_fila')
-      .update({ status: 'aguardando', erro_mensagem: null })
-      .eq('user_id', userId)
-      .in('id', falhosIds);
-    assertActive();
-    if (updTrabalhos.error) throw updTrabalhos.error;
-  }
-
-  if (card.solicitacaoId) {
-    const updLote = await client
-      .from('solicitacoes_lote')
-      .update({ status: 'pendente', finalizado_em: null })
-      .eq('id', card.solicitacaoId)
-      .eq('user_id', userId)
-      .in('status', STATUS_LOTE_FALHA);
-    assertActive();
-    if (updLote.error) throw updLote.error;
-  }
-
-  return {
-    modo: 'fallback',
-    mensagem: 'Envio recolocado na fila. Os checkpoints concluídos foram preservados.'
-  };
+  const concluido = respostaEnvioConcluido(rpc.error);
+  if (concluido) return concluido;
+  if (rpc.error) throw new Error(rpc.error.message || 'Não foi possível retomar o envio.');
+  return { modo: 'rpc', mensagem: 'Envio recolocado na fila. Os checkpoints concluídos foram preservados.' };
 };
-

@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
 import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, RotateCcw, X } from 'lucide-react';
 import { lerEnvios, progressoTransferencia, separarHistoricoTransferencias } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
@@ -43,6 +45,7 @@ export default function TransferenciasUcondo({ userId }) {
   const [verTodos, setVerTodos] = useState(false);
   const [retomandoId, setRetomandoId] = useState(null);
   const [feedbackRetomada, setFeedbackRetomada] = useState(null);
+  const [avisoConcluido, setAvisoConcluido] = useState(null);
 
   // Estados da interface flutuante
   const [modalAberto, setModalAberto] = useState(false);
@@ -71,6 +74,7 @@ export default function TransferenciasUcondo({ userId }) {
   const targetRef = useRef(null);
   const fecharBtnRef = useRef(null);
   const dialogRef = useRef(null);
+  const avisoConcluidoRef = useRef(null);
   const pillBtnRef = useRef(null);
 
   const abertoEmRef = useRef(0);
@@ -152,7 +156,8 @@ export default function TransferenciasUcondo({ userId }) {
     periodo: p.periodo,
     condominioId: p.condominio_id,
     servicos: p.servicos || [],
-    ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
+    ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id),
+      Date.now(), remotos.confirmacoes?.filter(c => c.transferencia_id === p.id)),
     podeContinuar: continuaveis.has(p.id),
     erroPedido: p.mensagem,
     remoto: true,
@@ -486,6 +491,10 @@ export default function TransferenciasUcondo({ userId }) {
 
   // Tratamento de botão voltar, tecla Escape e foco no Modal
   const fecharModal = useCallback(() => {
+    if (avisoConcluidoRef.current?.open) {
+      avisoConcluidoRef.current.close();
+      return;
+    }
     setModalAberto(false);
   }, []);
 
@@ -495,7 +504,7 @@ export default function TransferenciasUcondo({ userId }) {
   }, [dispensarComAssinatura]);
 
   const handleRetomarEnvio = useCallback(async (card) => {
-    if (retomandoRef.current || (!card.falhou && !card.podeContinuar) || card.completo || card.tentativaAnterior) return;
+    if (retomandoRef.current || (!card.falhou && !card.podeContinuar) || card.completo || card.bloqueiaRetomada) return;
     const continuar = !card.falhou && card.podeContinuar;
     retomandoRef.current = true;
     setRetomandoId(card.id);
@@ -503,17 +512,27 @@ export default function TransferenciasUcondo({ userId }) {
     try {
       const acao = continuar ? continuarEnvioUcondo : retomarEnvioUcondo;
       const res = await acao({ userId, card });
-      setFeedbackRetomada({ tipo: 'sucesso', texto: res.mensagem });
+      if (res.modo === 'concluido') {
+        setAvisoConcluido({ nome: card.nome, periodo: card.periodo });
+        setVerHistorico(true);
+      } else {
+        setFeedbackRetomada({ tipo: 'sucesso', texto: res.mensagem });
+      }
       await atualizarRef.current?.();
     } catch (e) {
       setFeedbackRetomada({ tipo: 'erro', texto: e?.message || (continuar
         ? 'Não foi possível continuar o envio.' : 'Não foi possível retomar o envio.') });
-      if (continuar) await atualizarRef.current?.();
+      await atualizarRef.current?.();
     } finally {
       retomandoRef.current = false;
       setRetomandoId(null);
     }
   }, [userId]);
+
+  useEffect(() => {
+    const dialog = avisoConcluidoRef.current;
+    if (avisoConcluido && dialog && !dialog.open) dialog.showModal();
+  }, [avisoConcluido, modalAberto]);
 
   useEffect(() => {
     if (!modalAberto) {
@@ -529,6 +548,7 @@ export default function TransferenciasUcondo({ userId }) {
     fecharBtnRef.current?.focus();
 
     const onKeyDown = (event) => {
+      if (avisoConcluidoRef.current?.open) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -748,7 +768,7 @@ export default function TransferenciasUcondo({ userId }) {
                           ) : null}
                         </div>
                         <p className="ucondo-transferencia-etapa">
-                          {card.tentativaAnterior ? 'Tentativa anterior' : card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
+                          {card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
                         </p>
                         <progress
                           value={card.percentual}
@@ -767,15 +787,32 @@ export default function TransferenciasUcondo({ userId }) {
                           </p>
                         )}
                         <p className="ucondo-transferencia-detalhe">
-                          {card.tentativaAnterior ? 'Serviços pendentes confirmados em uma tentativa posterior.'
-                            : (card.falhou && card.erroPedido) || card.detalhe}
+                          {(!card.bloqueiaRetomada && card.falhou && card.erroPedido) || card.detalhe}
                         </p>
+                        {card.completo && (
+                          <p className="ucondo-envio-concluido" role="status">
+                            <CheckCircle2 size={18} aria-hidden="true" />
+                            Envio concluído — não é necessário reenviar.
+                          </p>
+                        )}
+                        {card.exigeConferencia && (
+                          <button type="button" className="ucondo-btn-retomar"
+                            onClick={() => Browser.open({ url: ROBOT_DASHBOARD_URL })}>
+                            Conferir no AutoFast
+                          </button>
+                        )}
+                        {card.tentativaResolvida && (
+                          <details className="ucondo-transferencia-detalhe">
+                            <summary>Tentativa anterior resolvida</summary>
+                            As unidades deste envio foram confirmadas em outra execução.
+                          </details>
+                        )}
                         {card.atualizadoEm && (
                           <p className="ucondo-transferencia-detalhe">
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
                           </p>
                         )}
-                        {(card.falhou || card.podeContinuar) && !card.completo && !card.tentativaAnterior && (
+                        {(card.falhou || card.podeContinuar) && !card.completo && !card.bloqueiaRetomada && (
                           <div className="ucondo-retomada-bloco">
                             <button
                               type="button"
@@ -820,6 +857,24 @@ export default function TransferenciasUcondo({ userId }) {
                   </button>
                 </footer>
               </>
+            )}
+            {avisoConcluido && (
+              <dialog
+                ref={avisoConcluidoRef}
+                className="ucondo-aviso-concluido"
+                aria-labelledby="ucondo-aviso-concluido-titulo"
+                aria-describedby="ucondo-aviso-concluido-mensagem"
+                onClose={() => {
+                  setAvisoConcluido(null);
+                  fecharBtnRef.current?.focus();
+                }}
+              >
+                <h2 id="ucondo-aviso-concluido-titulo">Envio já concluído</h2>
+                <p id="ucondo-aviso-concluido-mensagem">
+                  {avisoConcluido.nome} · {avisoConcluido.periodo} já foi concluído no uCondo.
+                </p>
+                <button type="button" onClick={() => avisoConcluidoRef.current?.close()}>OK</button>
+              </dialog>
             )}
           </section>
         </div>
