@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, RotateCcw, X } from 'lucide-react';
 import { lerEnvios, progressoTransferencia, separarHistoricoTransferencias } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
-import { retomarEnvioUcondo } from '../../services/ucondoResumeService';
+import { continuarEnvioUcondo, retomarEnvioUcondo } from '../../services/ucondoResumeService';
 import {
   getDefaultPosition,
   calculateSnapPosition,
@@ -145,6 +145,7 @@ export default function TransferenciasUcondo({ userId }) {
 
   // Processamento dos dados de transferência
   const remotosIds = new Set(remotos.pedidos.map(p => p.id));
+  const continuaveis = new Set(remotos.continuaveis);
   const cards = remotos.pedidos.map(p => ({
     id: p.id,
     nome: p.condominio_nome,
@@ -152,6 +153,7 @@ export default function TransferenciasUcondo({ userId }) {
     condominioId: p.condominio_id,
     servicos: p.servicos || [],
     ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
+    podeContinuar: continuaveis.has(p.id),
     erroPedido: p.mensagem,
     remoto: true,
     solicitacaoId: p.solicitacao_id,
@@ -493,16 +495,20 @@ export default function TransferenciasUcondo({ userId }) {
   }, [dispensarComAssinatura]);
 
   const handleRetomarEnvio = useCallback(async (card) => {
-    if (retomandoRef.current || !card.falhou || card.completo || card.tentativaAnterior) return;
+    if (retomandoRef.current || (!card.falhou && !card.podeContinuar) || card.completo || card.tentativaAnterior) return;
+    const continuar = !card.falhou && card.podeContinuar;
     retomandoRef.current = true;
     setRetomandoId(card.id);
     setFeedbackRetomada(null);
     try {
-      const res = await retomarEnvioUcondo({ userId, card });
+      const acao = continuar ? continuarEnvioUcondo : retomarEnvioUcondo;
+      const res = await acao({ userId, card });
       setFeedbackRetomada({ tipo: 'sucesso', texto: res.mensagem });
       await atualizarRef.current?.();
     } catch (e) {
-      setFeedbackRetomada({ tipo: 'erro', texto: e?.message || 'Não foi possível retomar o envio.' });
+      setFeedbackRetomada({ tipo: 'erro', texto: e?.message || (continuar
+        ? 'Não foi possível continuar o envio.' : 'Não foi possível retomar o envio.') });
+      if (continuar) await atualizarRef.current?.();
     } finally {
       retomandoRef.current = false;
       setRetomandoId(null);
@@ -769,7 +775,7 @@ export default function TransferenciasUcondo({ userId }) {
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
                           </p>
                         )}
-                        {card.falhou && !card.completo && !card.tentativaAnterior && (
+                        {(card.falhou || card.podeContinuar) && !card.completo && !card.tentativaAnterior && (
                           <div className="ucondo-retomada-bloco">
                             <button
                               type="button"
@@ -778,7 +784,9 @@ export default function TransferenciasUcondo({ userId }) {
                               onClick={() => handleRetomarEnvio(card)}
                             >
                               <RotateCcw size={14} aria-hidden="true" />
-                              {retomandoId === card.id ? 'Retomando...' : 'Retomar envio'}
+                              {card.falhou
+                                ? (retomandoId === card.id ? 'Retomando...' : 'Retomar envio')
+                                : (retomandoId === card.id ? 'Continuando...' : 'Continuar envio')}
                             </button>
                           </div>
                         )}

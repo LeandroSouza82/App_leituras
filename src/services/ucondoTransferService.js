@@ -105,11 +105,14 @@ export const consultarEnviosUcondo = async userId => {
   if (pedidos.error) throw pedidos.error;
   const ids = [...new Set(pedidos.data.flatMap(p => p.trabalhos_ids || []))];
   const lotes = [...new Set(pedidos.data.map(p => p.solicitacao_id).filter(Boolean))];
-  const [trabalhos, solicitacoes] = await Promise.all([
+  const despachados = pedidos.data.filter(p => p.status === 'despachada' && p.solicitacao_id).map(p => p.id);
+  const [trabalhos, solicitacoes, continuaveis] = await Promise.all([
     ids.length ? client.from('automacoes_fila').select('id,user_id,servico,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
     lotes.length ? client.from('solicitacoes_lote').select('id,status').eq('user_id',userId).in('id',lotes) : { data: [] },
+    despachados.length ? client.rpc('envios_ucondo_continuaveis', { p_transferencia_ids: despachados }) : { data: [] },
   ]);
   assertActive();
   if (trabalhos.error || solicitacoes.error) throw trabalhos.error || solicitacoes.error;
-  return { pedidos: pedidos.data, trabalhos: trabalhos.data, lotes: solicitacoes.data };
+  return { pedidos: pedidos.data, trabalhos: trabalhos.data, lotes: solicitacoes.data,
+    continuaveis: Array.isArray(continuaveis.data) ? continuaveis.data : [] };
 };

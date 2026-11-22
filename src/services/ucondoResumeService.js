@@ -30,6 +30,23 @@ const rpcAusente = (error) => {
   return code === 'PGRST202' || code === '42883' || msg.includes('could not find the function');
 };
 
+export const continuarEnvioUcondo = async ({ userId, card }) => {
+  exigirContaOffline(userId);
+  if (!card?.id || !card.remoto || !card.podeContinuar) {
+    throw new Error('Este envio não pode ser continuado agora.');
+  }
+  if (!(await temConexaoInternetUtil())) {
+    throw new Error('Sem conexão com a internet para continuar o envio.');
+  }
+  const { client, assertActive } = await contextoAutenticado(userId);
+  const { data, error } = await client.rpc('continuar_transferencia_ucondo', { p_transferencia_id: card.id });
+  assertActive();
+  if (error) throw new Error(error.message || 'Não foi possível continuar o envio.');
+  return {
+    mensagem: data === 'ja_na_fila' ? 'O envio já está na fila do robô.' : 'Envio recolocado na fila do robô.'
+  };
+};
+
 /**
  * Retoma um envio para o uCondo que esteja em erro/falha.
  * - Pedido local com falha: limpa o erro local e dispara o reprocessamento sem duplicar.

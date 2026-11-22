@@ -168,3 +168,30 @@ test('retomarEnvioUcondo limpa erro de pedido local e reprocessa sem duplicar', 
   assert.equal(salvo[0].erro, null);
 });
 
+
+
+test('continuarEnvioUcondo chama somente o RPC de continuação e aceita clique repetido', async () => {
+  const { f, api } = await createFixture();
+  const card = { id: 'req-1', remoto: true, podeContinuar: true };
+  f.rpcResult = { data: 'recolocado', error: null };
+  assert.equal((await api.continuarEnvioUcondo({ userId: 'A', card })).mensagem,
+    'Envio recolocado na fila do robô.');
+  f.rpcResult = { data: 'ja_na_fila', error: null };
+  assert.equal((await api.continuarEnvioUcondo({ userId: 'A', card })).mensagem,
+    'O envio já está na fila do robô.');
+  assert.deepEqual(f.rpcCalls, Array(2).fill({
+    name: 'continuar_transferencia_ucondo', args: { p_transferencia_id: 'req-1' }
+  }));
+  assert.deepEqual(f.updates, []);
+});
+
+test('continuarEnvioUcondo impede pedidos inelegíveis e mostra a recusa do banco', async () => {
+  const { f, api } = await createFixture();
+  const card = { id: 'req-1', remoto: true };
+  await assert.rejects(api.continuarEnvioUcondo({ userId: 'A', card }), /não pode ser continuado/);
+  assert.equal(f.rpcCalls.length, 0);
+  f.rpcResult = { data: null, error: { message: 'Aguarde o outro envio terminar.' } };
+  await assert.rejects(api.continuarEnvioUcondo({ userId: 'A', card: { ...card, podeContinuar: true } }),
+    /Aguarde o outro envio terminar/);
+  assert.deepEqual(f.updates, []);
+});
