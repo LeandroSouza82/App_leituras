@@ -11,7 +11,7 @@ let processando = false;
 export const registrarEnvioUcondo = ({ userId, condominioId, nome, periodo, servicos, itens }) => {
   exigirContaOffline(userId);
   if (!condominioId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo) || !itens.length || !servicos.length
-    || servicos.some(s => !['AGUA','GAS'].includes(s))) throw new Error('Confira o condomínio, mês e serviços. O robô atual atende água e gás.');
+    || servicos.some(s => !['AGUA', 'GAS', 'ENERGIA'].includes(s))) throw new Error('Confira o condomínio, mês e serviços.');
   if (itens.some(i => i.leiturista_id !== userId || i.condominio_id !== condominioId || i.mes_referencia !== periodo
     || i.condominio_nome !== nome || !servicos.includes(i.servico) || !i.unidade_id
     || (!i.photoPath && !(i.sem_medidor === true && i.leitura_atual === 0)) || !i.db_id || !Number.isFinite(i.leitura_atual))) throw new Error('Todas as leituras e fotos deste condomínio e mês precisam estar salvas no aparelho.');
@@ -105,11 +105,17 @@ export const consultarEnviosUcondo = async userId => {
   if (pedidos.error) throw pedidos.error;
   const ids = [...new Set(pedidos.data.flatMap(p => p.trabalhos_ids || []))];
   const lotes = [...new Set(pedidos.data.map(p => p.solicitacao_id).filter(Boolean))];
-  const [trabalhos, solicitacoes] = await Promise.all([
+  const despachados = pedidos.data.filter(p => p.status === 'despachada' && p.solicitacao_id).map(p => p.id);
+  const pedidoIds = pedidos.data.map(p => p.id);
+  const [trabalhos, solicitacoes, continuaveis, confirmacoes] = await Promise.all([
     ids.length ? client.from('automacoes_fila').select('id,user_id,servico,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
     lotes.length ? client.from('solicitacoes_lote').select('id,status').eq('user_id',userId).in('id',lotes) : { data: [] },
+    despachados.length ? client.rpc('envios_ucondo_continuaveis', { p_transferencia_ids: despachados }) : { data: [] },
+    pedidoIds.length ? client.rpc('confirmacoes_envios_ucondo_v2', { p_transferencia_ids: pedidoIds }) : { data: [] },
   ]);
   assertActive();
-  if (trabalhos.error || solicitacoes.error) throw trabalhos.error || solicitacoes.error;
-  return { pedidos: pedidos.data, trabalhos: trabalhos.data, lotes: solicitacoes.data };
+  if (trabalhos.error || solicitacoes.error || confirmacoes.error) throw trabalhos.error || solicitacoes.error || confirmacoes.error;
+  return { pedidos: pedidos.data, trabalhos: trabalhos.data, lotes: solicitacoes.data,
+    continuaveis: Array.isArray(continuaveis.data) ? continuaveis.data : [],
+    confirmacoes: Array.isArray(confirmacoes.data) ? confirmacoes.data : [] };
 };

@@ -6,7 +6,7 @@ import 'react-medium-image-zoom/dist/styles.css';
 import { parseLeituraNumerica, formatarLeitura4Casas, formatarDigitosLeitura, calcularPosicaoCursor, aplicarMascaraLeitura } from '../../utils/leituraNumerica';
 import './PreviewFotoModal.css';
 
-const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSaveReading, initialValue = '', leituraAnterior = null }) => {
+const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, unidadeConsumo, onRetake, onSaveReading, initialValue = '', leituraAnterior = null }) => {
   const [leituraValor, setLeituraValor] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
@@ -185,7 +185,7 @@ const PreviewFotoModal = ({ isOpen, onClose, imageUri, unitInfo, onRetake, onSav
                   const consumo = atualFloat - anteriorFloat;
                   return (
                     <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
-                      Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} m³</strong>
+                      Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} {unidadeConsumo}</strong>
                     </p>
                   );
                 }

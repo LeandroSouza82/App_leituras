@@ -1209,7 +1209,6 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       if (cicloSalvo && cicloSalvo.mes !== getCurrentMonthKey()) throw new Error('Este condomínio ainda possui um ciclo anterior aberto. Confira as pendências antes de enviar leituras do mês novo.');
       const periodo = leitura?.mesReferencia || getCurrentMonthKey();
       if (periodo !== getCurrentMonthKey()) throw new Error('Confira o mês das leituras antes de solicitar o envio.');
-      if (servicosAtivos.includes('energia')) throw new Error('O robô atual atende água e gás. Energia ainda precisa ser enviada pelo fluxo atual.');
       const validacao = validarLeiturasLote('todos', leitura, listaCompleta, leiturasValores, fotosCapturadas);
       if (!validacao.isValid) throw new Error(`Confira a leitura e a foto da unidade ${validacao.unidade} (${validacao.servico.toUpperCase()}) antes de enviar.`);
       const owner = exigirContaOffline();
@@ -1695,6 +1694,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const showAgua = servicosAtivos.includes('agua');
   const showGas = servicosAtivos.includes('gas');
   const showEnergia = servicosAtivos.includes('energia');
+  const unidadeConsumo = tipoMedicaoAtivo === 'energia' ? 'kWh' : 'm³';
 
   return (
     <>
@@ -1917,6 +1917,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onClose={() => setIsPreviewOpen(false)}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo] || ''}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
+        unidadeConsumo={unidadeConsumo}
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
@@ -1934,6 +1935,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       {/* 5. Câmera customizada in-app (Totalmente independente da árvore do modal) */}
       {customCameraOpen && (
         <CustomCamera
+          unidadeConsumo={unidadeConsumo}
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
           initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}

@@ -2,9 +2,12 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, X } from 'lucide-react';
+import { Browser } from '@capacitor/browser';
+import { ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
+import { Cloud, CloudUpload, Check, CheckCircle2, AlertTriangle, AlertCircle, RotateCcw, X } from 'lucide-react';
 import { lerEnvios, progressoTransferencia, separarHistoricoTransferencias } from '../../services/ucondoTransferModel';
 import { consultarEnviosUcondo, processarEnviosUcondo } from '../../services/ucondoTransferService';
+import { continuarEnvioUcondo, retomarEnvioUcondo } from '../../services/ucondoResumeService';
 import {
   getDefaultPosition,
   calculateSnapPosition,
@@ -40,6 +43,9 @@ export default function TransferenciasUcondo({ userId }) {
   const [erro, setErro] = useState('');
   const [verHistorico, setVerHistorico] = useState(false);
   const [verTodos, setVerTodos] = useState(false);
+  const [retomandoId, setRetomandoId] = useState(null);
+  const [feedbackRetomada, setFeedbackRetomada] = useState(null);
+  const [avisoConcluido, setAvisoConcluido] = useState(null);
 
   // Estados da interface flutuante
   const [modalAberto, setModalAberto] = useState(false);
@@ -68,6 +74,7 @@ export default function TransferenciasUcondo({ userId }) {
   const targetRef = useRef(null);
   const fecharBtnRef = useRef(null);
   const dialogRef = useRef(null);
+  const avisoConcluidoRef = useRef(null);
   const pillBtnRef = useRef(null);
 
   const abertoEmRef = useRef(0);
@@ -75,6 +82,8 @@ export default function TransferenciasUcondo({ userId }) {
   // Cópia em memória da preferência visual: garante o descarte na sessão atual mesmo se o localStorage falhar.
   const assinaturaMemoriaRef = useRef(null);
   const todosRef = useRef([]);
+  const atualizarRef = useRef(null);
+  const retomandoRef = useRef(false);
 
   const posRef = useRef({ x: 0, y: 0 });
 
@@ -92,16 +101,15 @@ export default function TransferenciasUcondo({ userId }) {
     hasVibratedInside: false
   });
 
-  // Polling e sincronização de dados (mantido estritamente idêntico ao original)
+  // Polling e sincronização de dados
   useEffect(() => {
-    let encerrado = false, ocupado = false;
+    let encerrado = false;
+    let atualizacaoEmAndamento = null;
     const lerLocais = () => {
       try { if (!encerrado) setLocais(lerEnvios(userId)); }
       catch (e) { if (!encerrado) setErro(e.message); }
     };
-    const atualizar = async () => {
-      if (ocupado) return;
-      ocupado = true;
+    const consultar = async () => {
       try {
         await processarEnviosUcondo(userId);
         const estado = await consultarEnviosUcondo(userId);
@@ -112,7 +120,18 @@ export default function TransferenciasUcondo({ userId }) {
         }
       } catch {
         if (!encerrado) setErro('Sem atualização do servidor. As últimas contagens foram mantidas; seus dados locais continuam salvos.');
-      } finally { ocupado = false; lerLocais(); }
+      } finally { lerLocais(); }
+    };
+    const atualizar = () => {
+      if (encerrado || atualizacaoEmAndamento) return;
+      atualizacaoEmAndamento = consultar().finally(() => {
+        atualizacaoEmAndamento = null;
+      });
+      return atualizacaoEmAndamento;
+    };
+    atualizarRef.current = async () => {
+      await atualizacaoEmAndamento;
+      await atualizar();
     };
     lerLocais();
     void atualizar();
@@ -121,6 +140,7 @@ export default function TransferenciasUcondo({ userId }) {
     window.addEventListener('online', atualizar);
     return () => {
       encerrado = true;
+      atualizarRef.current = null;
       clearInterval(timer);
       window.removeEventListener('envios_ucondo_atualizados', lerLocais);
       window.removeEventListener('online', atualizar);
@@ -129,15 +149,20 @@ export default function TransferenciasUcondo({ userId }) {
 
   // Processamento dos dados de transferência
   const remotosIds = new Set(remotos.pedidos.map(p => p.id));
+  const continuaveis = new Set(remotos.continuaveis);
   const cards = remotos.pedidos.map(p => ({
     id: p.id,
     nome: p.condominio_nome,
     periodo: p.periodo,
     condominioId: p.condominio_id,
     servicos: p.servicos || [],
-    ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id)),
+    ...progressoTransferencia(p, remotos.trabalhos, remotos.lotes.find(l => l.id === p.solicitacao_id),
+      Date.now(), remotos.confirmacoes?.filter(c => c.transferencia_id === p.id)),
+    podeContinuar: continuaveis.has(p.id),
     erroPedido: p.mensagem,
     remoto: true,
+    solicitacaoId: p.solicitacao_id,
+    trabalhosIds: p.trabalhos_ids || [],
     // Id local do mesmo pedido antes da confirmação no servidor (não conta como pedido novo)
     aliases: locais.filter(l => l.serverId === p.id).map(l => l.id)
   }));
@@ -466,6 +491,10 @@ export default function TransferenciasUcondo({ userId }) {
 
   // Tratamento de botão voltar, tecla Escape e foco no Modal
   const fecharModal = useCallback(() => {
+    if (avisoConcluidoRef.current?.open) {
+      avisoConcluidoRef.current.close();
+      return;
+    }
     setModalAberto(false);
   }, []);
 
@@ -473,6 +502,37 @@ export default function TransferenciasUcondo({ userId }) {
     setModalAberto(false);
     dispensarComAssinatura();
   }, [dispensarComAssinatura]);
+
+  const handleRetomarEnvio = useCallback(async (card) => {
+    if (retomandoRef.current || (!card.falhou && !card.podeContinuar) || card.completo || card.bloqueiaRetomada) return;
+    const continuar = !card.falhou && card.podeContinuar;
+    retomandoRef.current = true;
+    setRetomandoId(card.id);
+    setFeedbackRetomada(null);
+    try {
+      const acao = continuar ? continuarEnvioUcondo : retomarEnvioUcondo;
+      const res = await acao({ userId, card });
+      if (res.modo === 'concluido') {
+        setAvisoConcluido({ nome: card.nome, periodo: card.periodo });
+        setVerHistorico(true);
+      } else {
+        setFeedbackRetomada({ tipo: 'sucesso', texto: res.mensagem });
+      }
+      await atualizarRef.current?.();
+    } catch (e) {
+      setFeedbackRetomada({ tipo: 'erro', texto: e?.message || (continuar
+        ? 'Não foi possível continuar o envio.' : 'Não foi possível retomar o envio.') });
+      await atualizarRef.current?.();
+    } finally {
+      retomandoRef.current = false;
+      setRetomandoId(null);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    const dialog = avisoConcluidoRef.current;
+    if (avisoConcluido && dialog && !dialog.open) dialog.showModal();
+  }, [avisoConcluido, modalAberto]);
 
   useEffect(() => {
     if (!modalAberto) {
@@ -488,6 +548,7 @@ export default function TransferenciasUcondo({ userId }) {
     fecharBtnRef.current?.focus();
 
     const onKeyDown = (event) => {
+      if (avisoConcluidoRef.current?.open) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -684,6 +745,11 @@ export default function TransferenciasUcondo({ userId }) {
                 )}
 
                 {erro && <p className="ucondo-transferencia-aviso" role="status">{erro}</p>}
+                {feedbackRetomada && (
+                  <p className={`ucondo-retomada-feedback ${feedbackRetomada.tipo}`} role="status">
+                    {feedbackRetomada.texto}
+                  </p>
+                )}
 
                 {/* Quando há envios ativos ou o histórico está aberto, renderiza os cards */}
                 {visiveis.length > 0 ? (
@@ -702,7 +768,7 @@ export default function TransferenciasUcondo({ userId }) {
                           ) : null}
                         </div>
                         <p className="ucondo-transferencia-etapa">
-                          {card.tentativaAnterior ? 'Tentativa anterior' : card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
+                          {card.etapa} <strong>{card.remoto ? 'Total ' : ''}{card.percentual}%</strong>
                         </p>
                         <progress
                           value={card.percentual}
@@ -721,13 +787,45 @@ export default function TransferenciasUcondo({ userId }) {
                           </p>
                         )}
                         <p className="ucondo-transferencia-detalhe">
-                          {card.tentativaAnterior ? 'Serviços pendentes confirmados em uma tentativa posterior.'
-                            : (card.falhou && card.erroPedido) || card.detalhe}
+                          {(!card.bloqueiaRetomada && card.falhou && card.erroPedido) || card.detalhe}
                         </p>
+                        {card.completo && (
+                          <p className="ucondo-envio-concluido" role="status">
+                            <CheckCircle2 size={18} aria-hidden="true" />
+                            Envio concluído — não é necessário reenviar.
+                          </p>
+                        )}
+                        {card.exigeConferencia && (
+                          <button type="button" className="ucondo-btn-retomar"
+                            onClick={() => Browser.open({ url: ROBOT_DASHBOARD_URL })}>
+                            Conferir no AutoFast
+                          </button>
+                        )}
+                        {card.tentativaResolvida && (
+                          <details className="ucondo-transferencia-detalhe">
+                            <summary>Tentativa anterior resolvida</summary>
+                            As unidades deste envio foram confirmadas em outra execução.
+                          </details>
+                        )}
                         {card.atualizadoEm && (
                           <p className="ucondo-transferencia-detalhe">
                             Último sinal do robô: {new Date(card.atualizadoEm).toLocaleTimeString('pt-BR')}
                           </p>
+                        )}
+                        {(card.falhou || card.podeContinuar) && !card.completo && !card.bloqueiaRetomada && (
+                          <div className="ucondo-retomada-bloco">
+                            <button
+                              type="button"
+                              className="ucondo-btn-retomar"
+                              disabled={retomandoId !== null}
+                              onClick={() => handleRetomarEnvio(card)}
+                            >
+                              <RotateCcw size={14} aria-hidden="true" />
+                              {card.falhou
+                                ? (retomandoId === card.id ? 'Retomando...' : 'Retomar envio')
+                                : (retomandoId === card.id ? 'Continuando...' : 'Continuar envio')}
+                            </button>
+                          </div>
                         )}
                       </article>
                     ))}
@@ -759,6 +857,24 @@ export default function TransferenciasUcondo({ userId }) {
                   </button>
                 </footer>
               </>
+            )}
+            {avisoConcluido && (
+              <dialog
+                ref={avisoConcluidoRef}
+                className="ucondo-aviso-concluido"
+                aria-labelledby="ucondo-aviso-concluido-titulo"
+                aria-describedby="ucondo-aviso-concluido-mensagem"
+                onClose={() => {
+                  setAvisoConcluido(null);
+                  fecharBtnRef.current?.focus();
+                }}
+              >
+                <h2 id="ucondo-aviso-concluido-titulo">Envio já concluído</h2>
+                <p id="ucondo-aviso-concluido-mensagem">
+                  {avisoConcluido.nome} · {avisoConcluido.periodo} já foi concluído no uCondo.
+                </p>
+                <button type="button" onClick={() => avisoConcluidoRef.current?.close()}>OK</button>
+              </dialog>
             )}
           </section>
         </div>

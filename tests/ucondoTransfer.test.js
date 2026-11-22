@@ -83,20 +83,34 @@ test('Le Parque: mantém o progresso real na retomada e encerra em 100% sem carr
   assert.deepEqual([final.leituras, final.fotos, final.percentual, final.completo, final.falhou], [96, 96, 100, true, false]);
 });
 
-test('só uma conclusão mais recente para os mesmos serviços arquiva um erro antigo', () => {
-  const base = { condominioId: 'khiva', periodo: '2026-11', servicos: ['AGUA', 'GAS'] };
-  const novo = { ...base, completo: true };
-  const antigo = { ...base, falhou: true };
-  const outroMes = { ...antigo, periodo: '2026-12' };
-  const outroCondo = { ...antigo, condominioId: 'outro' };
-  assert.deepEqual(separarHistoricoTransferencias([novo, antigo, outroMes, outroCondo]),
-    { historico: [novo, { ...antigo, tentativaAnterior: true }], atuais: [outroMes, outroCondo] });
-  assert.deepEqual(separarHistoricoTransferencias([{ ...novo, servicos: ['AGUA'] }, antigo]).atuais, [antigo]);
-  assert.deepEqual(separarHistoricoTransferencias([
-    { ...novo, servicos: ['GAS'] }, { ...antigo, servicosPendentes: ['GAS'] },
-  ]).atuais, []);
-  assert.deepEqual(separarHistoricoTransferencias([antigo, novo]).atuais, [antigo]);
+test('Catarina concluído em outra execução aparece como concluído com evidência dos mesmos apartamentos', () => {
+  const p = { ...pedido, id: 'catarina', servicos: ['GAS'], total_leituras: 9 };
+  const falho = { ...job, servico: 'GAS', status: 'erro', total_unidades: 9, resultado_mensagem: '' };
+  const resultado = progressoTransferencia(p, [falho], { status: 'erro' }, 0, [{ servico: 'GAS', total: 9, externas: 9 }]);
+  assert.deepEqual([resultado.etapa, resultado.leituras, resultado.fotos, resultado.percentual], ['Concluído no uCondo', 9, 9, 100]);
+  assert.equal(resultado.tentativaResolvida, true);
+  assert.equal(resultado.falhou, false);
+  assert.deepEqual(separarHistoricoTransferencias([resultado]), { historico: [resultado], atuais: [] });
 });
+
+test('cobertura parcial mantém pendência e evita nova execução integral daquele serviço', () => {
+  const p = { ...pedido, servicos: ['GAS'], total_leituras: 9 };
+  const falho = { ...job, servico: 'GAS', status: 'erro', total_unidades: 9, resultado_mensagem: '' };
+  const resultado = progressoTransferencia(p, [falho], { status: 'erro' }, 0, [{ servico: 'GAS', total: 9, externas: 5 }]);
+  assert.deepEqual([resultado.leituras, resultado.fotos, resultado.percentual], [5, 5, 55]);
+  assert.equal(resultado.falhou, true);
+  assert.equal(resultado.completo, false);
+  assert.equal(resultado.bloqueiaRetomada, true);
+  assert.deepEqual(separarHistoricoTransferencias([resultado]).atuais, [resultado]);
+});
+
+test('um card concluído para o mesmo serviço não esconde uma falha sem evidência das unidades', () => {
+  const base = { condominioId: 'catarina', periodo: '2026-11', servicos: ['GAS'] };
+  const concluido = { ...base, completo: true };
+  const falho = { ...base, falhou: true };
+  assert.deepEqual(separarHistoricoTransferencias([concluido, falho]), { historico: [concluido], atuais: [falho] });
+});
+
 test('upload confirmation matches account, unit, service and numeric reading', () => {
   const item={db_id:'id',leiturista_id:'A',unidade_id:'101',servico:'AGUA',condominio_nome:'Condomínio A',leitura_atual:12.3456};
   const row={...item,id:'id',foto_url:'https://example.test/photo'};
@@ -113,4 +127,38 @@ test('different condos can remain queued independently and unreadable storage is
   map.set('fastleituras_envios_ucondo_v1_A','broken');
   assert.throws(()=>lerEnvios('A',storage));
   assert.equal(map.get('fastleituras_envios_ucondo_v1_A'),'broken');
+});
+
+test('Khiva conclui com 13 leituras de Água, 8 de Gás e 5 dispensas de Gás', () => {
+  const p = { ...pedido, servicos: ['AGUA', 'GAS'], trabalhos_ids: ['job', 'gas'], total_leituras: 26 };
+  const agua = { ...job, servico: 'AGUA', status: 'concluida', total_unidades: 13,
+    resultado_mensagem: 'Fluxo completo concluído (AGUA): 13 unidades com leituras conferidas (13 fotos confirmadas, 0 marcadas sem foto).' };
+  const gas = { ...job, id: 'gas', servico: 'GAS', status: 'erro', total_unidades: 13, resultado_mensagem: '' };
+  const view = progressoTransferencia(p, [agua, gas], { status: 'erro' }, 0,
+    [{ servico: 'GAS', total: 13, externas: 8, dispensadas: 5 }]);
+  assert.deepEqual([view.leituras, view.fotos, view.foraGrade, view.semFoto, view.percentual], [21, 21, 5, 5, 100]);
+  assert.equal(view.completo, true);
+  assert.equal(view.tentativaResolvida, true);
+  assert.equal(view.falhou, false);
+});
+
+test('cadastro divergente não oferece repetição automática nem inventa conclusão', () => {
+  const estado = progressoTransferencia(pedido, [{...job, servico:'AGUA', status:'erro',
+    resultado_mensagem: "Erro técnico: Checkpoint do trabalho possui 'condominio_nome_ucondo' divergente. Exige reconciliação."}], {status:'erro'});
+  assert.equal(estado.completo,false);
+  assert.equal(estado.exigeConferencia,true);
+  assert.equal(estado.bloqueiaRetomada,true);
+  assert.equal(estado.etapa,'Conferência necessária');
+  assert.match(estado.detalhe,/Conclusão não confirmada/);
+});
+
+test('conclusão comprovada em outro manifesto encerra a falha, incluindo fotos dispensadas', () => {
+  const p={...pedido,total_leituras:106};
+  const estado=progressoTransferencia(p,[{...job,servico:'AGUA',status:'erro'}],{status:'erro'},Date.now(),
+    [{servico:'AGUA',total:106,externas:102,dispensadas:4}]);
+  assert.equal(estado.completo,true);
+  assert.equal(estado.falhou,false);
+  assert.equal(estado.percentual,100);
+  assert.equal(estado.semFoto,4);
+  assert.equal(estado.etapa,'Concluído no uCondo');
 });
