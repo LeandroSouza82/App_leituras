@@ -42,7 +42,7 @@ export default function TransferenciasUcondo({ userId }) {
   const [verHistorico, setVerHistorico] = useState(false);
   const [verTodos, setVerTodos] = useState(false);
   const [retomandoId, setRetomandoId] = useState(null);
-  const [feedbackRetomada, setFeedbackRetomada] = useState({});
+  const [feedbackRetomada, setFeedbackRetomada] = useState(null);
 
   // Estados da interface flutuante
   const [modalAberto, setModalAberto] = useState(false);
@@ -97,16 +97,15 @@ export default function TransferenciasUcondo({ userId }) {
     hasVibratedInside: false
   });
 
-  // Polling e sincronização de dados (mantido estritamente idêntico ao original)
+  // Polling e sincronização de dados
   useEffect(() => {
-    let encerrado = false, ocupado = false;
+    let encerrado = false;
+    let atualizacaoEmAndamento = null;
     const lerLocais = () => {
       try { if (!encerrado) setLocais(lerEnvios(userId)); }
       catch (e) { if (!encerrado) setErro(e.message); }
     };
-    const atualizar = async () => {
-      if (ocupado) return;
-      ocupado = true;
+    const consultar = async () => {
       try {
         await processarEnviosUcondo(userId);
         const estado = await consultarEnviosUcondo(userId);
@@ -117,9 +116,19 @@ export default function TransferenciasUcondo({ userId }) {
         }
       } catch {
         if (!encerrado) setErro('Sem atualização do servidor. As últimas contagens foram mantidas; seus dados locais continuam salvos.');
-      } finally { ocupado = false; lerLocais(); }
+      } finally { lerLocais(); }
     };
-    atualizarRef.current = atualizar;
+    const atualizar = () => {
+      if (encerrado || atualizacaoEmAndamento) return;
+      atualizacaoEmAndamento = consultar().finally(() => {
+        atualizacaoEmAndamento = null;
+      });
+      return atualizacaoEmAndamento;
+    };
+    atualizarRef.current = async () => {
+      await atualizacaoEmAndamento;
+      await atualizar();
+    };
     lerLocais();
     void atualizar();
     const timer = setInterval(atualizar, 5000);
@@ -484,22 +493,16 @@ export default function TransferenciasUcondo({ userId }) {
   }, [dispensarComAssinatura]);
 
   const handleRetomarEnvio = useCallback(async (card) => {
-    if (retomandoRef.current || !card?.falhou) return;
+    if (retomandoRef.current || !card.falhou || card.completo || card.tentativaAnterior) return;
     retomandoRef.current = true;
     setRetomandoId(card.id);
-    setFeedbackRetomada(prev => ({ ...prev, [card.id]: null }));
+    setFeedbackRetomada(null);
     try {
       const res = await retomarEnvioUcondo({ userId, card });
-      setFeedbackRetomada(prev => ({
-        ...prev,
-        [card.id]: { tipo: 'sucesso', texto: res.mensagem }
-      }));
+      setFeedbackRetomada({ tipo: 'sucesso', texto: res.mensagem });
       await atualizarRef.current?.();
     } catch (e) {
-      setFeedbackRetomada(prev => ({
-        ...prev,
-        [card.id]: { tipo: 'erro', texto: e?.message || 'Não foi possível retomar o envio.' }
-      }));
+      setFeedbackRetomada({ tipo: 'erro', texto: e?.message || 'Não foi possível retomar o envio.' });
     } finally {
       retomandoRef.current = false;
       setRetomandoId(null);
@@ -716,6 +719,11 @@ export default function TransferenciasUcondo({ userId }) {
                 )}
 
                 {erro && <p className="ucondo-transferencia-aviso" role="status">{erro}</p>}
+                {feedbackRetomada && (
+                  <p className={`ucondo-retomada-feedback ${feedbackRetomada.tipo}`} role="status">
+                    {feedbackRetomada.texto}
+                  </p>
+                )}
 
                 {/* Quando há envios ativos ou o histórico está aberto, renderiza os cards */}
                 {visiveis.length > 0 ? (
@@ -772,14 +780,6 @@ export default function TransferenciasUcondo({ userId }) {
                               <RotateCcw size={14} aria-hidden="true" />
                               {retomandoId === card.id ? 'Retomando...' : 'Retomar envio'}
                             </button>
-                            {feedbackRetomada[card.id] && (
-                              <p
-                                className={`ucondo-retomada-feedback ${feedbackRetomada[card.id].tipo}`}
-                                role="status"
-                              >
-                                {feedbackRetomada[card.id].texto}
-                              </p>
-                            )}
                           </div>
                         )}
                       </article>
