@@ -1683,6 +1683,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const showAgua = servicosAtivos.includes('agua');
   const showGas = servicosAtivos.includes('gas');
   const showEnergia = servicosAtivos.includes('energia');
+  const unidadeConsumo = tipoMedicaoAtivo === 'energia' ? 'kWh' : 'm³';
 
   return (
     <>
@@ -1905,6 +1906,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         onClose={() => setIsPreviewOpen(false)}
         imageUri={fotosCapturadas[activeApto]?.[tipoMedicaoAtivo] || ''}
         unitInfo={`${activeApto} - ${tipoMedicaoAtivo.toUpperCase()}`}
+        unidadeConsumo={unidadeConsumo}
         onRetake={handleRetakeFoto}
         onSaveReading={handleSaveReading}
         initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}
@@ -1922,6 +1924,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       {/* 5. Câmera customizada in-app (Totalmente independente da árvore do modal) */}
       {customCameraOpen && (
         <CustomCamera
+          unidadeConsumo={unidadeConsumo}
           onSaveReading={handleCaptureAndSave}
           onClose={() => setCustomCameraOpen(false)}
           initialValue={formatarLeituraLocal(obterLeituraAtualLocal(leiturasValores, activeApto, tipoMedicaoAtivo))}

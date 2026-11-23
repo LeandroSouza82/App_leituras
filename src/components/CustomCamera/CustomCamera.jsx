@@ -71,7 +71,7 @@ const gerarFotoMockBase64 = () => {
   return dataUrl.split(",")[1];
 };
 
-const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnterior = null }) => {
+const CustomCamera = ({ onSaveReading, onClose, unidadeConsumo, initialValue = "", leituraAnterior = null }) => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [leituraValue, setLeituraValue] = useState('');
@@ -298,7 +298,7 @@ const CustomCamera = ({ onSaveReading, onClose, initialValue = "", leituraAnteri
                     const consumo = atualFloat - anteriorFloat;
                     return (
                       <p className="text-sm font-semibold text-blue-600 mt-1" style={{ fontSize: '13px', color: '#2563eb', marginTop: '4px' }}>
-                        Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} m³</strong>
+                        Consumo Calculado: <strong>{formatarLeitura4Casas(consumo)} {unidadeConsumo}</strong>
                       </p>
                     );
                   }

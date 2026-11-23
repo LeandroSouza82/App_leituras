@@ -499,3 +499,41 @@
     transform: translateX(-50%) !important;
   }
 }
+
+
+.ucondo-envio-concluido { display: flex; gap: 8px; align-items: center; color: #166534; font-weight: 600; }
+
+.ucondo-aviso-concluido {
+  width: min(360px, calc(100% - 40px));
+  margin: auto;
+  padding: 20px;
+  border: 1px solid #bbd8eb;
+  border-radius: 16px;
+  background: #f5faff;
+  color: #16324f;
+  box-sizing: border-box;
+}
+
+.ucondo-aviso-concluido::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.ucondo-aviso-concluido h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.ucondo-aviso-concluido p {
+  margin: 0 0 16px;
+}
+
+.ucondo-aviso-concluido button {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: #155e91;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+}

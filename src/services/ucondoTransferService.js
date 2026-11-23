@@ -106,13 +106,16 @@ export const consultarEnviosUcondo = async userId => {
   const ids = [...new Set(pedidos.data.flatMap(p => p.trabalhos_ids || []))];
   const lotes = [...new Set(pedidos.data.map(p => p.solicitacao_id).filter(Boolean))];
   const despachados = pedidos.data.filter(p => p.status === 'despachada' && p.solicitacao_id).map(p => p.id);
-  const [trabalhos, solicitacoes, continuaveis] = await Promise.all([
+  const pedidoIds = pedidos.data.map(p => p.id);
+  const [trabalhos, solicitacoes, continuaveis, confirmacoes] = await Promise.all([
     ids.length ? client.from('automacoes_fila').select('id,user_id,servico,status,total_unidades,erros,pendencias,heartbeat_at,resultado_mensagem').eq('user_id',userId).in('id',ids) : { data: [] },
     lotes.length ? client.from('solicitacoes_lote').select('id,status').eq('user_id',userId).in('id',lotes) : { data: [] },
     despachados.length ? client.rpc('envios_ucondo_continuaveis', { p_transferencia_ids: despachados }) : { data: [] },
+    pedidoIds.length ? client.rpc('confirmacoes_envios_ucondo_v2', { p_transferencia_ids: pedidoIds }) : { data: [] },
   ]);
   assertActive();
-  if (trabalhos.error || solicitacoes.error) throw trabalhos.error || solicitacoes.error;
+  if (trabalhos.error || solicitacoes.error || confirmacoes.error) throw trabalhos.error || solicitacoes.error || confirmacoes.error;
   return { pedidos: pedidos.data, trabalhos: trabalhos.data, lotes: solicitacoes.data,
-    continuaveis: Array.isArray(continuaveis.data) ? continuaveis.data : [] };
+    continuaveis: Array.isArray(continuaveis.data) ? continuaveis.data : [],
+    confirmacoes: Array.isArray(confirmacoes.data) ? confirmacoes.data : [] };
 };
