@@ -7,6 +7,7 @@ import {
   donoDoItem, periodoDoItem, capturarContextoSync, exigirContaOffline,
 } from './offlineQueueStorage';
 import { normalizarNome } from './ucondoSpreadsheetMetadata';
+import { aplicarServicosImportadosPendentes, FILA_COND_KEY } from './servicosImportadosQueue';
 
 /**
  * syncOfflineService — Fila de Sincronização para Leituras Anteriores (Offline-First)
@@ -28,7 +29,6 @@ import { normalizarNome } from './ucondoSpreadsheetMetadata';
  */
 
 const FILA_KEY = 'fila_sync_leituras_anteriores';
-const FILA_COND_KEY = 'fila_sync_condominios';
 let isSyncLeiturasRunning = false;
 let isSyncCondsRunning = false;
 
@@ -96,7 +96,7 @@ export const enfileirarNovoCondominio = (condominioData) => {
   };
   if (!periodoDoItem(item)) throw new Error('Mês do condomínio offline inválido.');
   const fila = lerFilaCondominios();
-  const index = fila.findIndex(f => f.id === item.id && donoDoItem(f) === owner && periodoDoItem(f) === item.mes_referencia);
+  const index = fila.findIndex(f => !f.servicoImportado && f.id === item.id && donoDoItem(f) === owner && periodoDoItem(f) === item.mes_referencia);
   if (index < 0) fila.push(item);
   else fila[index] = item;
   return gravarFilaCondominios(fila);
@@ -242,6 +242,22 @@ export const sincronizarCondominiosOffline = async () => {
       try {
         contexto.assertActive();
         if (donoDoItem(cond) !== activeUserId || !periodoDoItem({ mes_referencia: cond.mes_referencia })) continue;
+        if (cond.servicoImportado) {
+          const { error } = await client.rpc('adicionar_servico_planilha_ucondo', {
+            p_condominio_id: cond.id,
+            p_servico: cond.servicoImportado,
+            p_unidades: cond.unidadesImportadas,
+          });
+          if (error) throw error;
+          contexto.assertActive();
+          const cache = localStorage.getItem('condominios_cache');
+          if (cache) {
+            const condominios = aplicarServicosImportadosPendentes(JSON.parse(cache), activeUserId);
+            localStorage.setItem('condominios_cache', JSON.stringify(condominios));
+          }
+          removerItemConfirmado(FILA_COND_KEY, cond);
+          continue;
+        }
         // Formata para o Supabase
         const dbCond = {
            id: cond.id,

@@ -210,10 +210,12 @@ const ImportadorPlanilha = ({ onImportComplete, onStatusChange }) => {
         }
 
         if (resultadoUCondo?.tipo === 'atualizado') {
-          const msg = `✅ ${resultadoUCondo.totalUnidades} unidades sincronizadas com sucesso no Supabase para o condomínio "${resultadoUCondo.condominio.nome}"!`;
+          const msg = resultadoUCondo.servico
+            ? `✅ Planilha de ${resultadoUCondo.servico} importada para "${resultadoUCondo.condominio.nome}"!`
+            : `✅ ${resultadoUCondo.totalUnidades} unidades sincronizadas com sucesso no Supabase para o condomínio "${resultadoUCondo.condominio.nome}"!`;
           await customAlert(msg);
           emitStatus(msg);
-          if (onImportComplete) onImportComplete(1);
+          if (onImportComplete) onImportComplete(1, msg);
           return;
         }
 

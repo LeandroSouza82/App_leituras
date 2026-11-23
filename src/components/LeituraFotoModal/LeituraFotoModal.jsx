@@ -268,7 +268,7 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
   const [activeApto, setActiveApto] = useState(null);
   const [unidadesCarregadas, setUnidadesAtualizadas] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showToast, setShowToast] = useState(false);
+  const [mensagemSucesso, setMensagemSucesso] = useState('');
   const [customCameraOpen, setCustomCameraOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [hydrationCounter, setHydrationCounter] = useState(0);
@@ -324,13 +324,13 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
     return () => window.removeEventListener('offline_cache_hydrated', handleHydration);
   }, [leitura]);
 
-  const exibirToastSucesso = () => {
+  const exibirToastSucesso = (mensagem = 'Salvo offline com sucesso!') => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
-    setShowToast(true);
+    setMensagemSucesso(mensagem);
     toastTimeoutRef.current = setTimeout(() => {
-      setShowToast(false);
+      setMensagemSucesso('');
       toastTimeoutRef.current = null;
     }, 2500);
   };
@@ -356,20 +356,9 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
         if (novasUnidades.length > 0) {
           setUnidadesAtualizadas(novasUnidades);
 
-          // Salvar permanentemente no cache
-          localStorage.setItem(`unidades_${condId}`, JSON.stringify(novasUnidades));
-          try {
-            await Filesystem.writeFile({
-              path: `unidades_${condId}.json`,
-              data: JSON.stringify(novasUnidades),
-              directory: Directory.Data,
-              encoding: Encoding.UTF8
-            });
-          } catch (e) {}
-
           const servicoMsg = resultado.servico ? ` (${resultado.servico})` : '';
           const leiturasMsg = resultado.totalLeituras ? ` com ${resultado.totalLeituras} leituras anteriores importadas` : '';
-          await customAlert(`✅ ${novasUnidades.length} unidades atualizadas com sucesso${servicoMsg}${leiturasMsg}!`);
+          exibirToastSucesso(`Planilha importada${servicoMsg}${leiturasMsg}!`);
         }
       }
     } catch (err) {
@@ -1925,10 +1914,10 @@ const LeituraFotoModal = ({ isOpen, onClose, leitura }) => {
       />
 
       {/* 4. Feedback Toast */}
-      {showToast && (
-        <div className="toast-success-top">
+      {mensagemSucesso && (
+        <div className="toast-success-top" role="status">
           <CheckCircle size={18} />
-          <span>Salvo offline com sucesso!</span>
+          <span>{mensagemSucesso}</span>
         </div>
       )}
 

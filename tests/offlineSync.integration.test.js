@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import * as XLSX from 'xlsx';
 
 // Executa os módulos oficiais com rede/disco simulados; não usa Supabase nem fotos reais.
 const bundled = await build({
@@ -8,19 +9,25 @@ const bundled = await build({
     contents: `export * from './src/services/syncService.js';
       export * from './src/services/syncOfflineService.js';
       export * from './src/services/offlineQueueStorage.js';
+      export * from './src/services/servicosImportadosQueue.js';
+      export { UCondoImportService } from './src/services/ucondoImportService.js';
       export * from './src/hooks/useOfflineSync.js';
       export { cicloMensalService } from './src/services/cicloMensalService.js';`,
     resolveDir: process.cwd(),
   },
   bundle: true, write: false, platform: 'node', format: 'esm',
   plugins: [{ name: 'offline-test-boundaries', setup(plugin) {
+    plugin.onResolve({ filter: /^xlsx$/ }, () => ({ path: import.meta.resolve('xlsx'), external: true }));
     plugin.onResolve({ filter: /supabase(?:\.js)?$|networkQualityService(?:\.js)?$|CustomPrompt$|^@capacitor\/(network|filesystem)$|^react$/ }, args =>
       ({ path: args.path, namespace: 'offline-test' }));
     plugin.onLoad({ filter: /.*/, namespace: 'offline-test' }, args => {
       const prefix = 'const f = globalThis.__offlineFixture; ';
       if (/supabase(?:\.js)?$/.test(args.path)) return { contents: prefix + 'export const supabase=f.supabase; export const criarClienteParaToken=f.createClient;' };
       if (/networkQualityService(?:\.js)?$/.test(args.path)) return { contents: prefix + 'export const temConexaoInternetUtil=async()=>f.online;' };
-      if (/CustomPrompt$/.test(args.path)) return { contents: 'export const customAlert=async()=>{};' };
+      if (/CustomPrompt$/.test(args.path)) return { contents: prefix + `export const customAlert=async()=>{};
+        export const customConfirmDestrutivo=async()=>{f.confirmacoes++;return false};
+        export const customConfirm=customConfirmDestrutivo;
+        export const customPrompt=async()=>null;` };
       if (/filesystem$/.test(args.path)) return { contents: prefix + 'export const Filesystem=f.files; export const Directory={Data:"DATA",Cache:"CACHE"}; export const Encoding={UTF8:"utf8"};' };
       if (/network$/.test(args.path)) return { contents: 'export const Network={addListener:async()=>({remove(){}})};' };
       return { contents: 'export const useCallback=f=>f; export const useEffect=()=>{}; export const useRef=v=>({current:v}); export const useState=v=>[v,()=>{}];' };
@@ -36,7 +43,7 @@ const fixture = async () => {
     getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, String(value)), removeItem: key => data.delete(key),
   };
   globalThis.window = { dispatchEvent: event => events.push(event.type) };
-  const f = { data, events, online: false, requests: [], session: { user: { id: 'conta-A' }, access_token: 'token-A' }, onRequest: null };
+  const f = { data, events, online: false, requests: [], confirmacoes: 0, session: { user: { id: 'conta-A' }, access_token: 'token-A' }, onRequest: null };
   f.supabase = { auth: {
     getSession: async () => ({ data: { session: f.session } }),
     getUser: async token => ({ data: { user: { id: token === 'token-A' ? 'conta-A' : 'conta-B' } } }),
@@ -46,6 +53,7 @@ const fixture = async () => {
     writeFile: async () => {},
   };
   f.createClient = (token, guard) => ({
+    rpc: async (name, args) => { guard(); f.requests.push({ name, args, token }); return { error: null }; },
     from(table) {
       const request = { table, token, filters: [] };
       const chain = {
@@ -76,6 +84,39 @@ const fixture = async () => {
   mod.prepararContaOffline('conta-A');
   return { f, mod };
 };
+
+test('importação soma Gás e Energia ao cadastro de Água e preserva unidades e leituras anteriores', async () => {
+  const { f, mod } = await fixture();
+  const condominio = { id: 'cond-1', nome: 'Condo', tipoLeitura: 'Somente Água', apartamentos: 1 };
+  f.data.set('condominios_cache', JSON.stringify([condominio]));
+  f.data.set('unidades_cond-1', JSON.stringify(['A-101']));
+  f.data.set('leituras_anteriores_cond-1', JSON.stringify([{ unidade: 'A-101', leitura_anterior: 100 }]));
+  const planilha = (servico, unidade, leituraAnterior) => {
+    const livro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(livro, XLSX.utils.aoa_to_sheet([
+      ['Condomínio: Condo'], [`Consumo de: ${servico}`], ['Unidade', 'Leitura Anterior'], [unidade, leituraAnterior],
+    ]));
+    return XLSX.write(livro, { type: 'array' });
+  };
+  const gas = await mod.UCondoImportService.processarPlanilhaCadastro('gas.xlsx', planilha('Gás', 'A-101', 25), [condominio]);
+  assert.equal(gas.servico, 'GAS');
+  assert.equal(mod.aplicarServicosImportadosPendentes([condominio], 'conta-A')[0].tipoLeitura, 'Água e Gás');
+  const energia = await mod.UCondoImportService.atualizarUnidadesCondominio('cond-1', planilha('Energia', 'A-102', 75), ['A-101'], 'Condo');
+  assert.deepEqual(energia.unidades, ['A-101', 'A-102']);
+  assert.equal(mod.aplicarServicosImportadosPendentes([condominio], 'conta-A')[0].tipoLeitura, 'Água, Gás e Energia');
+  assert.equal(mod.aplicarServicosImportadosPendentes([condominio], 'conta-B')[0].tipoLeitura, 'Somente Água');
+  assert.deepEqual(JSON.parse(f.data.get('leituras_anteriores_cond-1')), [
+    { unidade: 'A-101', leitura_anterior: 100, leitura_anterior_gas: 25 },
+    { unidade: 'A-102', leitura_anterior_energia: 75 },
+  ]);
+  assert.equal(f.confirmacoes, 0);
+  assert.equal(f.requests.length, 0);
+  f.online = true;
+  await mod.sincronizarCondominiosOffline();
+  assert.deepEqual(f.requests.map(({ args }) => args.p_servico), ['GAS', 'ENERGIA']);
+  assert.equal(JSON.parse(f.data.get('condominios_cache'))[0].tipoLeitura, 'Água, Gás e Energia');
+  assert.deepEqual(JSON.parse(f.data.get('fila_sync_condominios')), []);
+});
 const leitura = extra => ({
   db_id: crypto.randomUUID(), condominio_id: 'cond-1', condominio_nome: 'Condo', unidade_id: 'A-101',
   servico: 'AGUA', leitura_atual: 228.665, leiturista_id: 'conta-A',

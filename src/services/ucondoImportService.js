@@ -7,7 +7,11 @@ import { supabase, criarClienteParaToken } from './supabase';
 import { exigirContaOffline, capturarContextoSync } from './offlineQueueStorage';
 import { getCurrentMonthKey } from '../utils/mesLeituras';
 import { customAlert, customPrompt, customConfirm, customConfirmDestrutivo } from '../components/CustomPrompt/CustomPrompt';
-import { enfileirarLeiturasAnteriores, enfileirarNovoCondominio } from './syncOfflineService';
+import {
+  enfileirarLeiturasAnteriores, enfileirarNovoCondominio,
+  sincronizarCondominiosOffline, sincronizarLeiturasAnterioresOffline,
+} from './syncOfflineService';
+import { enfileirarServicoImportado } from './servicosImportadosQueue';
 import { deduplicarGavetaAnteriores } from './leiturasAnterioresService';
 import { ordenarParesNatural } from '../utils/ordenarUnidades';
 import {
@@ -240,7 +244,7 @@ export const UCondoImportService = {
    * @param {Array<string|{unidade:string,leituraAnterior:number|null}>} unidades
    * @param {'AGUA'|'GAS'|'ENERGIA'|null} [servico=null]
    */
-  async persistirUnidadesLocal(condominioId, unidades, servico = null) {
+  async persistirUnidadesLocal(condominioId, unidades, servico = null, manterUnidades = false, unidadesAtuais = []) {
     const owner = exigirContaOffline();
     const mesReferencia = getCurrentMonthKey();
     if (!condominioId || !Array.isArray(unidades)) return;
@@ -255,8 +259,19 @@ export const UCondoImportService = {
     // Isso tambem protege contra qualquer fonte (Supabase, FS, localStorage) que retorne
     // unidades fora de ordem. A lista salva e a usada em tela serao sempre canonicas.
     const pares = ordenarParesNatural(paresRaw);
+    if (manterUnidades) {
+      const atuais = JSON.parse(localStorage.getItem(`unidades_${condominioId}`) || '[]');
+      const nomesAtuais = new Map([...unidadesAtuais, ...atuais].map(unidade => [normalizarNome(unidade), unidade]));
+      for (const par of pares) {
+        const nome = normalizarNome(par.unidade);
+        if (nomesAtuais.has(nome)) par.unidade = nomesAtuais.get(nome);
+        else nomesAtuais.set(nome, par.unidade);
+      }
+      for (const unidade of nomesAtuais.values()) pares.push({ unidade, leituraAnterior: null });
+    }
 
-    const nomesUnidades = pares.map(p => p.unidade);
+    const paresOrdenados = ordenarParesNatural(pares);
+    const nomesUnidades = paresOrdenados.map(p => p.unidade);
     const temLeituras = pares.some(p => p.leituraAnterior !== null);
 
     // REGRA DE SEGURANÇA: Se a planilha trouxer leituras, o serviço DEVE ser inequívoco.
@@ -276,6 +291,7 @@ export const UCondoImportService = {
     // 2. Filesystem — persistência permanente
     const fileName = `unidades_${condominioId}.json`;
     await salvarArquivoSeguro(fileName, JSON.stringify(nomesUnidades));
+    exigirContaOffline(owner);
 
     // 3. Gaveta unificada de leituras anteriores (somente se houver leituras e serviço válido)
     if (temLeituras && servicoValido) {
@@ -292,7 +308,7 @@ export const UCondoImportService = {
         : servicoValido === 'ENERGIA' ? 'leitura_anterior_energia'
         : 'leitura_anterior';
 
-      for (const par of pares) {
+      for (const par of paresOrdenados) {
         const idx = gaveta.findIndex(g => String(g.unidade).trim() === par.unidade);
         if (idx !== -1) {
           // Unidade já existe na gaveta — atualiza só se a planilha trouxe valor
@@ -312,7 +328,7 @@ export const UCondoImportService = {
 
       // 4. Gaveta por serviço consumida por telas específicas
       const chaveServico = `leituras_anteriores_${condominioId}_${servicoValido}`;
-      const leiturasParaFila = pares
+      const leiturasParaFila = paresOrdenados
         .filter(p => p.leituraAnterior !== null)
         .map(p => ({ unidade: p.unidade, leitura_anterior: p.leituraAnterior }));
 
@@ -327,11 +343,18 @@ export const UCondoImportService = {
     }
 
     // 5. Supabase — preserva IDs existentes e só remove obsoletas após salvar a nova lista.
-    if (supabase) {
+    if (manterUnidades) {
+      enfileirarServicoImportado(condominioId, servico, nomesUnidades);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('servicos_importados_ucondo', { detail: { userId: owner } }));
+      }
+      void sincronizarCondominiosOffline().then(sincronizarLeiturasAnterioresOffline);
+    } else if (supabase) {
       sincronizarUnidadesNoSupabase(condominioId, nomesUnidades).catch((error) => {
         console.warn('[uCondoImportService] Falha ao sincronizar unidades:', error);
       });
     }
+    return nomesUnidades;
   },
 
   /**
@@ -402,6 +425,17 @@ export const UCondoImportService = {
 
         // 4. Se o condomínio já existe: Pergunta se deseja substituir
         if (condExistente) {
+          if (servicoPlanilha) {
+            const unidadesImportadas = await this.persistirUnidadesLocal(condExistente.id, pares, servicoPlanilha, true);
+            await sincronizarNomePlanilhaUcondo(condExistente.id, metadados.nomeOficial).catch(() => {});
+            return {
+              tipo: 'atualizado',
+              condominio: condExistente,
+              servico: servicoPlanilha,
+              totalUnidades: unidadesImportadas.length,
+            };
+          }
+
           const querSubstituir = await customConfirmDestrutivo(
             `Planilha identificada. Foram encontradas ${unidades.length} unidades. Deseja substituir a lista no condomínio '${condExistente.nome}'?`,
             "Substituir Unidades",
@@ -478,7 +512,7 @@ export const UCondoImportService = {
           }
 
           // Insere todas as unidades extraídas com o ID gerado e persiste leituras anteriores
-          await this.persistirUnidadesLocal(condominioSalvo.id, pares, servicoPlanilha);
+          await this.persistirUnidadesLocal(condominioSalvo.id, pares, servicoPlanilha, Boolean(servicoPlanilha));
 
           return {
             tipo: 'criado',
@@ -539,7 +573,7 @@ export const UCondoImportService = {
         }
       }
 
-      if (unidadesAtuais && unidadesAtuais.length > 0) {
+      if (!servico && unidadesAtuais && unidadesAtuais.length > 0) {
         const confirmar = await customConfirmDestrutivo(
           `Este condomínio já possui ${unidadesAtuais.length} unidades cadastradas.\n\nDeseja substituir a lista atual pelas ${novasUnidades.length} unidades da nova planilha?`,
           "Substituir Unidades",
@@ -551,11 +585,11 @@ export const UCondoImportService = {
       }
 
       // 3. Persistência canônica
-      await this.persistirUnidadesLocal(condominioId, pares, servico);
+      const unidades = await this.persistirUnidadesLocal(condominioId, pares, servico, Boolean(servico), unidadesAtuais);
       await sincronizarNomePlanilhaUcondo(condominioId, metadados.nomeOficial).catch(() => {});
 
       return {
-        unidades: novasUnidades,
+        unidades,
         servico,
         totalLeituras: pares.filter(p => p.leituraAnterior !== null).length,
       };
