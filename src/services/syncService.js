@@ -563,8 +563,8 @@ export function iniciarObservadorRede() {
       if (!redeUtil) return;
 
       sincronizarFilaEmBackground();
-      sincronizarLeiturasAnterioresOffline();
-      sincronizarCondominiosOffline();
+      await sincronizarCondominiosOffline();
+      await sincronizarLeiturasAnterioresOffline();
     };
 
     Network.addListener('networkStatusChange', (status) => {

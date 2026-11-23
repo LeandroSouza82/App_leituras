@@ -117,8 +117,8 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     return true;
   };
 
-  const handleImportSuccess = (quantidade) => {
-    showToast(`${quantidade} condomínios importados com sucesso!`);
+  const handleImportSuccess = (quantidade, mensagem) => {
+    showToast(mensagem || `${quantidade} condomínios importados com sucesso!`, 'success');
     setAbaAtiva('leituras');
   };
 
@@ -153,8 +153,11 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
           }
 
           if (resultado?.tipo === 'atualizado') {
-            await customAlert(`✅ ${resultado.totalUnidades} unidades sincronizadas com sucesso para o condomínio "${resultado.condominio.nome}"!`);
-            showToast(`Unidades do condomínio "${resultado.condominio.nome}" atualizadas!`, 'success');
+            const mensagem = resultado.servico
+              ? `Planilha de ${resultado.servico} importada para "${resultado.condominio.nome}"!`
+              : `Unidades do condomínio "${resultado.condominio.nome}" atualizadas!`;
+            await customAlert(`✅ ${mensagem}`);
+            showToast(mensagem, 'success');
             await recarregarCondominios();
             setAbaAtiva('leituras');
           } else if (resultado?.tipo === 'criado') {

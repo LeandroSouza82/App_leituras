@@ -12,6 +12,7 @@ import { lerFilaPersistida, gravarFilaPersistida, exigirContaOffline, contaOffli
 import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
 import { cicloMensalService } from '../services/cicloMensalService';
 import { calcularTotalFaturado } from '../utils/faturamento';
+import { aplicarServicosImportadosPendentes } from '../services/servicosImportadosQueue';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -29,7 +30,7 @@ const aplicarMesAtual = (dados, mesReferencia) => {
   } catch (error) {
     console.warn('Erro ao ler marcações offline', error);
   }
-  return leiturasParaMes(dados, mesReferencia, pendencias);
+  return leiturasParaMes(aplicarServicosImportadosPendentes(dados, contaOfflineAtiva()), mesReferencia, pendencias);
 };
 
 export const useLeituras = (onFeedback = () => {}) => {
@@ -46,6 +47,16 @@ export const useLeituras = (onFeedback = () => {}) => {
   const [reloadKey, setReloadKey] = useState(0);
   const [mesPreparado, setMesPreparado] = useState(null);
   const [preparandoCiclos, setPreparandoCiclos] = useState(true);
+
+  useEffect(() => {
+    const atualizarServicos = ({ detail }) => {
+      if (detail?.userId !== contaOfflineAtiva()) return;
+      setLeituras(atuais => aplicarServicosImportadosPendentes(atuais, detail.userId));
+    };
+    if (typeof window === 'undefined') return;
+    window.addEventListener('servicos_importados_ucondo', atualizarServicos);
+    return () => window.removeEventListener('servicos_importados_ucondo', atualizarServicos);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;

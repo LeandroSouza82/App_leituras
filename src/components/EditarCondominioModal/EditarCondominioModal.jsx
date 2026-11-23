@@ -194,6 +194,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <select name="tipoLeitura" value={form.tipoLeitura} onChange={handleChange}>
               <option value="Água e Gás">Água e Gás</option>
               <option value="Água e Energia">Água e Energia</option>
+              <option value="Gás e Energia">Gás e Energia</option>
               <option value="Água, Gás e Energia">Água, Gás e Energia</option>
               <option value="Somente Água">Somente Água</option>
               <option value="Somente Gás">Somente Gás</option>
