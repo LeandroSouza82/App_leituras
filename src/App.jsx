@@ -1,6 +1,8 @@
 import { customAlert } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, FolderSync } from 'lucide-react';
+import Equipe from './components/Equipe/Equipe';
+import { chamarEquipe } from './services/equipeConviteService';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -44,6 +46,9 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
   const [showProgressoModal, setShowProgressoModal] = useState(false);
   const [showAReceberModal, setShowAReceberModal] = useState(false);
   const [showBackupFotosModal, setShowBackupFotosModal] = useState(false);
+  const [abrirFotosOnline, setAbrirFotosOnline] = useState(false);
+  const [showEquipe, setShowEquipe] = useState(false);
+  const [administradorEquipeId, setAdministradorEquipeId] = useState(null);
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
   const [focoLeituraTipo, setFocoLeituraTipo] = useState('atrasadas');
   const [focoEspecifico, setFocoEspecifico] = useState(null);
@@ -77,6 +82,24 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     [leiturasHoje, leiturasAmanha, leiturasAtrasadas]
   );
   useLembretesLeituras(leituras);
+
+  useEffect(() => {
+    let ativo = true;
+    const verificarAdministrador = () => {
+      chamarEquipe('equipe_meu_papel')
+        .then(podeAdministrar => { if (ativo) setAdministradorEquipeId(podeAdministrar === true ? userId : null); })
+        .catch(() => { if (ativo) setAdministradorEquipeId(null); });
+    };
+
+    verificarAdministrador();
+    document.addEventListener('visibilitychange', verificarAdministrador);
+    return () => {
+      ativo = false;
+      document.removeEventListener('visibilitychange', verificarAdministrador);
+    };
+  }, [userId]);
+
+  const podeAdministrarEquipe = administradorEquipeId === userId;
 
   const handleAdicionarLeitura = async (dados) => {
     if (!isOnline) {
@@ -331,6 +354,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
               onOpenFaturamento={() => setShowAReceberModal(true)}
               onLogout={onLogout}
               onNavigate={setAbaAtiva}
+              onOpenEquipe={podeAdministrarEquipe ? () => setShowEquipe(true) : null}
             />
             <div className="dashboard-body">
               <p className="dashboard-section-label">Ações</p>
@@ -365,6 +389,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
                   </div>
                   <span className="dashboard-acao-chevron">›</span>
                 </button>
+
               </div>
             </div>
           </div>
@@ -444,9 +469,26 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
       <AutoSyncIndicator />
       <TransferenciasUcondo key={userId} userId={userId} />
       <Toast {...toast} onClose={dismissToast} />
+      {showEquipe && podeAdministrarEquipe && (
+        <Equipe
+          condominios={leituras.filter(condominio => condominio.administradorId === userId)}
+          onClose={() => setShowEquipe(false)}
+          onOpenPhotos={() => {
+            setShowEquipe(false);
+            setAbrirFotosOnline(true);
+            setShowBackupFotosModal(true);
+          }}
+        />
+      )}
       <BackupFotosMenu 
         isOpen={showBackupFotosModal} 
-        onClose={() => setShowBackupFotosModal(false)} 
+        onClose={() => {
+          setShowBackupFotosModal(false);
+          setAbrirFotosOnline(false);
+        }}
+        abrirOnline={abrirFotosOnline}
+        userId={userId}
+        condominiosProprios={leituras.filter(condominio => condominio.administradorId === userId).map(condominio => condominio.id)}
       />
     </>
   );

@@ -48,6 +48,7 @@ const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey()) => {
 
   return {
     id: row.id,
+    administradorId: row.user_id,
     nome: row.nome,
     nome_ucondo: row.nome_ucondo || null,
     data: row.created_at || new Date().toISOString(),
@@ -72,11 +73,8 @@ const throwDatabaseError = (action, error) => {
 export const buscarCondominios = async (mesReferencia = getCurrentMonthKey()) => {
   try {
     const client = requireSupabase();
-    const userId = await getAuthenticatedUserId();
-    const { data, error } = await client
-      .from('condominios')
-      .select('*, leituras(*)')
-      .eq('user_id', userId);
+    await getAuthenticatedUserId();
+    const { data, error } = await client.from('condominios').select('*, leituras(*)');
 
     if (error) {
       throwDatabaseError('Não foi possível buscar os condomínios', error);
@@ -210,6 +208,16 @@ export const alternarStatusLeitura = async (condominioId, mesReferencia = getCur
     const client = contexto?.client || requireSupabase();
     const userId = contexto?.userId || await getAuthenticatedUserId();
     const concluido = !statusAtual;
+    const { error: equipeErro } = await client.rpc('equipe_status_leitura', {
+      p_condominio_id: condominioId,
+      p_mes: mesReferencia,
+      p_concluido: concluido,
+    });
+    if (!equipeErro) return;
+    if (equipeErro.code !== 'PGRST202') {
+      throwDatabaseError('Não foi possível atualizar o status da leitura', equipeErro);
+    }
+
     const { data, error } = await client
       .from('leituras')
       .upsert({

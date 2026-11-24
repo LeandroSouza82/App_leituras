@@ -183,13 +183,12 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
     if (!userId) return;
 
     // Busca as leituras anteriores do condomínio na nuvem.
-    // A RLS da tabela `unidades_leituras` filtra automaticamente por usuário autenticado.
+    // A RLS da tabela `unidades_leituras` aplica as permissões de conta e de equipe.
     // O campo `condominio_nome` armazena o condominio_id conforme ucondoImportService.
     const { data, error } = await supabase
       .from('unidades_leituras')
       .select('unidade, leitura_anterior, servico, atualizado_em')
       .eq('condominio_nome', condominioId)
-      .eq('leiturista_id', userId)
       .order('atualizado_em', { ascending: true });
 
     if (error || !data || data.length === 0) return;

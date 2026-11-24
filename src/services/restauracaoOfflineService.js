@@ -2,6 +2,7 @@ import { salvarArquivoSeguro } from './filesystemService.js';
 import { temConexaoInternetUtil } from './networkQualityService.js';
 import { supabase } from './supabase.js';
 import { buscarCondominios } from './condominioService.js';
+import { servidorSuportaEquipe } from './equipeCapacidade.js';
 import { ordenarUnidadesNatural } from '../utils/ordenarUnidades.js';
 
 const TAMANHO_PAGINA = 1000;
@@ -88,10 +89,10 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
   const unidadesVistas = new Set();
 
   for (const registro of detalhes) {
-    const condominioId = idPorNome.get(registro.condominio_nome);
+    const condominioId = registro.condominio_id || idPorNome.get(registro.condominio_nome);
     const unidade = String(registro.unidade_id || '').trim();
     const servico = String(registro.servico || 'AGUA').toUpperCase();
-    if (!condominioId || !unidade || !SERVICOS_VALIDOS.has(servico)) continue;
+    if (!idsValidos.has(condominioId) || !unidade || !SERVICOS_VALIDOS.has(servico)) continue;
 
     const chaveUnidade = `${condominioId}__${servico}__${unidade}`;
     if (unidadesVistas.has(chaveUnidade)) continue;
@@ -162,6 +163,13 @@ export const restaurarDadosParaUsoOffline = async ({ userId, onProgress } = {}) 
   const idsValidos = new Set(ids);
   const idsPorNome = new Map(condominios.map((condominio) => [condominio.nome, String(condominio.id)]));
 
+  const equipeDisponivel = await servidorSuportaEquipe(supabase);
+  const consultaDetalhes = () => {
+    const campos = 'unidade_id, condominio_nome, servico, leitura_atual, data_leitura';
+    const consulta = supabase.from('leituras_detalhes').select(equipeDisponivel ? campos + ', condominio_id' : campos);
+    if (!equipeDisponivel) consulta.eq('leiturista_id', userId);
+    return consulta.order('data_leitura', { ascending: false }).order('id');
+  };
   const [unidades, detalhes, planilhas] = await Promise.all([
     buscarTodasPaginas(() => supabase
       .from('unidades')
@@ -169,16 +177,12 @@ export const restaurarDadosParaUsoOffline = async ({ userId, onProgress } = {}) 
       .in('condominio_id', ids)
       .order('condominio_id', { ascending: true })
       .order('id', { ascending: true })),
-    buscarTodasPaginas(() => supabase
-      .from('leituras_detalhes')
-      .select('unidade_id, condominio_nome, servico, leitura_atual, data_leitura')
-      .eq('leiturista_id', userId)
-      .order('data_leitura', { ascending: false })),
+    buscarTodasPaginas(consultaDetalhes),
     buscarTodasPaginas(() => supabase
       .from('unidades_leituras')
       .select('condominio_nome, unidade, leitura_anterior, servico, atualizado_em')
-      .eq('leiturista_id', userId)
-      .order('atualizado_em', { ascending: true })),
+      .order('atualizado_em', { ascending: true })
+      .order('id')),
   ]);
 
   restaurarLeiturasAnteriores({ detalhes, planilhas, condominios });

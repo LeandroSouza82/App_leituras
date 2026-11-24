@@ -5,6 +5,7 @@ import {
   LogOut,
   Camera,
   User,
+  Users,
   ShieldCheck,
   Headset,
   Star,
@@ -26,7 +27,7 @@ import { Browser } from '@capacitor/browser';
 import { SUPPORT_URL, ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
 import { version as appVersion } from '../../../package.json';
 
-const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
+const SideMenu = ({ isOpen, onClose, onLogout, onNavigate, onOpenEquipe }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
   const [isFeedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -106,6 +107,12 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
       title: 'Conta',
       items: [
         { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
+        ...(onOpenEquipe ? [{
+          id: 'equipe', label: 'Equipe', icon: Users, onClick: () => {
+            onClose();
+            onOpenEquipe();
+          },
+        }] : []),
         { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
       ]
     },
