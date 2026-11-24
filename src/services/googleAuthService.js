@@ -4,9 +4,11 @@
  *
  * Fluxo:
  *  - Android (nativo): GoogleAuth.signIn() → idToken → supabase.signInWithIdToken()
- *  - Web (fallback):   useGoogleLogin() do @react-oauth/google (tratado no componente)
+ *
+ * O login web usa o botão do Google no componente Login.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { supabase } from './supabase';
 
@@ -15,6 +17,8 @@ import { supabase } from './supabase';
  * Deve ser chamado UMA vez no bootstrap do app (main.jsx ou App.jsx).
  */
 export function initGoogleAuth() {
+  if (!Capacitor.isNativePlatform()) return;
+
   try {
     GoogleAuth.initialize({
       clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
@@ -22,7 +26,7 @@ export function initGoogleAuth() {
       grantOfflineAccess: true,
     });
   } catch (err) {
-    console.warn('GoogleAuth.initialize falhou (esperado no browser):', err);
+    console.warn('GoogleAuth.initialize falhou:', err);
   }
 }
 

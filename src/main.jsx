@@ -4,7 +4,6 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import './index.css';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
-import { GoogleOAuthProvider } from '@react-oauth/google';
 import { initGoogleAuth } from './services/googleAuthService';
 import { inicializarSentry } from './services/sentryService';
 
@@ -33,14 +32,10 @@ if (typeof window !== 'undefined') {
   }
 }
 
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <GoogleOAuthProvider clientId={googleClientId}>
-        <App />
-      </GoogleOAuthProvider>
+      <App />
     </ErrorBoundary>
   </React.StrictMode>,
 );
