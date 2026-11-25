@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, FolderSync } from 'lucide-react';
 import Equipe from './components/Equipe/Equipe';
 import { chamarEquipe } from './services/equipeConviteService';
+import { buscarCondominios } from './services/condominioService';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -159,8 +160,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
           let condominiosExistentes = [];
           if (supabase) {
             try {
-              const { data: dbData } = await supabase.from('condominios').select('id, nome');
-              condominiosExistentes = dbData || [];
+              condominiosExistentes = await buscarCondominios();
             } catch (_) {}
           }
 

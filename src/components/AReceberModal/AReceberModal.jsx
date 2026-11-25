@@ -78,7 +78,7 @@ const AReceberModal = ({ isOpen, onClose, leituras, totalValor, mesAnoFormatado 
                     <span className={`status-pill ${item.completo ? 'sucesso' : 'pendente'}`}>
                       {item.completo ? 'Concluído' : 'Pendente'}
                     </span>
-                    <span className="valor-receber">{formatCurrency(Number(item.valor || 0))}</span>
+                    <span className="valor-receber">{item.valor == null ? 'A definir' : formatCurrency(Number(item.valor))}</span>
                   </div>
 
                 </li>

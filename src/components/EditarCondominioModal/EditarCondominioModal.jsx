@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import Toast, { useToast } from '../Toast/Toast';
 import ModalConfirmacaoDestrutiva from '../ModalConfirmacaoDestrutiva/ModalConfirmacaoDestrutiva';
+import { lerValorIndividual } from '../../utils/valorCondominio';
 
 import './EditarCondominioModal.css';
 
@@ -44,6 +45,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
   const [feedback, setFeedback] = useState(null);
   const [mostrarConfirmacaoGps, setMostrarConfirmacaoGps] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
+  const somenteValor = condominio?.compartilhado === true;
 
   useEffect(() => {
     if (isOpen) {
@@ -111,6 +113,28 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
   const handleSalvar = async (event) => {
     event.preventDefault();
 
+    if (somenteValor) {
+      const valor = lerValorIndividual(form.valor);
+      if (valor === null) {
+        setFeedback({ tipo: 'erro', mensagem: 'Informe seu valor em reais, com até duas casas decimais.' });
+        return;
+      }
+
+      setSalvando(true);
+      setFeedback(null);
+      try {
+        if (await onSave(condominio.id, { valor }) === false) {
+          setFeedback({ tipo: 'erro', mensagem: 'Não foi possível salvar seu valor. Tente novamente.' });
+          return;
+        }
+        showToast('Seu valor foi salvo!');
+        onClose();
+      } finally {
+        setSalvando(false);
+      }
+      return;
+    }
+
     if (!form.nome?.trim()) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe o nome do condomínio.' });
       return;
@@ -173,7 +197,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
       <div className="editar-condominio-overlay" onClick={handleCancelar}>
         <div className="editar-condominio-container" onClick={(event) => event.stopPropagation()}>
         <div className="editar-condominio-header">
-          <h2>Editar Condomínio</h2>
+          <h2>{somenteValor ? 'Meu valor' : 'Editar Condomínio'}</h2>
           <button type="button" className="close-btn" onClick={handleCancelar} aria-label="Fechar">
             <X size={20} />
           </button>
@@ -184,6 +208,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <div className={`form-feedback form-feedback-${feedback.tipo}`}>{feedback.mensagem}</div>
           )}
 
+          {!somenteValor && <>
           <label className="field field-full">
             <span>Nome do condomínio</span>
             <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
@@ -211,12 +236,14 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <span>Apartamentos</span>
             <input type="number" name="apartamentos" min="1" value={form.apartamentos} onChange={handleChange} placeholder="0" />
           </label>
+          </>}
 
           <label className="field field-full">
-            <span>Valor</span>
-            <input type="text" name="valor" value={form.valor} onChange={handleChange} placeholder="R$ 0,00" />
+            <span>{somenteValor ? 'Seu valor para este condomínio' : 'Valor'}</span>
+            <input type="text" name="valor" inputMode="decimal" value={form.valor} onChange={handleChange} placeholder="R$ 0,00" />
           </label>
 
+          {!somenteValor && <>
           <label className="field field-full">
             <span>Endereço Completo (Google Maps)</span>
             <input name="endereco" value={form.endereco} onChange={handleChange} placeholder="Rua, Número, Bairro, Cidade" />
@@ -247,13 +274,14 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
               🗑️ Remover GPS Salvo (Voltar para Endereço)
             </button>
           )}
+          </>}
 
           <div className="editar-condominio-acoes">
             <button type="button" className="btn-cancelar-edicao" onClick={handleCancelar}>
               Cancelar
             </button>
             <button type="submit" className="btn-salvar-edicao" disabled={salvando}>
-              {salvando ? 'Salvando...' : 'Salvar Alterações'}
+              {salvando ? 'Salvando...' : somenteValor ? 'Salvar valor' : 'Salvar Alterações'}
             </button>
           </div>
         </form>

@@ -13,6 +13,7 @@ import { getCurrentMonthKey, leiturasParaMes } from '../utils/mesLeituras';
 import { cicloMensalService } from '../services/cicloMensalService';
 import { calcularTotalFaturado } from '../utils/faturamento';
 import { aplicarServicosImportadosPendentes } from '../services/servicosImportadosQueue';
+import { protegerValoresNoCache } from '../utils/valorCondominio';
 
 // Extrai o primeiro número de um texto de dia (ex: "7 a 10" → 7, "Variado" → null)
 const extrairNumeroDia = (diaTexto) => {
@@ -82,7 +83,7 @@ export const useLeituras = (onFeedback = () => {}) => {
       try {
         const cachedData = localStorage.getItem('condominios_cache');
         if (cachedData && isMounted) {
-          preparados = await prepararCiclos(JSON.parse(cachedData));
+          preparados = await prepararCiclos(protegerValoresNoCache(JSON.parse(cachedData), contaOfflineAtiva()));
           if (isMounted) setLeituras(aplicarMesAtual(preparados, mesReferencia));
         }
       } catch (e) {
@@ -134,6 +135,8 @@ export const useLeituras = (onFeedback = () => {}) => {
       // Persiste apenas a marcação mensal, preservando edições locais de outros campos.
       const atualizados = leituras.map((item) => ({
         ...(porId.get(String(item.id)) || item),
+        compartilhado: item.compartilhado,
+        valor: item.valor,
         completo: item.completo,
         mesReferencia: item.mesReferencia,
       }));
@@ -227,20 +230,22 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const editarLeitura = async (idTarget, novosDados) => {
-    await NotificationService.cancelForLeitura(idTarget);
+    const compartilhado = leituras.find(item => item.id === idTarget)?.compartilhado === true;
+    if (!compartilhado) await NotificationService.cancelForLeitura(idTarget);
     try {
       // 1. Sincronização direta com o Supabase (garantia de salvamento)
-      const leituraAtualizada = await atualizarCondominio(idTarget, novosDados);
+      const leituraAtualizada = await atualizarCondominio(idTarget, novosDados, { compartilhado });
+      const alteracoes = compartilhado ? leituraAtualizada : { ...leituraAtualizada, ...novosDados };
 
       // 2. Atualização da Interface Pós-Sucesso (Forçando a entrada dos novosDados incluindo os nulls)
       setLeituras((previous) =>
-        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...leituraAtualizada, ...novosDados } : item))
+        previous.map((item) => (String(item.id) === String(idTarget) ? { ...item, ...alteracoes } : item))
       );
 
       // 3. Atualização no Cache Local para refletir a nova verdade
       try {
         const cache = JSON.parse(localStorage.getItem('condominios_cache') || '[]');
-        const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...leituraAtualizada, ...novosDados } : c);
+        const novoCache = cache.map(c => String(c.id) === String(idTarget) ? { ...c, ...alteracoes } : c);
         localStorage.setItem('condominios_cache', JSON.stringify(novoCache));
       } catch (e) {
         console.warn('Erro ao atualizar cache local após edição', e);

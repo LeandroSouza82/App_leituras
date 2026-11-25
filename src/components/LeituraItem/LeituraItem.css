@@ -207,6 +207,16 @@
   flex-shrink: 0;
 }
 
+.item-value-edit {
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: .9rem;
+}
+
 .item-btns {
   display: flex;
   align-items: center;
