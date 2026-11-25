@@ -154,21 +154,24 @@ function Equipes({ userId, onClose }) {
           setFoto(null);
           executar(async () => setLeituras(await buscarLeiturasEquipe(condominio, autor, mes)));
         }}>
-          <label>Leiturista
-            <select value={autor} disabled={ocupado} onChange={(event) => { setAutor(event.target.value); setLeituras(null); }} required>
+          <div>
+            <label htmlFor="equipes-autor">Leiturista</label>
+            <select id="equipes-autor" value={autor} disabled={ocupado} onChange={(event) => { setAutor(event.target.value); setLeituras(null); }} required>
               <option value="">Selecione</option>
               {autores.map(pessoa => <option key={pessoa.id} value={pessoa.id}>{pessoa.email}</option>)}
             </select>
-          </label>
-          <label>Condomínio
-            <select value={condominio} disabled={ocupado} onChange={(event) => { setCondominio(event.target.value); setLeituras(null); }} required>
+          </div>
+          <div>
+            <label htmlFor="equipes-condominio">Condomínio</label>
+            <select id="equipes-condominio" value={condominio} disabled={ocupado} onChange={(event) => { setCondominio(event.target.value); setLeituras(null); }} required>
               <option value="">Selecione</option>
               {condominios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
-          </label>
-          <label>Mês
-            <input type="month" value={mes} disabled={ocupado} onChange={(event) => { setMes(event.target.value); setLeituras(null); }} required />
-          </label>
+          </div>
+          <div>
+            <label htmlFor="equipes-mes">Mês</label>
+            <input id="equipes-mes" type="month" value={mes} disabled={ocupado} onChange={(event) => { setMes(event.target.value); setLeituras(null); }} required />
+          </div>
           <button className="equipes-primario" disabled={ocupado || !autor || !condominio || !mes}>Consultar</button>
         </form>
         {ocupado && <p role="status">Aguarde…</p>}
