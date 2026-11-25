@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js';
 import { temConexaoInternetUtil } from './networkQualityService.js';
+import { getCurrentMonthKey } from '../utils/mesLeituras.js';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 
 const PROPRIEDADE_POR_SERVICO = {
@@ -179,8 +180,7 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
     // Confirma sessão ativa — respeita RLS do Supabase
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError) return;
-    const userId = user?.id;
-    if (!userId) return;
+    if (!user?.id) return;
 
     // Busca as leituras anteriores do condomínio na nuvem.
     // A RLS da tabela `unidades_leituras` filtra automaticamente por usuário autenticado.
@@ -189,7 +189,8 @@ export const sincronizarLeiturasNuvemParaLocal = async (condominioId) => {
       .from('unidades_leituras')
       .select('unidade, leitura_anterior, servico, atualizado_em')
       .eq('condominio_nome', condominioId)
-      .eq('leiturista_id', userId)
+      .lte('mes_referencia', getCurrentMonthKey())
+      .order('mes_referencia', { ascending: true })
       .order('atualizado_em', { ascending: true });
 
     if (error || !data || data.length === 0) return;

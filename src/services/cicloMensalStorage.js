@@ -122,8 +122,10 @@ export const criarCicloMensalStorage = ({ storage, exigirConta, arquivar, enfile
       if (!plano.aplicando) storage.removeItem(chaveDiario);
       throw new Error('Uma leitura foi alterada durante o fechamento. Os dados foram preservados; tente novamente.');
     }
-    for (const lote of plano.lotes) {
-      enfileirar(condId, lote.leituras, lote.servico, { userId: owner, mesReferencia: plano.destino });
+    if (!condominio.compartilhado) {
+      for (const lote of plano.lotes) {
+        enfileirar(condId, lote.leituras, lote.servico, { userId: owner, mesReferencia: plano.destino });
+      }
     }
     plano.aplicando = true;
     gravar(chaveDiario, JSON.stringify(plano));

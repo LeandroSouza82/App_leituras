@@ -48,6 +48,7 @@ const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey()) => {
 
   return {
     id: row.id,
+    user_id: row.user_id,
     nome: row.nome,
     nome_ucondo: row.nome_ucondo || null,
     data: row.created_at || new Date().toISOString(),
@@ -73,10 +74,7 @@ export const buscarCondominios = async (mesReferencia = getCurrentMonthKey()) =>
   try {
     const client = requireSupabase();
     const userId = await getAuthenticatedUserId();
-    const { data, error } = await client
-      .from('condominios')
-      .select('*, leituras(*)')
-      .eq('user_id', userId);
+    const { data, error } = await client.from('condominios').select('*, leituras(*)');
 
     if (error) {
       throwDatabaseError('Não foi possível buscar os condomínios', error);
@@ -84,7 +82,7 @@ export const buscarCondominios = async (mesReferencia = getCurrentMonthKey()) =>
 
     // Ordena por dia_leitura em JavaScript (seguro para strings e valores "Variado")
     return (data || [])
-      .map((row) => toApplicationCondominio(row, mesReferencia))
+      .map((row) => ({ ...toApplicationCondominio(row, mesReferencia), compartilhado: row.user_id !== userId }))
       .sort((a, b) => {
         const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
         const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;
@@ -222,6 +220,13 @@ export const alternarStatusLeitura = async (condominioId, mesReferencia = getCur
       .select()
       .single();
 
+    if (error?.code === '42501') {
+      const { error: erroEquipe } = await client.rpc('equipe_status_leitura', {
+        p_condominio_id: condominioId, p_mes: mesReferencia, p_concluido: concluido,
+      });
+      if (erroEquipe) throwDatabaseError('Não foi possível atualizar o status da leitura', erroEquipe);
+      return { condominio_id: condominioId, mes_referencia: mesReferencia, concluido };
+    }
     if (error) {
       throwDatabaseError('Não foi possível atualizar o status da leitura', error);
     }

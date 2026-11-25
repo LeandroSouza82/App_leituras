@@ -2,6 +2,7 @@ import { salvarArquivoSeguro } from './filesystemService.js';
 import { temConexaoInternetUtil } from './networkQualityService.js';
 import { supabase } from './supabase.js';
 import { buscarCondominios } from './condominioService.js';
+import { getCurrentMonthKey } from '../utils/mesLeituras.js';
 import { ordenarUnidadesNatural } from '../utils/ordenarUnidades.js';
 
 const TAMANHO_PAGINA = 1000;
@@ -82,16 +83,19 @@ const agruparUnidades = (registros, obterCondominioId, obterUnidade) => {
 };
 
 const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
-  const idPorNome = new Map(condominios.map((condominio) => [condominio.nome, String(condominio.id)]));
+  const idPorNome = new Map();
+  for (const { nome, id } of condominios) {
+    idPorNome.set(nome, idPorNome.has(nome) ? null : String(id));
+  }
   const idsValidos = new Set(condominios.map((condominio) => String(condominio.id)));
   const gruposApp = new Map();
   const unidadesVistas = new Set();
 
   for (const registro of detalhes) {
-    const condominioId = idPorNome.get(registro.condominio_nome);
+    const condominioId = registro.condominio_id || idPorNome.get(registro.condominio_nome);
     const unidade = String(registro.unidade_id || '').trim();
     const servico = String(registro.servico || 'AGUA').toUpperCase();
-    if (!condominioId || !unidade || !SERVICOS_VALIDOS.has(servico)) continue;
+    if (!idsValidos.has(condominioId) || !unidade || !SERVICOS_VALIDOS.has(servico)) continue;
 
     const chaveUnidade = `${condominioId}__${servico}__${unidade}`;
     if (unidadesVistas.has(chaveUnidade)) continue;
@@ -105,6 +109,7 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
     });
   }
 
+  const compartilhados = new Set(condominios.filter(c => c.compartilhado).map(c => c.id));
   const gruposPlanilha = new Map();
   for (const registro of planilhas) {
     const condominioId = resolverCondominioId(registro.condominio_nome, idsValidos, idPorNome);
@@ -113,9 +118,9 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
     if (!condominioId || !unidade || !SERVICOS_VALIDOS.has(servico)) continue;
 
     const chaveGrupo = `${condominioId}__${servico}`;
-    if (gruposApp.has(chaveGrupo)) continue;
-    if (!gruposPlanilha.has(chaveGrupo)) gruposPlanilha.set(chaveGrupo, []);
-    gruposPlanilha.get(chaveGrupo).push({
+    if (!compartilhados.has(condominioId) && gruposApp.has(chaveGrupo)) continue;
+    if (!gruposPlanilha.has(chaveGrupo)) gruposPlanilha.set(chaveGrupo, new Map());
+    gruposPlanilha.get(chaveGrupo).set(unidade, {
       unidade,
       leitura_anterior: registro.leitura_anterior,
     });
@@ -124,7 +129,7 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
   for (const [chaveGrupo, leituras] of gruposApp) {
     const [condominioId, servico] = chaveGrupo.split('__');
     // Um ciclo local (inclusive ainda offline) é mais recente que a restauração.
-    if (localStorage.getItem(`leituras_anteriores_${condominioId}_${servico}`) !== null) continue;
+    if (gruposPlanilha.has(chaveGrupo) || localStorage.getItem(`leituras_anteriores_${condominioId}_${servico}`) !== null) continue;
     localStorage.setItem(
       `leituras_anteriores_${condominioId}_${servico}`,
       JSON.stringify(leituras)
@@ -135,7 +140,7 @@ const restaurarLeiturasAnteriores = ({ detalhes, planilhas, condominios }) => {
     const [condominioId, servico] = chaveGrupo.split('__');
     const chaveLocal = `leituras_anteriores_${condominioId}_${servico}`;
     if (!localStorage.getItem(chaveLocal)) {
-      localStorage.setItem(chaveLocal, JSON.stringify(leituras));
+      localStorage.setItem(chaveLocal, JSON.stringify([...leituras.values()]));
     }
   }
 };
@@ -171,14 +176,17 @@ export const restaurarDadosParaUsoOffline = async ({ userId, onProgress } = {}) 
       .order('id', { ascending: true })),
     buscarTodasPaginas(() => supabase
       .from('leituras_detalhes')
-      .select('unidade_id, condominio_nome, servico, leitura_atual, data_leitura')
+      .select('unidade_id, condominio_id, condominio_nome, servico, leitura_atual, data_leitura')
       .eq('leiturista_id', userId)
       .order('data_leitura', { ascending: false })),
     buscarTodasPaginas(() => supabase
       .from('unidades_leituras')
       .select('condominio_nome, unidade, leitura_anterior, servico, atualizado_em')
-      .eq('leiturista_id', userId)
-      .order('atualizado_em', { ascending: true })),
+      .in('condominio_nome', ids)
+      .lte('mes_referencia', getCurrentMonthKey())
+      .order('mes_referencia', { ascending: true })
+      .order('atualizado_em', { ascending: true })
+      .order('id')),
   ]);
 
   restaurarLeiturasAnteriores({ detalhes, planilhas, condominios });

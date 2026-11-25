@@ -18,6 +18,8 @@ import { atualizarBadgeIcone } from './utils/appBadge';
 import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
+import AceitarConvite from './components/Equipes/AceitarConvite';
+import { lerTokenConvite, TOKEN_CONVITE } from './services/conviteEquipe';
 import OnboardingApresentacao from './components/OnboardingApresentacao/OnboardingApresentacao';
 import LegalConsentGate from './components/LegalConsentGate/LegalConsentGate';
 import NotificationPermissionGate from './components/NotificationPermissionGate/NotificationPermissionGate';
@@ -452,7 +454,13 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
   );
 };
 
+const CHAVE_CONVITE_PENDENTE = 'fast_leituras_convite_pendente';
+
 const App = () => {
+  const [convite, setConvite] = useState(() => {
+    const salvo = sessionStorage.getItem(CHAVE_CONVITE_PENDENTE);
+    return TOKEN_CONVITE.test(salvo || '') ? salvo : null;
+  });
   const [session, setSession] = useState(null);
   const [erroContaOffline, setErroContaOffline] = useState(null);
   const [showSplash, setShowSplash] = useState(true);
@@ -623,6 +631,7 @@ const App = () => {
     }
 
     sessionStorage.clear();
+    if (convite) sessionStorage.setItem(CHAVE_CONVITE_PENDENTE, convite);
     setErroContaOffline(null);
     setSession(null);
     setPendingNotificationAction(null);
@@ -635,23 +644,41 @@ const App = () => {
     });
     setShowSplash(true);
     return true;
-  }, [session?.user?.id]);
+  }, [convite, session?.user?.id]);
 
   useEffect(() => {
     // Detecta retorno via deep link de confirmação de e-mail
     // O shareIntentService.js já ignora URLs que não são content:// ou file://,
     // portanto este listener não gera duplicata nem conflito.
-    const urlOpenListener = CapacitorApp.addListener('appUrlOpen', (data) => {
-      if (data?.url?.startsWith('com.fastleituras.app://')) {
+    let isMounted = true;
+    let recebeuLinkAberto = false;
+    const receberConvite = (url) => {
+      const token = lerTokenConvite(url);
+      if (!token || !isMounted) return false;
+      sessionStorage.setItem(CHAVE_CONVITE_PENDENTE, token);
+      setConvite(token);
+      return true;
+    };
+    const urlOpenListener = CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+      if (receberConvite(url)) {
+        recebeuLinkAberto = true;
+      } else if (url?.startsWith('com.fastleituras.app://')) {
         setRetornoConfirmacao(Date.now());
       }
     });
-
-    if (!supabase) {
-      return () => { urlOpenListener.then((h) => h.remove()); };
+    if (Capacitor.isNativePlatform()) {
+      CapacitorApp.getLaunchUrl().then((abertura) => {
+        if (!recebeuLinkAberto) receberConvite(abertura?.url);
+      }).catch(() => {});
     }
 
-    let isMounted = true;
+    if (!supabase) {
+      return () => {
+        isMounted = false;
+        urlOpenListener.then((h) => h.remove());
+      };
+    }
+
     let authEventOccurred = false;
 
     const loadSession = async () => {
@@ -729,7 +756,7 @@ const App = () => {
   if (!session) {
     return (
       <OnboardingApresentacao>
-        <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} />
+        <Login onLoginSuccess={handleLoginSuccess} retornoConfirmacao={retornoConfirmacao} conviteEquipe={Boolean(convite)} />
       </OnboardingApresentacao>
     );
   }
@@ -748,6 +775,21 @@ const App = () => {
         session={session}
         onAccepted={handleLegalConsentAccepted}
         onReject={handleLogout}
+      />
+    );
+  }
+
+  if (convite) {
+    return (
+      <AceitarConvite
+        key={convite}
+        token={convite}
+        email={session.user.email}
+        onLogout={handleLogout}
+        onClose={() => {
+          sessionStorage.removeItem(CHAVE_CONVITE_PENDENTE);
+          setConvite(null);
+        }}
       />
     );
   }

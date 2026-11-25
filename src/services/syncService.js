@@ -410,7 +410,8 @@ export async function sincronizarFilaEmBackground() {
             const nomeStorage = sanitizarNomeStorage(item.fileName);
             
             let remotePath = item.remotePath;
-            if (!remotePath) {
+            const pastaDaLeitura = `equipe/${item.condominio_id}/${leituristaEnvio}/`;
+            if (!remotePath?.startsWith(pastaDaLeitura)) {
               // Caminho determinístico: novas tentativas sobrescrevem o mesmo objeto
               // em vez de criar cópias com Date.now().
               const identificadorRemoto = sanitizarNomeStorage(
@@ -420,7 +421,7 @@ export async function sincronizarFilaEmBackground() {
               // the object an already accepted AWS transfer is reading.
               const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
               const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-              remotePath = `leituras/${identificadorRemoto}_${hash}_${nomeStorage}`;
+              remotePath = `${pastaDaLeitura}${identificadorRemoto}_${hash}_${nomeStorage}`;
               contexto.assertActive();
               atualizarItemPersistido(FILA_SYNC_KEY, item, { remotePath });
             }
@@ -477,6 +478,7 @@ export async function sincronizarFilaEmBackground() {
         // 2. Inserção / Upsert no Supabase Database
         const payloadEnvio = {
           id: item.db_id,
+          condominio_id: item.condominio_id,
           condominio_nome: item.condominio_nome || null,
           unidade_id: item.unidade_id,
           servico: item.servico,

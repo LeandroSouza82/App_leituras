@@ -183,6 +183,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
         {/* ── LINHA 2: Badges de status e tipo ── */}
         <div className="item-row-badges">
           <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
+          {leitura.compartilhado && <span className="tipo-badge">Minha equipe</span>}
           <span className="tipo-badge">
             <Gauge size={12} />
             {leitura.tipoLeitura || 'Água e Gás'}
@@ -238,8 +239,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
               <span>cam</span>
             </button>
 
-            {/* Menu mais opções */}
-            <div className="item-menu-mais" ref={menuRef}>
+            {!leitura.compartilhado && <div className="item-menu-mais" ref={menuRef}>
               <button
                 type="button"
                 className="item-btn item-btn--mais"
@@ -279,7 +279,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                   </button>
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       </article>
