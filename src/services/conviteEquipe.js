@@ -6,10 +6,12 @@ export function lerTokenConvite(endereco) {
   if (!endereco) return null;
   try {
     const url = new URL(endereco);
-    const web = url.origin === new URL(URL_CONVITE).origin && url.pathname === '/convite';
+    const web = url.origin === new URL(URL_CONVITE).origin && url.pathname.replace(/\/$/, '') === '/convite';
     const app = url.protocol === APP_ANDROID + ':' && url.hostname === 'convite' && (!url.pathname || url.pathname === '/');
     if (!web && !app) return null;
-    const token = new URLSearchParams(url.hash.slice(1)).get('token') ?? url.searchParams.get('token');
+    const fragmento = new URLSearchParams(url.hash.slice(1));
+    const token = fragmento.get('token') ?? fragmento.get('convite')
+      ?? url.searchParams.get('token') ?? url.searchParams.get('convite');
     return TOKEN_CONVITE.test(token || '') ? token : null;
   } catch {
     return null;
@@ -34,4 +36,31 @@ export function urlApkOficial(endereco) {
   } catch {
     return null;
   }
+}
+
+export function ouvirConvitesAndroid(app, aoReceber, aoReceberOutroLink) {
+  let ativo = true;
+  let recebeuConviteComAppAberto = false;
+
+  const listener = app.addListener('appUrlOpen', ({ url }) => {
+    if (!ativo) return;
+    const token = lerTokenConvite(url);
+    if (token) {
+      recebeuConviteComAppAberto = true;
+      aoReceber(token);
+    } else {
+      aoReceberOutroLink(url);
+    }
+  });
+
+  app.getLaunchUrl().then(abertura => {
+    if (!ativo || recebeuConviteComAppAberto) return;
+    const token = lerTokenConvite(abertura?.url);
+    if (token) aoReceber(token);
+  }).catch(() => {});
+
+  return () => {
+    ativo = false;
+    listener.then(handle => handle.remove()).catch(() => {});
+  };
 }

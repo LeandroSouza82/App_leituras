@@ -43,17 +43,18 @@ const toDatabaseCondominio = (data, userId) => ({
   telefone_sindico: data.contatoSindico?.trim() || null,
 });
 
-const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey()) => {
+const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey(), compartilhado = false) => {
   const leituraDoMes = (row.leituras || []).find((leitura) => leitura.mes_referencia === mesReferencia);
 
   return {
     id: row.id,
-    user_id: row.user_id,
+    administradorId: row.user_id,
+    compartilhado,
     nome: row.nome,
     nome_ucondo: row.nome_ucondo || null,
     data: row.created_at || new Date().toISOString(),
     apartamentos: Number(row.apartamentos || 0),
-    valor: Number(row.valor || 0),
+    valor: compartilhado && row.valor == null ? null : Number(row.valor || 0),
     diaLeitura: String(row.dia_leitura || '').trim(),
     tipoLeitura: row.tipo_leitura || 'Água e Gás',
     endereco: row.endereco || '',
@@ -74,23 +75,47 @@ export const buscarCondominios = async (mesReferencia = getCurrentMonthKey()) =>
   try {
     const client = requireSupabase();
     const userId = await getAuthenticatedUserId();
-    const { data, error } = await client.from('condominios').select('*, leituras(*)');
+    const [proprios, resultadoEquipe] = await Promise.all([
+      client.from('condominios').select('*, leituras(*)').eq('user_id', userId),
+      client.rpc('equipe_listar_condominios_compartilhados', { p_mes: mesReferencia }),
+    ]);
 
-    if (error) {
-      throwDatabaseError('Não foi possível buscar os condomínios', error);
+    if (proprios.error) {
+      throwDatabaseError('Não foi possível buscar os condomínios', proprios.error);
     }
 
+    // Compatível com a instalação do APK antes da atualização do Supabase.
+    const equipe = resultadoEquipe.error?.code === 'PGRST202'
+      ? await client.from('condominios')
+        .select('id,user_id,nome,nome_ucondo,created_at,apartamentos,dia_leitura,tipo_leitura,endereco,instrucoes_acesso,telefone_sindico,latitude,longitude,leituras(mes_referencia,concluido)')
+        .neq('user_id', userId)
+      : resultadoEquipe;
+    if (equipe.error) throwDatabaseError('Não foi possível buscar os condomínios da equipe', equipe.error);
+
+    const condominios = [
+      ...(proprios.data || []).map(row => toApplicationCondominio(row, mesReferencia)),
+      ...(equipe.data || []).map(row => toApplicationCondominio(row, mesReferencia, true)),
+    ];
+
     // Ordena por dia_leitura em JavaScript (seguro para strings e valores "Variado")
-    return (data || [])
-      .map((row) => ({ ...toApplicationCondominio(row, mesReferencia), compartilhado: row.user_id !== userId }))
-      .sort((a, b) => {
-        const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
-        const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;
-        return diaA - diaB;
-      });
+    return condominios.sort((a, b) => {
+      const diaA = extrairNumeroDia(a.diaLeitura) || Infinity;
+      const diaB = extrairNumeroDia(b.diaLeitura) || Infinity;
+      return diaA - diaB;
+    });
   } catch (error) {
     throw error instanceof Error ? error : new Error('Não foi possível buscar os condomínios.');
   }
+};
+
+const salvarValorCompartilhado = async (condominioId, valor) => {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('equipe_salvar_valor_individual', {
+    p_condominio_id: condominioId,
+    p_valor: valor,
+  });
+  if (error) throwDatabaseError('Não foi possível salvar seu valor', error);
+  return Number(data);
 };
 
 export const salvarCondominio = async (condominioData) => {
@@ -126,7 +151,10 @@ export const salvarCondominio = async (condominioData) => {
   }
 };
 
-export const atualizarCondominio = async (id, condominioData) => {
+export const atualizarCondominio = async (id, condominioData, { compartilhado = false } = {}) => {
+  if (compartilhado) {
+    return { valor: await salvarValorCompartilhado(id, condominioData.valor) };
+  }
   try {
     const client = requireSupabase();
     const userId = await getAuthenticatedUserId();
@@ -208,6 +236,16 @@ export const alternarStatusLeitura = async (condominioId, mesReferencia = getCur
     const client = contexto?.client || requireSupabase();
     const userId = contexto?.userId || await getAuthenticatedUserId();
     const concluido = !statusAtual;
+    const { error: equipeErro } = await client.rpc('equipe_status_leitura', {
+      p_condominio_id: condominioId,
+      p_mes: mesReferencia,
+      p_concluido: concluido,
+    });
+    if (!equipeErro) return;
+    if (equipeErro.code !== 'PGRST202') {
+      throwDatabaseError('Não foi possível atualizar o status da leitura', equipeErro);
+    }
+
     const { data, error } = await client
       .from('leituras')
       .upsert({
@@ -220,13 +258,6 @@ export const alternarStatusLeitura = async (condominioId, mesReferencia = getCur
       .select()
       .single();
 
-    if (error?.code === '42501') {
-      const { error: erroEquipe } = await client.rpc('equipe_status_leitura', {
-        p_condominio_id: condominioId, p_mes: mesReferencia, p_concluido: concluido,
-      });
-      if (erroEquipe) throwDatabaseError('Não foi possível atualizar o status da leitura', erroEquipe);
-      return { condominio_id: condominioId, mes_referencia: mesReferencia, concluido };
-    }
     if (error) {
       throwDatabaseError('Não foi possível atualizar o status da leitura', error);
     }

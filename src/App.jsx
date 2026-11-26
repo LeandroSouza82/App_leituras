@@ -1,6 +1,9 @@
 import { customAlert } from './components/CustomPrompt/CustomPrompt';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, FolderSync } from 'lucide-react';
+import Equipes from './components/Equipes/Equipes';
+import { chamarEquipe } from './services/equipeConviteService';
+import { buscarCondominios } from './services/condominioService';
 import './index.css';
 import Header from './components/Header/Header';
 import LeituraForm from './components/LeituraForm/LeituraForm';
@@ -19,7 +22,7 @@ import Toast, { useToast } from './components/Toast/Toast';
 import Perfil from './pages/Perfil/Perfil';
 import Login from './components/Login';
 import AceitarConvite from './components/Equipes/AceitarConvite';
-import { lerTokenConvite, TOKEN_CONVITE } from './services/conviteEquipe';
+import { ouvirConvitesAndroid, TOKEN_CONVITE } from './services/conviteEquipe';
 import OnboardingApresentacao from './components/OnboardingApresentacao/OnboardingApresentacao';
 import LegalConsentGate from './components/LegalConsentGate/LegalConsentGate';
 import NotificationPermissionGate from './components/NotificationPermissionGate/NotificationPermissionGate';
@@ -39,13 +42,15 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { restaurarDadosParaUsoOffline } from './services/restauracaoOfflineService';
 import { prepararContaOffline, encerrarContaOffline } from './services/offlineQueueStorage';
 
-const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationActionHandled }) => {
-  const [abaAtiva, setAbaAtiva] = useState('dashboard');
+const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationActionHandled, abrirLeituras }) => {
+  const [abaAtiva, setAbaAtiva] = useState(abrirLeituras ? 'leituras' : 'dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalCondominiosAberto, setModalCondominiosAberto] = useState(false);
   const [showProgressoModal, setShowProgressoModal] = useState(false);
   const [showAReceberModal, setShowAReceberModal] = useState(false);
   const [showBackupFotosModal, setShowBackupFotosModal] = useState(false);
+  const [showEquipe, setShowEquipe] = useState(false);
+  const [administradorEquipeId, setAdministradorEquipeId] = useState(null);
   const [focarAtrasadoAuto, setFocarAtrasadoAuto] = useState(false);
   const [focoLeituraTipo, setFocoLeituraTipo] = useState('atrasadas');
   const [focoEspecifico, setFocoEspecifico] = useState(null);
@@ -79,6 +84,24 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
     [leiturasHoje, leiturasAmanha, leiturasAtrasadas]
   );
   useLembretesLeituras(leituras);
+
+  useEffect(() => {
+    let ativo = true;
+    const verificarAdministrador = () => {
+      chamarEquipe('equipe_meu_papel')
+        .then(podeAdministrar => { if (ativo) setAdministradorEquipeId(podeAdministrar === true ? userId : null); })
+        .catch(() => { if (ativo) setAdministradorEquipeId(null); });
+    };
+
+    verificarAdministrador();
+    document.addEventListener('visibilitychange', verificarAdministrador);
+    return () => {
+      ativo = false;
+      document.removeEventListener('visibilitychange', verificarAdministrador);
+    };
+  }, [userId]);
+
+  const podeAdministrarEquipe = administradorEquipeId === userId;
 
   const handleAdicionarLeitura = async (dados) => {
     if (!isOnline) {
@@ -138,8 +161,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
           let condominiosExistentes = [];
           if (supabase) {
             try {
-              const { data: dbData } = await supabase.from('condominios').select('id, nome');
-              condominiosExistentes = dbData || [];
+              condominiosExistentes = await buscarCondominios();
             } catch (_) {}
           }
 
@@ -333,6 +355,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
               onOpenFaturamento={() => setShowAReceberModal(true)}
               onLogout={onLogout}
               onNavigate={setAbaAtiva}
+              onOpenEquipe={podeAdministrarEquipe ? () => setShowEquipe(true) : null}
             />
             <div className="dashboard-body">
               <p className="dashboard-section-label">Ações</p>
@@ -367,6 +390,7 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
                   </div>
                   <span className="dashboard-acao-chevron">›</span>
                 </button>
+
               </div>
             </div>
           </div>
@@ -446,9 +470,14 @@ const MainApp = ({ userId, onLogout, pendingNotificationAction, onNotificationAc
       <AutoSyncIndicator />
       <TransferenciasUcondo key={userId} userId={userId} />
       <Toast {...toast} onClose={dismissToast} />
+      {showEquipe && podeAdministrarEquipe && (
+        <Equipes userId={userId} onClose={() => setShowEquipe(false)} />
+      )}
       <BackupFotosMenu 
         isOpen={showBackupFotosModal} 
-        onClose={() => setShowBackupFotosModal(false)} 
+        onClose={() => setShowBackupFotosModal(false)}
+        userId={userId}
+        condominiosProprios={leituras.filter(condominio => condominio.administradorId === userId).map(condominio => condominio.id)}
       />
     </>
   );
@@ -458,9 +487,10 @@ const CHAVE_CONVITE_PENDENTE = 'fast_leituras_convite_pendente';
 
 const App = () => {
   const [convite, setConvite] = useState(() => {
-    const salvo = sessionStorage.getItem(CHAVE_CONVITE_PENDENTE);
+    const salvo = localStorage.getItem(CHAVE_CONVITE_PENDENTE);
     return TOKEN_CONVITE.test(salvo || '') ? salvo : null;
   });
+  const [abrirLeituras, setAbrirLeituras] = useState(false);
   const [session, setSession] = useState(null);
   const [erroContaOffline, setErroContaOffline] = useState(null);
   const [showSplash, setShowSplash] = useState(true);
@@ -631,9 +661,9 @@ const App = () => {
     }
 
     sessionStorage.clear();
-    if (convite) sessionStorage.setItem(CHAVE_CONVITE_PENDENTE, convite);
     setErroContaOffline(null);
     setSession(null);
+    setAbrirLeituras(false);
     setPendingNotificationAction(null);
     setNotificationPermissionStatus({
       userId: null,
@@ -644,41 +674,23 @@ const App = () => {
     });
     setShowSplash(true);
     return true;
-  }, [convite, session?.user?.id]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    // Detecta retorno via deep link de confirmação de e-mail
-    // O shareIntentService.js já ignora URLs que não são content:// ou file://,
-    // portanto este listener não gera duplicata nem conflito.
-    let isMounted = true;
-    let recebeuLinkAberto = false;
-    const receberConvite = (url) => {
-      const token = lerTokenConvite(url);
-      if (!token || !isMounted) return false;
-      sessionStorage.setItem(CHAVE_CONVITE_PENDENTE, token);
+    if (!Capacitor.isNativePlatform()) return;
+    return ouvirConvitesAndroid(CapacitorApp, token => {
+      localStorage.setItem(CHAVE_CONVITE_PENDENTE, token);
       setConvite(token);
-      return true;
-    };
-    const urlOpenListener = CapacitorApp.addListener('appUrlOpen', ({ url }) => {
-      if (receberConvite(url)) {
-        recebeuLinkAberto = true;
-      } else if (url?.startsWith('com.fastleituras.app://')) {
+    }, url => {
+      if (url?.startsWith('com.fastleituras.app://')) {
         setRetornoConfirmacao(Date.now());
       }
     });
-    if (Capacitor.isNativePlatform()) {
-      CapacitorApp.getLaunchUrl().then((abertura) => {
-        if (!recebeuLinkAberto) receberConvite(abertura?.url);
-      }).catch(() => {});
-    }
+  }, []);
 
-    if (!supabase) {
-      return () => {
-        isMounted = false;
-        urlOpenListener.then((h) => h.remove());
-      };
-    }
-
+  useEffect(() => {
+    if (!supabase) return;
+    let isMounted = true;
     let authEventOccurred = false;
 
     const loadSession = async () => {
@@ -733,7 +745,6 @@ const App = () => {
 
     return () => {
       isMounted = false;
-      urlOpenListener.then((h) => h.remove());
       if (subscription) {
         subscription.unsubscribe();
       }
@@ -785,9 +796,12 @@ const App = () => {
         key={convite}
         token={convite}
         email={session.user.email}
+        contaGoogle={session.user.identities?.some(identidade => identidade.provider === 'google')
+          || session.user.app_metadata?.providers?.includes('google') === true}
         onLogout={handleLogout}
-        onClose={() => {
-          sessionStorage.removeItem(CHAVE_CONVITE_PENDENTE);
+        onClose={(aceito) => {
+          if (aceito) setAbrirLeituras(true);
+          localStorage.removeItem(CHAVE_CONVITE_PENDENTE);
           setConvite(null);
         }}
       />
@@ -827,6 +841,7 @@ const App = () => {
   return (
     <MainApp
       userId={session.user.id}
+      abrirLeituras={abrirLeituras}
       onLogout={handleLogout}
       pendingNotificationAction={pendingNotificationAction}
       onNotificationActionHandled={() => setPendingNotificationAction(null)}

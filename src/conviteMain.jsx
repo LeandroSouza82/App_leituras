@@ -5,7 +5,8 @@ import logo from './assets/icon.png';
 import { abrirConviteAndroid, lerTokenConvite, URL_CONVITE, urlApkOficial } from './services/conviteEquipe';
 import './components/Equipes/Equipes.css';
 
-const apk = urlApkOficial(import.meta.env.VITE_FAST_LEITURAS_APK_URL);
+const apk = urlApkOficial(import.meta.env.VITE_FAST_LEITURAS_APK_URL)
+  ?? urlApkOficial(import.meta.env.VITE_FAST_LEITURAS_ANDROID_URL);
 const root = createRoot(document.getElementById('root'));
 
 function atualizarConvite() {

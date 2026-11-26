@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Share } from '@capacitor/share';
 import { buscarCondominios } from '../../services/condominioService';
+import { abrirWhatsAppComConvite } from '../../services/equipeConviteService';
 import { sincronizarLeiturasAnterioresOffline } from '../../services/syncOfflineService';
 import { getCurrentMonthKey } from '../../utils/mesLeituras';
 import {
@@ -44,7 +44,7 @@ function Equipes({ userId, onClose }) {
     Promise.all([buscarCondominios(), listarConvitesEquipe(), listarAutoresEquipe()])
       .then(([condos, convitesAtivos, pessoas]) => {
         if (!ativo) return;
-        setCondominios(condos.filter(c => c.user_id === userId));
+        setCondominios(condos.filter(c => c.administradorId === userId));
         setConvites(convitesAtivos);
         setAutores(pessoas.filter(pessoa => pessoa.id !== userId));
       })
@@ -85,7 +85,7 @@ function Equipes({ userId, onClose }) {
     await executar(async () => {
       const { exportarPlanilhaEquipe } = await import('../../services/planilhaEquipe');
       const nome = condominios.find(c => c.id === condominio)?.nome || 'Condominio';
-      await exportarPlanilhaEquipe(leituras, nome, mes);
+      await exportarPlanilhaEquipe(leituras, nome, mes, autores.find(pessoa => pessoa.id === autor)?.email);
     });
   }
 
@@ -135,11 +135,7 @@ function Equipes({ userId, onClose }) {
         </fieldset>
         {link && (
           <div className="equipes-acoes">
-            <button className="equipes-primario" onClick={() => executar(() => Share.share({
-              title: 'Seu convite para o Fast Leituras',
-              text: 'Você foi convidado para a equipe do Fast Leituras. Abra o link para entrar com sua conta Google.',
-              url: link,
-            }))}>Compartilhar convite</button>
+            <button className="equipes-primario" onClick={() => executar(() => abrirWhatsAppComConvite(link))}>Convidar pelo WhatsApp</button>
             <button className="equipes-secundario" onClick={() => navigator.clipboard.writeText(link)
               .then(() => setErro('')).catch(() => setErro('Selecione o link abaixo para copiá-lo.'))}>Copiar link</button>
             <input aria-label="Link do convite" value={link} readOnly onFocus={event => event.target.select()} />
@@ -156,21 +152,21 @@ function Equipes({ userId, onClose }) {
         }}>
           <div>
             <label htmlFor="equipes-autor">Leiturista</label>
-            <select id="equipes-autor" value={autor} disabled={ocupado} onChange={(event) => { setAutor(event.target.value); setLeituras(null); }} required>
+            <select id="equipes-autor" value={autor} disabled={ocupado} onChange={(event) => { setAutor(event.target.value); setLeituras(null); setFoto(null); }} required>
               <option value="">Selecione</option>
               {autores.map(pessoa => <option key={pessoa.id} value={pessoa.id}>{pessoa.email}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="equipes-condominio">Condomínio</label>
-            <select id="equipes-condominio" value={condominio} disabled={ocupado} onChange={(event) => { setCondominio(event.target.value); setLeituras(null); }} required>
+            <select id="equipes-condominio" value={condominio} disabled={ocupado} onChange={(event) => { setCondominio(event.target.value); setLeituras(null); setFoto(null); }} required>
               <option value="">Selecione</option>
               {condominios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="equipes-mes">Mês</label>
-            <input id="equipes-mes" type="month" value={mes} disabled={ocupado} onChange={(event) => { setMes(event.target.value); setLeituras(null); }} required />
+            <input id="equipes-mes" type="month" value={mes} disabled={ocupado} onChange={(event) => { setMes(event.target.value); setLeituras(null); setFoto(null); }} required />
           </div>
           <button className="equipes-primario" disabled={ocupado || !autor || !condominio || !mes}>Consultar</button>
         </form>

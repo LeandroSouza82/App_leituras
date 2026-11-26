@@ -1,10 +1,9 @@
 import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
-export async function exportarPlanilhaEquipe(leituras, nome, mes) {
+export async function gerarPlanilhaEquipe(leituras, leiturista) {
   const planilha = new ExcelJS.Workbook();
   const aba = planilha.addWorksheet('Leituras da equipe');
   aba.columns = [
@@ -12,6 +11,7 @@ export async function exportarPlanilhaEquipe(leituras, nome, mes) {
     { header: 'Serviço', key: 'servico', width: 16 },
     { header: 'Leitura', key: 'leitura_atual', width: 18, style: { numFmt: '0.0000' } },
     { header: 'Data da leitura', key: 'data_leitura', width: 26 },
+    { header: 'Leiturista', key: 'leiturista', width: 34 },
     { header: 'Foto no app', key: 'foto', width: 16 },
   ];
   aba.getRow(1).font = { bold: true };
@@ -20,15 +20,21 @@ export async function exportarPlanilhaEquipe(leituras, nome, mes) {
       ...leitura,
       leitura_atual: Number(leitura.leitura_atual),
       data_leitura: new Date(leitura.data_leitura).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-      foto: leitura.foto_url ? 'Sim' : '',
+      leiturista,
+      foto: leitura.foto_url || leitura.tem_foto ? 'Sim' : '',
     });
   }
-  const bytes = await planilha.xlsx.writeBuffer();
+  return planilha.xlsx.writeBuffer();
+}
+
+export async function exportarPlanilhaEquipe(leituras, nome, mes, leiturista) {
+  const bytes = await gerarPlanilhaEquipe(leituras, leiturista);
   const nomeSeguro = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_');
   const arquivo = `Leituras_${nomeSeguro}_${mes}.xlsx`;
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   if (!Capacitor.isNativePlatform()) {
-    saveAs(blob, arquivo);
+    const { default: FileSaver } = await import('file-saver');
+    FileSaver.saveAs(blob, arquivo);
     return;
   }
   const data = await new Promise((resolve, reject) => {

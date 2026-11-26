@@ -2,10 +2,10 @@ import React, { useCallback, useState } from 'react';
 import {
   X,
   Layers,
-  Users,
   LogOut,
   Camera,
   User,
+  Users,
   ShieldCheck,
   Headset,
   Star,
@@ -23,22 +23,17 @@ import PrivacyTermsModal from '../PrivacyTermsModal/PrivacyTermsModal';
 import GuiaLeituristaModal from '../GuiaLeiturista/GuiaLeituristaModal';
 import { getUcondoStatus } from '../../utils/ucondoPillUtils';
 import './SideMenu.css';
-import Equipes from '../Equipes/Equipes';
-import { ehGestorEquipe } from '../../services/equipeService';
-import { contaOfflineAtiva } from '../../services/offlineQueueStorage';
 import { Browser } from '@capacitor/browser';
 import { SUPPORT_URL, ROBOT_DASHBOARD_URL } from '../../config/publicUrls';
 import { version as appVersion } from '../../../package.json';
 
-const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
+const SideMenu = ({ isOpen, onClose, onLogout, onNavigate, onOpenEquipe }) => {
   const [isCameraModalOpen, setCameraModalOpen] = useState(false);
   const [isFeedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
-  const [showEquipes, setShowEquipes] = useState(false);
-  const [gestor, setGestor] = useState(false);
   const fecharGuia = useCallback(() => setShowGuide(false), []);
   const [ucondoStatus, setUcondoStatusState] = useState(() => getUcondoStatus());
 
@@ -49,14 +44,6 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     window.addEventListener('ucondo_status_alterado', onStatusChange);
     return () => window.removeEventListener('ucondo_status_alterado', onStatusChange);
   }, []);
-
-  React.useEffect(() => {
-    if (!isOpen) return;
-    let ativo = true;
-    setGestor(false);
-    ehGestorEquipe().then(podeGerenciar => { if (ativo) setGestor(podeGerenciar); }).catch(() => {});
-    return () => { ativo = false; };
-  }, [isOpen]);
 
   const handleAbrirUcondo = () => {
     onClose();
@@ -119,8 +106,13 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
     {
       title: 'Conta',
       items: [
-        ...(gestor ? [{ id: 'equipes', label: 'Equipes', icon: Users, onClick: () => setShowEquipes(true) }] : []),
         { id: 'perfil', label: 'Meu Perfil e Conta', icon: User, onClick: handleNavigatePerfil },
+        ...(onOpenEquipe ? [{
+          id: 'equipe', label: 'Equipes', icon: Users, onClick: () => {
+            onClose();
+            onOpenEquipe();
+          },
+        }] : []),
         { id: 'camera', label: 'Configurações da Câmera', icon: Camera, onClick: () => setCameraModalOpen(true) },
       ]
     },
@@ -154,7 +146,6 @@ const SideMenu = ({ isOpen, onClose, onLogout, onNavigate }) => {
   ];
 
   if (!isOpen) return null;
-  if (showEquipes) return <Equipes userId={contaOfflineAtiva()} onClose={() => setShowEquipes(false)} />;
 
   const handleLogout = async () => {
     if (!await customConfirm('Deseja realmente sair da sua conta?')) return;

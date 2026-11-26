@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { supabase } from '../../services/supabase';
 import './Equipes.css';
 
-export default function AceitarConvite({ token, email, onClose, onLogout }) {
+export default function AceitarConvite({ token, email, contaGoogle, onClose, onLogout }) {
   const [estado, setEstado] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
   async function aceitar() {
+    if (!contaGoogle || ocupado) return;
     setOcupado(true);
     try {
       const { data, error } = await supabase.rpc('equipe_aceitar_convite', { p_token: token });
@@ -25,25 +26,25 @@ export default function AceitarConvite({ token, email, onClose, onLogout }) {
         {estado === 'aceito' ? (
           <>
             <p>Os condomínios que o gestor liberou estão na lista de leituras.</p>
-            <button type="button" className="equipes-primario" onClick={onClose}>Ver meus condomínios</button>
+            <button type="button" className="equipes-primario" onClick={() => onClose(true)}>Ver meus condomínios</button>
           </>
         ) : (
           <>
-            <p>O convite será vinculado à sua conta Google. Confira a conta antes de aceitar.</p>
+            <p>{contaGoogle ? 'Confira a conta Google que vai receber o acesso.' : 'Entre com o Google para aceitar. Se já tem cadastro, use o mesmo Gmail.'}</p>
             <p><strong>{email}</strong></p>
             {estado && <p role="alert">{{
-              invalido: 'Este convite expirou, foi cancelado ou já está vinculado a outra conta.',
+              invalido: 'Este convite é inválido, expirou, foi cancelado ou já foi usado por outra conta. Peça um novo link ao gestor.',
               conta_incorreta: 'Entre com uma conta Google para aceitar o convite.',
               erro: 'Não foi possível aceitar o convite agora. Confira a conexão e tente de novo.',
             }[estado]}</p>}
-            {estado !== 'invalido' && (
+            {contaGoogle && estado !== 'invalido' && (
               <button type="button" className="equipes-primario" disabled={ocupado} onClick={aceitar}>
                 {ocupado ? 'Aceitando…' : 'Aceitar convite'}
               </button>
             )}
             <div className="equipes-acoes">
               <button type="button" className="equipes-secundario" disabled={ocupado} onClick={onLogout}>Trocar de conta</button>
-              <button type="button" className="equipes-secundario" disabled={ocupado} onClick={onClose}>Fechar</button>
+              <button type="button" className="equipes-secundario" disabled={ocupado} onClick={() => onClose(false)}>Fechar</button>
             </div>
           </>
         )}

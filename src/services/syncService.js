@@ -7,6 +7,7 @@ import {
   capturarContextoSync, exigirContaOffline,
 } from './offlineQueueStorage';
 import { temConexaoInternetUtil } from './networkQualityService';
+import { servidorSuportaEquipe } from './equipeCapacidade.js';
 import {
   sincronizarLeiturasAnterioresOffline,
   sincronizarCondominiosOffline,
@@ -24,6 +25,7 @@ import {
 
 const FILA_SYNC_KEY = 'fila_sync_auto';
 let isSyncRunning = false;
+const CONDOMINIO_UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 let networkListenerInitialized = false;
 
 // ─── Helpers de Fila no localStorage ────────────────────────────────────────
@@ -366,6 +368,8 @@ export async function sincronizarFilaEmBackground() {
     const contexto = await capturarContextoSync(supabase.auth, criarClienteParaToken);
     if (!contexto) return;
     const { client, userId: currentUserId } = contexto;
+    const usaVinculo = fila.some(item => donoDoItem(item) === currentUserId && CONDOMINIO_UUID.test(item.condominio_id))
+      && await servidorSuportaEquipe(client);
 
     for (const item of [...fila]) {
       etapaSync = 'PROCESSAR_ITEM';
@@ -379,6 +383,11 @@ export async function sincronizarFilaEmBackground() {
         if (!item.db_id) throw new Error('Identificador da leitura ausente. Requer conferência antes de enviar.');
 
         const leituristaEnvio = donoDoItem(item);
+        const condominioId = String(item.condominio_id || '').toLowerCase();
+        const condominioVinculado = usaVinculo && CONDOMINIO_UUID.test(condominioId);
+        const pastaRemota = condominioVinculado
+          ? 'equipe/' + condominioId + '/' + leituristaEnvio + '/'
+          : 'leituras/';
         let publicPhotoUrl = null;
 
         // 1. Upload da Foto para o Supabase Storage
@@ -410,8 +419,7 @@ export async function sincronizarFilaEmBackground() {
             const nomeStorage = sanitizarNomeStorage(item.fileName);
             
             let remotePath = item.remotePath;
-            const pastaDaLeitura = `equipe/${item.condominio_id}/${leituristaEnvio}/`;
-            if (!remotePath?.startsWith(pastaDaLeitura)) {
+            if (!remotePath?.startsWith(pastaRemota)) {
               // Caminho determinístico: novas tentativas sobrescrevem o mesmo objeto
               // em vez de criar cópias com Date.now().
               const identificadorRemoto = sanitizarNomeStorage(
@@ -421,7 +429,7 @@ export async function sincronizarFilaEmBackground() {
               // the object an already accepted AWS transfer is reading.
               const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
               const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-              remotePath = `${pastaDaLeitura}${identificadorRemoto}_${hash}_${nomeStorage}`;
+              remotePath = `${pastaRemota}${identificadorRemoto}_${hash}_${nomeStorage}`;
               contexto.assertActive();
               atualizarItemPersistido(FILA_SYNC_KEY, item, { remotePath });
             }
@@ -478,7 +486,7 @@ export async function sincronizarFilaEmBackground() {
         // 2. Inserção / Upsert no Supabase Database
         const payloadEnvio = {
           id: item.db_id,
-          condominio_id: item.condominio_id,
+          ...(condominioVinculado ? { condominio_id: condominioId } : {}),
           condominio_nome: item.condominio_nome || null,
           unidade_id: item.unidade_id,
           servico: item.servico,

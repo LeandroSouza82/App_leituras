@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { obterServicosAtivos } from '../utils/servicosCondominio';
 import { getCurrentMonthKey } from '../utils/mesLeituras';
+import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { linkConvite } from './conviteEquipe';
 
 async function dados(consulta) {
@@ -19,7 +20,6 @@ async function paginar(consulta) {
   }
 }
 
-export const ehGestorEquipe = () => dados(supabase.rpc('equipe_meu_papel'));
 export const listarConvitesEquipe = () => dados(supabase.rpc('equipe_listar_convites'));
 export const listarAutoresEquipe = () => dados(supabase.rpc('equipe_listar_autores'));
 export const revogarConviteEquipe = (id) => dados(supabase.rpc('equipe_revogar_acesso', { p_convite_id: id }));
@@ -41,8 +41,10 @@ export async function conferirCondominiosEquipe(condominios, mes = getCurrentMon
       continue;
     }
 
-    const chaves = new Set(anteriores.filter(({ leitura_anterior }) => leitura_anterior != null)
-      .map(({ servico, unidade }) => servico.toUpperCase() + ':' + String(unidade).trim()));
+    const chaves = new Set(anteriores.filter(({ leitura_anterior }) => {
+      const numero = parseLeituraNumerica(leitura_anterior);
+      return numero !== null && numero >= 0;
+    }).map(({ servico, unidade }) => String(servico || 'AGUA').toUpperCase() + ':' + String(unidade).trim()));
     const servicos = obterServicosAtivos(condominio).map(servico => servico.toUpperCase());
     const pendentes = unidades.filter(unidade => servicos.some(servico => {
       const dispensas = unidade.servicos_sem_medidor || [];
@@ -72,6 +74,9 @@ export async function atualizarCondominiosEquipe(id, condominios, idsJaLiberados
 }
 
 export function buscarLeiturasEquipe(condominioId, autorId, mes) {
+  if (!condominioId || !autorId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+    throw new Error('Selecione o leiturista, o condomínio e o mês.');
+  }
   const [ano, mesNum] = mes.split('-').map(Number);
   const inicio = new Date(Date.UTC(ano, mesNum - 1, 1, 3)).toISOString();
   const fim = new Date(Date.UTC(ano, mesNum, 1, 3)).toISOString();
@@ -87,6 +92,9 @@ export async function abrirFotoEquipe(referencia) {
   const prefixo = '/storage/v1/object/public/fotos_leituras/';
   if (url.origin !== origem || !url.pathname.startsWith(prefixo)) throw new Error('Endereço de foto inválido.');
   const caminho = decodeURIComponent(url.pathname.slice(prefixo.length));
+  if (caminho.split('/').some(parte => !parte || parte === '.' || parte === '..') || caminho.includes('\\')) {
+    throw new Error('Endereço de foto inválido.');
+  }
   const foto = await dados(supabase.storage.from('fotos_leituras').download(caminho));
   return URL.createObjectURL(foto);
 }
