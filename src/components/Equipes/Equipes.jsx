@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { buscarCondominios } from '../../services/condominioService';
 import { abrirWhatsAppComConvite } from '../../services/equipeConviteService';
 import { sincronizarLeiturasAnterioresOffline } from '../../services/syncOfflineService';
@@ -25,6 +27,20 @@ function Equipes({ userId, onClose }) {
   const [foto, setFoto] = useState(null);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
+  const voltar = useRef(null);
+  voltar.current = () => (foto ? setFoto(null) : onClose());
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let saiu = false, backListener;
+    CapacitorApp.addListener('backButton', () => voltar.current()).then(listener => {
+      if (saiu) listener.remove(); else backListener = listener;
+    });
+    return () => {
+      saiu = true;
+      backListener?.remove();
+    };
+  }, []);
 
   async function executar(acao) {
     setErro('');
