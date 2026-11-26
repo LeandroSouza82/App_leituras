@@ -26,7 +26,7 @@
   ],
   "headers": [
     {
-      "source": "/convite",
+      "source": "/convite/:path*",
       "headers": [
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "Cache-Control", "value": "no-store" }
