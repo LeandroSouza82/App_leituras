@@ -37,6 +37,7 @@ const Header = ({
   onOpenFaturamento,
   onLogout,
   onNavigate,
+  onOpenEquipe,
 }) => {
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
   const [mostrarValor, setMostrarValor] = useState(() => {
@@ -251,6 +252,7 @@ const Header = ({
         onClose={() => setIsSideMenuOpen(false)}
         onLogout={onLogout}
         onNavigate={onNavigate}
+        onOpenEquipe={onOpenEquipe}
       />
     </header>
   );

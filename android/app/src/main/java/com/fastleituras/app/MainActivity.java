@@ -45,7 +45,10 @@ public class MainActivity extends BridgeActivity {
         if (Intent.ACTION_SEND.equals(action)) {
             incomingUri = (Uri) intent.getParcelableExtra(Intent.EXTRA_STREAM);
         } else if (Intent.ACTION_VIEW.equals(action)) {
-            incomingUri = intent.getData();
+            Uri viewUri = intent.getData();
+            if (viewUri != null && ("content".equals(viewUri.getScheme()) || "file".equals(viewUri.getScheme()))) {
+                incomingUri = viewUri;
+            }
         }
 
         if (incomingUri != null) {

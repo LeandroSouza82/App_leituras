@@ -43,7 +43,7 @@ const fixture = async () => {
     getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, String(value)), removeItem: key => data.delete(key),
   };
   globalThis.window = { dispatchEvent: event => events.push(event.type) };
-  const f = { data, events, online: false, requests: [], confirmacoes: 0, session: { user: { id: 'conta-A' }, access_token: 'token-A' }, onRequest: null };
+  const f = { data, events, online: false, requests: [], confirmacoes: 0, session: { user: { id: 'conta-A' }, access_token: 'token-A' }, onRequest: null, onRpc: null };
   f.supabase = { auth: {
     getSession: async () => ({ data: { session: f.session } }),
     getUser: async token => ({ data: { user: { id: token === 'token-A' ? 'conta-A' : 'conta-B' } } }),
@@ -53,7 +53,11 @@ const fixture = async () => {
     writeFile: async () => {},
   };
   f.createClient = (token, guard) => ({
-    rpc: async (name, args) => { guard(); f.requests.push({ name, args, token }); return { error: null }; },
+    rpc: async (name, args) => {
+      guard();
+      f.requests.push({ name, args, token });
+      return await f.onRpc?.(name, args) || { error: null };
+    },
     from(table) {
       const request = { table, token, filters: [] };
       const chain = {
@@ -136,6 +140,43 @@ test('foto nova com o mesmo nome ganha referência imutável sem sobrescrever o 
   const uploads = f.requests.filter(r => r.action === 'upload');
   assert.notEqual(uploads.at(-1).path, primeira);
   assert.ok(uploads.at(-1).path.includes(item.db_id));
+});
+
+test('sincroniza leitura e foto no condomínio da equipe preservando a autoria', async () => {
+  const { f, mod } = await fixture();
+  const condominioId = crypto.randomUUID();
+  const item = leitura({
+    condominio_id: condominioId,
+    fileName: 'foto.jpg',
+    photoPath: 'Backups/Condo/foto.jpg',
+    photoDirectory: 'DATA',
+    remotePath: 'leituras/caminho-antigo.jpg',
+  });
+  assert.equal(await mod.salvarLeituraOffline(item), true);
+  f.online = true;
+  await mod.sincronizarFilaEmBackground();
+
+  const upload = f.requests.find(r => r.action === 'upload');
+  const registro = f.requests.find(r => r.table === 'leituras_detalhes').payload[0];
+  assert.ok(upload.path.startsWith('equipe/' + condominioId + '/conta-A/' + item.db_id + '_'));
+  assert.equal(registro.condominio_id, condominioId);
+  assert.equal(registro.leiturista_id, 'conta-A');
+  assert.ok(registro.foto_url.endsWith(upload.path));
+  assert.equal(mod.readFilaSync().length, 0);
+});
+
+test('sem a migração de equipe continua sincronizando no formato anterior', async () => {
+  const { f, mod } = await fixture();
+  f.onRpc = name => name === 'equipe_meu_papel' && { error: { code: 'PGRST202' } };
+  const item = leitura({ condominio_id: crypto.randomUUID(), fileName: 'foto.jpg', photoPath: 'Backups/Condo/foto.jpg', photoDirectory: 'DATA' });
+  assert.equal(await mod.salvarLeituraOffline(item), true);
+  f.online = true;
+  await mod.sincronizarFilaEmBackground();
+
+  assert.ok(f.requests.find(r => r.action === 'upload').path.startsWith('leituras/'));
+  const registro = f.requests.find(r => r.table === 'leituras_detalhes').payload[0];
+  assert.equal(Object.hasOwn(registro, 'condominio_id'), false);
+  assert.equal(mod.readFilaSync().length, 0);
 });
 
 test('serviço real retorna false sob quota, sem evento de sucesso nem exclusão da foto', async () => {

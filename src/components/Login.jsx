@@ -156,7 +156,7 @@ const RecuperarSenhaModal = ({ isOpen, onClose }) => {
   );
 };
 
-const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
+const Login = ({ onLoginSuccess, retornoConfirmacao, conviteEquipe }) => {
   const [fluxoEmail] = useState(() => criarFluxoEmail(supabase.auth));
   const [segundosEmail, setSegundosEmail] = useState(0);
   const [modoCadastro, setModoCadastro] = useState(false);
@@ -330,6 +330,7 @@ const Login = ({ onLoginSuccess, retornoConfirmacao }) => {
         <div className="login-brand-mark" aria-hidden="true"><LockKeyhole size={25} /></div>
         <span className="login-eyebrow">Fast Leitura</span>
         <h1 id="login-title">{modoCadastro ? 'Crie sua conta' : 'Bem-vindo de volta'}</h1>
+        {conviteEquipe && <p>Entre com sua conta Google para aceitar o convite da equipe.</p>}
         <p className="login-subtitle">
           {modoCadastro ? 'Cadastre-se para sincronizar suas leituras.' : 'Acesse seus condomínios e leituras.'}
         </p>

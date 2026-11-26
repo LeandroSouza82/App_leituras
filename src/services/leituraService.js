@@ -3,10 +3,11 @@ import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { supabase } from './supabase.js';
-import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { obterLeituraAnterior } from './leiturasAnterioresService.js';
 import { obterServicosAtivos } from '../utils/servicosCondominio.js';
+import { formatarValorLeitura, gerarArquivoConsumos } from './planilhaUcondo.js';
+import { NOMES_SERVICO } from '../utils/servicosCondominio.js';
 
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
@@ -16,9 +17,7 @@ export const LeituraService = {
    * Converte e formata o valor bruto para o formato numérico/decimal esperado pelo Excel do uCondo
    */
   formatarValorLeitura(valor) {
-    const num = parseLeituraNumerica(valor);
-    if (num === null) return "";
-    return num.toFixed(4);
+    return formatarValorLeitura(valor);
   },
 
   /**
@@ -301,7 +300,7 @@ export const LeituraService = {
         return false;
       }
 
-      const wb = XLSX.utils.book_new();
+      const abas = [];
       const criarAbaServico = async (servico, nomeAba) => {
         const servicoUpper = String(servico).toUpperCase();
         const dadosExcel = unidades.map(unidade => {
@@ -312,45 +311,28 @@ export const LeituraService = {
           const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servicoUpper, valoresParam);
 
           return {
-            'Unidade *': nomeOriginal,
-            'Leitura atual *': this.formatarValorLeitura(valorBruto),
+            unidade: nomeOriginal,
+            leitura: this.formatarValorLeitura(valorBruto),
           };
         });
 
         // Barreira defensiva: nenhuma aba pode ser gerada com leitura vazia.
-        const linhaIncompleta = dadosExcel.find(
-          item => String(item['Leitura atual *'] ?? '').trim() === ''
-        );
+        const linhaIncompleta = dadosExcel.find(item => String(item.leitura ?? '').trim() === '');
         if (linhaIncompleta) {
           await customAlert(
-            `A unidade ${linhaIncompleta['Unidade *']} (${servicoUpper}) está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
+            `A unidade ${linhaIncompleta.unidade} (${servicoUpper}) está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
             'Exportação bloqueada'
           );
           return false;
         }
 
-        const ws = XLSX.utils.json_to_sheet(dadosExcel);
-        const range = XLSX.utils.decode_range(ws['!ref']);
-
-        // Mantém as duas colunas como texto, no mesmo padrão aceito pelo uCondo.
-        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-          const addrA = XLSX.utils.encode_cell({ c: 0, r: R });
-          const addrB = XLSX.utils.encode_cell({ c: 1, r: R });
-          if (ws[addrA]) ws[addrA].t = 's';
-          if (ws[addrB]) {
-            ws[addrB].t = 's';
-            ws[addrB].z = '@';
-          }
-        }
-
-        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+        abas.push({ nome: nomeAba, linhas: dadosExcel });
         return true;
       };
 
       if (servicoFiltro === 'todos') {
-        const nomesAbas = { agua: 'Água', gas: 'Gás', energia: 'Energia' };
         const abasAtivas = servicosAtivos
-          .map(servico => [servico, nomesAbas[servico]]);
+          .map(servico => [servico, NOMES_SERVICO[servico]]);
 
         for (const [servico, nomeAba] of abasAtivas) {
           if (!await criarAbaServico(servico, nomeAba)) return false;
@@ -359,8 +341,8 @@ export const LeituraService = {
         if (!await criarAbaServico(servicoFiltro, 'Consumos')) return false;
       }
 
-      // 3. Criação do arquivo Excel (.xlsx)
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      // 3. Criação do arquivo Excel (.xlsx) a partir do modelo oficial do uCondo
+      const excelBuffer = await gerarArquivoConsumos(abas);
 
       const base64Data = btoa(
         new Uint8Array(excelBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')

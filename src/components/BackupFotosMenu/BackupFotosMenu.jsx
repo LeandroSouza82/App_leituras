@@ -59,8 +59,15 @@ const itemFilaPertenceAoArquivo = (itemFila, arquivo) => {
   return mesmoCondominio && mesmoArquivo;
 };
 
-const BackupFotosMenu = ({ isOpen, onClose }) => {
+const BackupFotosMenu = ({ isOpen, onClose, abrirOnline = false, userId, condominiosProprios = [] }) => {
+  const podeExcluirFotoOnline = item => item.isPending || (item.condominio_id
+    ? condominiosProprios.includes(item.condominio_id) && extractStoragePath(item.foto_url)?.startsWith('equipe/')
+    : item.leiturista_id === userId);
   const [activeTab, setActiveTab] = useState('offline'); // 'offline' | 'online'
+
+  useEffect(() => {
+    if (isOpen && abrirOnline) setActiveTab('online');
+  }, [isOpen, abrirOnline]);
 
   // ================= Offline State =================
   const [condominios, setCondominios] = useState([]);
@@ -85,6 +92,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
   const [loteParaExcluir, setLoteParaExcluir] = useState(null);
 
   const startLongPress = (type, item) => {
+    if (type === 'online' && !podeExcluirFotoOnline(item)) return;
     longPressTimerRef.current = setTimeout(() => {
       setFotoParaExcluir({ type, item });
     }, 1000);
@@ -187,7 +195,6 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
           const { data, error } = await supabase
             .from('leituras_detalhes')
             .delete()
-            .eq('leiturista_id', userId)
             .in('id', idsParaDeletar)
             .select('id');
 
@@ -204,14 +211,16 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         try {
           const chaveFila = 'fila_sync_auto';
           let fila = JSON.parse(localStorage.getItem(chaveFila) || '[]');
-          let novaFila = fila.filter(f => f.condominio_nome !== backupAtual.nome);
+          const pendenciasExcluidas = new Set(backupAtual.arquivos.filter(item => item.isPending).map(item => item.id));
+          let novaFila = fila.filter(f => !pendenciasExcluidas.has(f.id));
           localStorage.setItem(chaveFila, JSON.stringify(novaFila));
         } catch (err) {
           console.error('Erro ao purgar item local da fila:', err);
         }
         
         // 4. Atualizar a UI e fechar modal
-        setOnlinePhotos(prev => prev.filter(item => item.condominio_nome !== backupAtual.nome));
+        const fotosExcluidas = new Set(backupAtual.arquivos.map(item => item.id));
+        setOnlinePhotos(prev => prev.filter(item => !fotosExcluidas.has(item.id)));
         window.dispatchEvent(new CustomEvent('leiturasAtualizadas'));
         await customAlert('Backup e fotos excluídos permanentemente!');
       }
@@ -438,13 +447,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
     setOnlinePhotos([]);
 
     try {
-      const { data: sessionData } = await supabase.auth.getUser();
-      const userId = sessionData?.user?.id;
-
       let query = supabase.from('leituras_detalhes').select('*');
-      if (userId) {
-        query = query.eq('leiturista_id', userId);
-      }
 
       if (searchQuery.trim()) {
         query = query.ilike('condominio_nome', `%${searchQuery.trim()}%`);
@@ -468,7 +471,7 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
         try {
           const { data: signedUrlsData, error: signedError } = await supabase.storage
             .from('fotos_leituras')
-            .createSignedUrls(uniquePaths, 3600);
+            .createSignedUrls(uniquePaths, 300);
             
           if (!signedError && signedUrlsData) {
             const urlMap = {};
@@ -772,10 +775,11 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                   {Object.values(
                     onlinePhotos.reduce((acc, item) => {
                       const nome = item.condominio_nome || 'Condomínio Desconhecido';
-                      if (!acc[nome]) acc[nome] = { nome, pathFisico: `online_${nome}`, arquivos: [] };
-                      acc[nome].arquivos.push(item);
+                      const grupo = item.condominio_id || 'legado:' + nome;
+                      if (!acc[grupo]) acc[grupo] = { nome, pathFisico: 'online_' + grupo, arquivos: [] };
+                      acc[grupo].arquivos.push(item);
                       return acc;
-                    }, {})
+                    }, Object.create(null))
                   ).map((condo) => (
                     <div key={condo.pathFisico} className={`backup-item ${expandedCondoOnline === condo.pathFisico ? 'expanded' : ''}`}>
                       <div className="backup-item-header" onClick={() => toggleCondoOnline(condo.pathFisico)}>
@@ -787,17 +791,17 @@ const BackupFotosMenu = ({ isOpen, onClose }) => {
                           <span className="backup-item-count">
                             {condo.arquivos.length} foto(s)
                           </span>
-                          <button 
-                            type="button" 
-                            onClick={(e) => { 
-                              e.stopPropagation(); 
+                          {condo.arquivos.every(podeExcluirFotoOnline) && <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setBackupParaExcluir(condo); 
                             }} 
                             style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
                             title="Excluir do Banco de Dados"
                           >
                             <Trash2 size={18} />
-                          </button>
+                          </button>}
                         </div>
                       </div>
 

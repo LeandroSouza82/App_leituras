@@ -94,6 +94,11 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
     setMostrarModal(false);
   };
 
+  const abrirEdicao = () => {
+    setMenuMaisAberto(false);
+    setMostrarModalEdicao(true);
+  };
+
   const salvarLocalizacaoGPS = async (e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     setMenuMaisAberto(false);
@@ -183,6 +188,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
         {/* ── LINHA 2: Badges de status e tipo ── */}
         <div className="item-row-badges">
           <span className={`status-badge ${statusClass}`}>{statusLabel}</span>
+          {leitura.compartilhado && <span className="tipo-badge">Minha equipe</span>}
           <span className="tipo-badge">
             <Gauge size={12} />
             {leitura.tipoLeitura || 'Água e Gás'}
@@ -213,7 +219,11 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
 
         {/* ── LINHA 4: Valor + Ações principais + Menu "..." ── */}
         <div className="item-row-actions">
-          <span className="item-value">{formatCurrency(leitura.valor)}</span>
+          {leitura.compartilhado ? (
+            <button type="button" className="item-value item-value-edit" onClick={abrirEdicao} aria-label="Editar meu valor">
+              {leitura.valor == null ? 'Definir meu valor' : formatCurrency(leitura.valor)}
+            </button>
+          ) : <span className="item-value">{formatCurrency(leitura.valor)}</span>}
 
           <div className="item-btns">
             {/* Rota */}
@@ -238,7 +248,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
               <span>cam</span>
             </button>
 
-            {/* Menu mais opções */}
             <div className="item-menu-mais" ref={menuRef}>
               <button
                 type="button"
@@ -254,11 +263,12 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                   <button
                     type="button"
                     className="item-dropdown-item"
-                    onClick={() => { setMenuMaisAberto(false); setMostrarModalEdicao(true); }}
+                    onClick={abrirEdicao}
                   >
                     <Pencil size={14} />
-                    Editar
+                    {leitura.compartilhado ? 'Meu valor' : 'Editar'}
                   </button>
+                  {!leitura.compartilhado && <>
                   <button
                     type="button"
                     className="item-dropdown-item item-dropdown-item--gps"
@@ -277,6 +287,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                     <Trash2 size={14} />
                     Excluir
                   </button>
+                  </>}
                 </div>
               )}
             </div>
