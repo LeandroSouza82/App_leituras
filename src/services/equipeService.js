@@ -26,6 +26,8 @@ export const revogarConviteEquipe = (id) => dados(supabase.rpc('equipe_revogar_a
 
 const consultarUnidades = (condominioId) => paginar(() => supabase.from('unidades')
   .select('numero, nome, identificador, servicos_sem_medidor').eq('condominio_id', condominioId).order('id'));
+/** Unidades do condomínio na ordem do cadastro, com as dispensas de medidor por serviço. */
+export const listarUnidadesEquipe = consultarUnidades;
 const consultarAnteriores = (condominioId, mes) => paginar(() => supabase.from('unidades_leituras')
   .select('unidade, servico, leitura_anterior').eq('condominio_nome', condominioId).eq('mes_referencia', mes).order('id'));
 

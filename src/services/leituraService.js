@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { obterLeituraAnterior } from './leiturasAnterioresService.js';
 import { obterServicosAtivos } from '../utils/servicosCondominio.js';
+import { criarAbaConsumos, formatarValorLeitura } from './planilhaUcondo.js';
 
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
@@ -16,9 +17,7 @@ export const LeituraService = {
    * Converte e formata o valor bruto para o formato numérico/decimal esperado pelo Excel do uCondo
    */
   formatarValorLeitura(valor) {
-    const num = parseLeituraNumerica(valor);
-    if (num === null) return "";
-    return num.toFixed(4);
+    return formatarValorLeitura(valor);
   },
 
   /**
@@ -312,38 +311,23 @@ export const LeituraService = {
           const valorBruto = this.obterValorLeitura(condId, nomeOriginal, servicoUpper, valoresParam);
 
           return {
-            'Unidade *': nomeOriginal,
-            'Leitura atual *': this.formatarValorLeitura(valorBruto),
+            unidade: nomeOriginal,
+            leitura: this.formatarValorLeitura(valorBruto),
           };
         });
 
         // Barreira defensiva: nenhuma aba pode ser gerada com leitura vazia.
-        const linhaIncompleta = dadosExcel.find(
-          item => String(item['Leitura atual *'] ?? '').trim() === ''
-        );
+        const linhaIncompleta = dadosExcel.find(item => String(item.leitura ?? '').trim() === '');
         if (linhaIncompleta) {
           await customAlert(
-            `A unidade ${linhaIncompleta['Unidade *']} (${servicoUpper}) está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
+            `A unidade ${linhaIncompleta.unidade} (${servicoUpper}) está sem leitura atual. A planilha não foi gerada para evitar um arquivo incompleto.`,
             'Exportação bloqueada'
           );
           return false;
         }
 
-        const ws = XLSX.utils.json_to_sheet(dadosExcel);
-        const range = XLSX.utils.decode_range(ws['!ref']);
-
-        // Mantém as duas colunas como texto, no mesmo padrão aceito pelo uCondo.
-        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-          const addrA = XLSX.utils.encode_cell({ c: 0, r: R });
-          const addrB = XLSX.utils.encode_cell({ c: 1, r: R });
-          if (ws[addrA]) ws[addrA].t = 's';
-          if (ws[addrB]) {
-            ws[addrB].t = 's';
-            ws[addrB].z = '@';
-          }
-        }
-
-        XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+        // Mesmo formato do modelo de importação do uCondo: duas colunas de texto.
+        XLSX.utils.book_append_sheet(wb, criarAbaConsumos(dadosExcel), nomeAba);
         return true;
       };
 

@@ -1,36 +1,55 @@
-import ExcelJS from 'exceljs';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { formatarValorLeitura, gerarArquivoConsumos } from './planilhaUcondo.js';
+import { NOMES_SERVICO } from '../utils/servicosCondominio.js';
 
-export async function gerarPlanilhaEquipe(leituras, leiturista) {
-  const planilha = new ExcelJS.Workbook();
-  const aba = planilha.addWorksheet('Leituras da equipe');
-  aba.columns = [
-    { header: 'Unidade', key: 'unidade_id', width: 20 },
-    { header: 'Serviço', key: 'servico', width: 16 },
-    { header: 'Leitura', key: 'leitura_atual', width: 18, style: { numFmt: '0.0000' } },
-    { header: 'Data da leitura', key: 'data_leitura', width: 26 },
-    { header: 'Leiturista', key: 'leiturista', width: 34 },
-    { header: 'Foto no app', key: 'foto', width: 16 },
-  ];
-  aba.getRow(1).font = { bold: true };
+const nomeUnidade = unidade => String(unidade.numero || unidade.identificador || unidade.nome || '').trim();
+const apelidos = unidade => [unidade.numero, unidade.nome, unidade.identificador]
+  .filter(nome => nome != null && String(nome).trim() !== '')
+  .map(nome => String(nome).trim());
+
+/**
+ * Cruza as unidades (na ordem do cadastro) com as leituras do mês de um serviço.
+ * Dispensadas saem "0.0000"; havendo mais de uma leitura da unidade, vale a mais recente.
+ */
+export function montarConsumosEquipe(unidades, leituras, servico) {
+  const alvo = String(servico).toUpperCase();
+  const recentes = new Map();
   for (const leitura of leituras) {
-    aba.addRow({
-      ...leitura,
-      leitura_atual: Number(leitura.leitura_atual),
-      data_leitura: new Date(leitura.data_leitura).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-      leiturista,
-      foto: leitura.foto_url || leitura.tem_foto ? 'Sim' : leitura.dispensada ? 'Dispensada' : '',
-    });
+    if (String(leitura.servico).toUpperCase() !== alvo) continue;
+    const chave = String(leitura.unidade_id).trim();
+    const atual = recentes.get(chave);
+    if (!atual || new Date(leitura.data_leitura) >= new Date(atual.data_leitura)) recentes.set(chave, leitura);
   }
-  return planilha.xlsx.writeBuffer();
+
+  const faltando = [];
+  const linhas = unidades.map(unidade => {
+    const nome = nomeUnidade(unidade);
+    const dispensada = (unidade.servicos_sem_medidor || []).some(s => String(s).toUpperCase() === alvo);
+    if (dispensada) return { unidade: nome, leitura: formatarValorLeitura(0) };
+    const encontrada = apelidos(unidade).map(apelido => recentes.get(apelido)).find(Boolean);
+    const leitura = encontrada ? formatarValorLeitura(encontrada.leitura_atual) : '';
+    if (!leitura) faltando.push(nome);
+    return { unidade: nome, leitura };
+  });
+  return { linhas, faltando };
 }
 
-export async function exportarPlanilhaEquipe(leituras, nome, mes, leiturista) {
-  const bytes = await gerarPlanilhaEquipe(leituras, leiturista);
-  const nomeSeguro = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_');
-  const arquivo = `Leituras_${nomeSeguro}_${mes}.xlsx`;
+export function gerarPlanilhaEquipe(unidades, leituras, servico) {
+  if (!unidades.length) throw new Error('Nenhuma unidade cadastrada encontrada para este condomínio.');
+  const { linhas, faltando } = montarConsumosEquipe(unidades, leituras, servico);
+  if (faltando.length) {
+    const rotulo = (NOMES_SERVICO[servico] || servico).toUpperCase();
+    throw new Error(`Planilha de ${rotulo} não gerada: ${faltando.length} unidade(s) sem leitura no mês: ${faltando.join(', ')}.`);
+  }
+  return gerarArquivoConsumos(linhas);
+}
+
+export async function exportarPlanilhaEquipe(unidades, leituras, nome, mes, servico) {
+  const bytes = gerarPlanilhaEquipe(unidades, leituras, servico);
+  const limpar = texto => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+  const arquivo = `uCondo_${limpar(nome)}_${String(servico).toUpperCase()}_${mes}.xlsx`;
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   if (!Capacitor.isNativePlatform()) {
     const { default: FileSaver } = await import('file-saver');
@@ -44,5 +63,5 @@ export async function exportarPlanilhaEquipe(leituras, nome, mes, leiturista) {
     reader.readAsDataURL(blob);
   });
   const { uri } = await Filesystem.writeFile({ path: arquivo, data, directory: Directory.Cache });
-  await Share.share({ title: 'Planilha de leituras', files: [uri] });
+  await Share.share({ title: `uCondo ${NOMES_SERVICO[servico] || servico} - ${nome}`, files: [uri] });
 }

@@ -7,8 +7,9 @@ import { sincronizarLeiturasAnterioresOffline } from '../../services/syncOffline
 import { getCurrentMonthKey } from '../../utils/mesLeituras';
 import {
   abrirFotoEquipe, atualizarCondominiosEquipe, buscarLeiturasEquipe, criarConviteEquipe,
-  listarAutoresEquipe, listarConvitesEquipe, revogarConviteEquipe,
+  listarAutoresEquipe, listarConvitesEquipe, listarUnidadesEquipe, revogarConviteEquipe,
 } from '../../services/equipeService';
+import { NOMES_SERVICO, obterServicosAtivos } from '../../utils/servicosCondominio';
 import './Equipes.css';
 
 function Equipes({ userId, onClose }) {
@@ -96,12 +97,17 @@ function Equipes({ userId, onClose }) {
     });
   }
 
-  async function exportarPlanilha() {
+  const condominioAtual = condominios.find(c => c.id === condominio);
+  const servicosAtivos = condominioAtual ? obterServicosAtivos(condominioAtual) : [];
+
+  async function exportarPlanilha(servico) {
     if (!leituras?.length) return;
     await executar(async () => {
-      const { exportarPlanilhaEquipe } = await import('../../services/planilhaEquipe');
-      const nome = condominios.find(c => c.id === condominio)?.nome || 'Condominio';
-      await exportarPlanilhaEquipe(leituras, nome, mes, autores.find(pessoa => pessoa.id === autor)?.email);
+      const [{ exportarPlanilhaEquipe }, unidades] = await Promise.all([
+        import('../../services/planilhaEquipe'),
+        listarUnidadesEquipe(condominio),
+      ]);
+      await exportarPlanilhaEquipe(unidades, leituras, condominioAtual?.nome || 'Condominio', mes, servico);
     });
   }
 
@@ -192,7 +198,11 @@ function Equipes({ userId, onClose }) {
           <>
             <div className="equipes-acoes">
               <span>{leituras.length} leitura(s) · {leituras.filter(l => l.foto_url).length} foto(s)</span>
-              <button className="equipes-secundario" disabled={ocupado} onClick={exportarPlanilha}>Exportar planilha</button>
+              {servicosAtivos.map(servico => (
+                <button key={servico} className="equipes-secundario" disabled={ocupado} onClick={() => exportarPlanilha(servico)}>
+                  Planilha uCondo · {NOMES_SERVICO[servico]}
+                </button>
+              ))}
             </div>
             <ul className="equipes-leituras">
               {leituras.map(l => (

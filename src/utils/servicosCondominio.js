@@ -25,6 +25,8 @@ export const obterServicosAtivos = (leituraOuTipo) => {
   return servicos;
 };
 
+export const NOMES_SERVICO = { agua: 'Água', gas: 'Gás', energia: 'Energia' };
+
 const tiposPorServicos = {
   agua: 'Somente Água',
   gas: 'Somente Gás',

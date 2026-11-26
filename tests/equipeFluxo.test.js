@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 import { gerarPlanilhaEquipe } from '../src/services/planilhaEquipe.js';
 
 const cond = { id: 'equipe', nome: 'Dona Cacilda', tipoLeitura: 'Água, Gás e Energia', compartilhado: true };
@@ -103,10 +103,10 @@ test('conta simulada sem cache recebe a planilha do ID compartilhado e nunca usa
   assert.equal(cache.has('leituras_anteriores_equipe_GAS'),false);
 });
 
-test('consulta por condomínio e autor, abre a foto pela sessão e exporta XLSX com autoria', async () => {
+test('consulta por condomínio e autor, abre a foto pela sessão e exporta no formato do uCondo', async () => {
   const fotoUrl = 'https://banco.test/storage/v1/object/public/fotos_leituras/leituras/unidade.jpg';
   const principal = {id:'r1',condominio_id:'equipe',leiturista_id:'dionatan',unidade_id:'101',servico:'GAS',leitura_atual:0,foto_url:fotoUrl,data_leitura:'2026-11-13T12:30:00Z'};
-  const {app,consultas} = await carregar({ leituras_detalhes:[principal,{...principal,id:'r2',condominio_id:'outro'},{...principal,id:'r3',leiturista_id:'outra'}] });
+  const {app,consultas} = await carregar({ unidades:[{condominio_id:'equipe',numero:'101'}], leituras_detalhes:[principal,{...principal,id:'r2',condominio_id:'outro'},{...principal,id:'r3',leiturista_id:'outra'}] });
   const resultado = await app.buscarLeiturasEquipe('equipe','dionatan','2026-11');
   assert.deepEqual(resultado,[{...principal,dispensada:false}]);
   assert.deepEqual(consultas[0].filtros,[['condominio_id',['equipe']],['leiturista_id',['dionatan']]]);
@@ -115,12 +115,9 @@ test('consulta por condomínio e autor, abre a foto pela sessão e exporta XLSX 
   assert.equal(await (await fetch(foto)).text(),'foto simulada');
   URL.revokeObjectURL(foto);
   await assert.rejects(app.abrirFotoEquipe(fotoUrl.replace('banco.test','fora.test')),/Endereço de foto inválido/);
-  const xlsx = new ExcelJS.Workbook();
-  await xlsx.xlsx.load(await gerarPlanilhaEquipe(resultado,'Dionatan Gomes'));
-  const planilha = xlsx.getWorksheet('Leituras da equipe');
-  assert.equal(planilha.getCell('C2').value,0);
-  assert.equal(planilha.getCell('E2').value,'Dionatan Gomes');
-  assert.equal(planilha.getCell('F2').value,'Sim');
+  const livro = XLSX.read(gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas'),{type:'array'});
+  assert.deepEqual(livro.SheetNames,['Consumos']);
+  assert.deepEqual(XLSX.utils.sheet_to_json(livro.Sheets.Consumos,{header:1}),[['Unidade *','Leitura atual *'],['101','0.0000']]);
 });
 
 test('marca como dispensada só a unidade sem medidor naquele serviço e sem foto', async () => {
@@ -140,9 +137,7 @@ test('marca como dispensada só a unidade sem medidor naquele serviço e sem fot
   });
   const resultado = await app.buscarLeiturasEquipe('equipe','dionatan','2026-11');
   assert.deepEqual(resultado.map(l => [l.id,l.dispensada]),[['l1',true],['l2',false],['l3',false],['l4',true]]);
-  const xlsx = new ExcelJS.Workbook();
-  await xlsx.xlsx.load(await gerarPlanilhaEquipe(resultado,'Dionatan Gomes'));
-  const planilha = xlsx.getWorksheet('Leituras da equipe');
-  assert.equal(planilha.getCell('F2').value,'Dispensada');
-  assert.equal(planilha.getCell('F3').value,'');
+  const livro = XLSX.read(gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas'),{type:'array'});
+  assert.deepEqual(XLSX.utils.sheet_to_json(livro.Sheets.Consumos,{header:1}),
+    [['Unidade *','Leitura atual *'],['LOJA-001','0.0000'],['AP-101','0.0000']]);
 });
