@@ -3,11 +3,11 @@ import { customAlert } from '../components/CustomPrompt/CustomPrompt';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { supabase } from './supabase.js';
-import * as XLSX from 'xlsx';
 import { parseLeituraNumerica } from '../utils/leituraNumerica.js';
 import { obterLeituraAnterior } from './leiturasAnterioresService.js';
 import { obterServicosAtivos } from '../utils/servicosCondominio.js';
-import { criarAbaConsumos, formatarValorLeitura } from './planilhaUcondo.js';
+import { formatarValorLeitura, gerarArquivoConsumos } from './planilhaUcondo.js';
+import { NOMES_SERVICO } from '../utils/servicosCondominio.js';
 
 /**
  * leituraService - Módulo modular para gerenciamento e exportação de leituras no padrão uCondo.
@@ -300,7 +300,7 @@ export const LeituraService = {
         return false;
       }
 
-      const wb = XLSX.utils.book_new();
+      const abas = [];
       const criarAbaServico = async (servico, nomeAba) => {
         const servicoUpper = String(servico).toUpperCase();
         const dadosExcel = unidades.map(unidade => {
@@ -326,15 +326,13 @@ export const LeituraService = {
           return false;
         }
 
-        // Mesmo formato do modelo de importação do uCondo: duas colunas de texto.
-        XLSX.utils.book_append_sheet(wb, criarAbaConsumos(dadosExcel), nomeAba);
+        abas.push({ nome: nomeAba, linhas: dadosExcel });
         return true;
       };
 
       if (servicoFiltro === 'todos') {
-        const nomesAbas = { agua: 'Água', gas: 'Gás', energia: 'Energia' };
         const abasAtivas = servicosAtivos
-          .map(servico => [servico, nomesAbas[servico]]);
+          .map(servico => [servico, NOMES_SERVICO[servico]]);
 
         for (const [servico, nomeAba] of abasAtivas) {
           if (!await criarAbaServico(servico, nomeAba)) return false;
@@ -343,8 +341,8 @@ export const LeituraService = {
         if (!await criarAbaServico(servicoFiltro, 'Consumos')) return false;
       }
 
-      // 3. Criação do arquivo Excel (.xlsx)
-      const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      // 3. Criação do arquivo Excel (.xlsx) a partir do modelo oficial do uCondo
+      const excelBuffer = await gerarArquivoConsumos(abas);
 
       const base64Data = btoa(
         new Uint8Array(excelBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')

@@ -10,7 +10,7 @@ const apelidos = unidade => [unidade.numero, unidade.nome, unidade.identificador
   .map(nome => String(nome).trim());
 
 /**
- * Cruza as unidades (na ordem do cadastro) com as leituras do mês de um serviço.
+ * Cruza as unidades com as leituras do mês de um serviço (a planilha sai em ordem crescente).
  * Dispensadas saem "0.0000"; havendo mais de uma leitura da unidade, vale a mais recente.
  */
 export function montarConsumosEquipe(unidades, leituras, servico) {
@@ -36,18 +36,18 @@ export function montarConsumosEquipe(unidades, leituras, servico) {
   return { linhas, faltando };
 }
 
-export function gerarPlanilhaEquipe(unidades, leituras, servico) {
+export async function gerarPlanilhaEquipe(unidades, leituras, servico, modelo) {
   if (!unidades.length) throw new Error('Nenhuma unidade cadastrada encontrada para este condomínio.');
   const { linhas, faltando } = montarConsumosEquipe(unidades, leituras, servico);
   if (faltando.length) {
     const rotulo = (NOMES_SERVICO[servico] || servico).toUpperCase();
     throw new Error(`Planilha de ${rotulo} não gerada: ${faltando.length} unidade(s) sem leitura no mês: ${faltando.join(', ')}.`);
   }
-  return gerarArquivoConsumos(linhas);
+  return gerarArquivoConsumos([{ linhas }], modelo);
 }
 
 export async function exportarPlanilhaEquipe(unidades, leituras, nome, mes, servico) {
-  const bytes = gerarPlanilhaEquipe(unidades, leituras, servico);
+  const bytes = await gerarPlanilhaEquipe(unidades, leituras, servico);
   const limpar = texto => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '_');
   const arquivo = `uCondo_${limpar(nome)}_${String(servico).toUpperCase()}_${mes}.xlsx`;
   const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });

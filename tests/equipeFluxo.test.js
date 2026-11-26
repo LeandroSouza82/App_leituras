@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
-import * as XLSX from 'xlsx';
+import { readFile } from 'node:fs/promises';
+import ExcelJS from 'exceljs';
 import { gerarPlanilhaEquipe } from '../src/services/planilhaEquipe.js';
+
+const modelo = await readFile(new URL('../public/modelos/ucondo-consumos.xlsx', import.meta.url));
+async function linhasConsumos(bytes) {
+  const livro = new ExcelJS.Workbook();
+  await livro.xlsx.load(bytes);
+  return livro.worksheets.map(aba => [aba.name, aba.getSheetValues().slice(1).filter(linha => linha?.[1] != null).map(linha => linha.slice(1, 3))]);
+}
 
 const cond = { id: 'equipe', nome: 'Dona Cacilda', tipoLeitura: 'Água, Gás e Energia', compartilhado: true };
 const proprio = { id: 'proprio', nome: 'Dona Cacilda', compartilhado: false };
@@ -115,9 +123,8 @@ test('consulta por condomínio e autor, abre a foto pela sessão e exporta no fo
   assert.equal(await (await fetch(foto)).text(),'foto simulada');
   URL.revokeObjectURL(foto);
   await assert.rejects(app.abrirFotoEquipe(fotoUrl.replace('banco.test','fora.test')),/Endereço de foto inválido/);
-  const livro = XLSX.read(gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas'),{type:'array'});
-  assert.deepEqual(livro.SheetNames,['Consumos']);
-  assert.deepEqual(XLSX.utils.sheet_to_json(livro.Sheets.Consumos,{header:1}),[['Unidade *','Leitura atual *'],['101','0.0000']]);
+  assert.deepEqual(await linhasConsumos(await gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas',modelo)),
+    [['Consumos',[['Unidade *','Leitura atual *'],['101','0.0000']]]]);
 });
 
 test('marca como dispensada só a unidade sem medidor naquele serviço e sem foto', async () => {
@@ -137,7 +144,6 @@ test('marca como dispensada só a unidade sem medidor naquele serviço e sem fot
   });
   const resultado = await app.buscarLeiturasEquipe('equipe','dionatan','2026-11');
   assert.deepEqual(resultado.map(l => [l.id,l.dispensada]),[['l1',true],['l2',false],['l3',false],['l4',true]]);
-  const livro = XLSX.read(gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas'),{type:'array'});
-  assert.deepEqual(XLSX.utils.sheet_to_json(livro.Sheets.Consumos,{header:1}),
-    [['Unidade *','Leitura atual *'],['LOJA-001','0.0000'],['AP-101','0.0000']]);
+  assert.deepEqual(await linhasConsumos(await gerarPlanilhaEquipe(await app.listarUnidadesEquipe('equipe'),resultado,'gas',modelo)),
+    [['Consumos',[['Unidade *','Leitura atual *'],['AP-101','0.0000'],['LOJA-001','0.0000']]]]);
 });
