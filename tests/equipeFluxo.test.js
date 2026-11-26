@@ -108,7 +108,7 @@ test('consulta por condomínio e autor, abre a foto pela sessão e exporta XLSX 
   const principal = {id:'r1',condominio_id:'equipe',leiturista_id:'dionatan',unidade_id:'101',servico:'GAS',leitura_atual:0,foto_url:fotoUrl,data_leitura:'2026-11-13T12:30:00Z'};
   const {app,consultas} = await carregar({ leituras_detalhes:[principal,{...principal,id:'r2',condominio_id:'outro'},{...principal,id:'r3',leiturista_id:'outra'}] });
   const resultado = await app.buscarLeiturasEquipe('equipe','dionatan','2026-11');
-  assert.deepEqual(resultado,[principal]);
+  assert.deepEqual(resultado,[{...principal,dispensada:false}]);
   assert.deepEqual(consultas[0].filtros,[['condominio_id',['equipe']],['leiturista_id',['dionatan']]]);
   assert.deepEqual(consultas[0].periodo,{inicio:['data_leitura','2026-11-01T03:00:00.000Z'],fim:['data_leitura','2026-12-01T03:00:00.000Z']});
   const foto = await app.abrirFotoEquipe(fotoUrl);
@@ -121,4 +121,28 @@ test('consulta por condomínio e autor, abre a foto pela sessão e exporta XLSX 
   assert.equal(planilha.getCell('C2').value,0);
   assert.equal(planilha.getCell('E2').value,'Dionatan Gomes');
   assert.equal(planilha.getCell('F2').value,'Sim');
+});
+
+test('marca como dispensada só a unidade sem medidor naquele serviço e sem foto', async () => {
+  const base = {condominio_id:'equipe',leiturista_id:'dionatan',leitura_atual:0,foto_url:null,data_leitura:'2026-11-13T12:30:00Z'};
+  const {app} = await carregar({
+    unidades: [
+      {condominio_id:'equipe',numero:'LOJA-001',servicos_sem_medidor:['GAS']},
+      {condominio_id:'equipe',nome:' AP-101 ',servicos_sem_medidor:['AGUA']},
+      {condominio_id:'outro',numero:'LOJA-002',servicos_sem_medidor:['GAS']},
+    ],
+    leituras_detalhes: [
+      {...base,id:'l1',unidade_id:'LOJA-001',servico:'GAS'},
+      {...base,id:'l2',unidade_id:'AP-101',servico:'GAS'},
+      {...base,id:'l3',unidade_id:'LOJA-002',servico:'GAS'},
+      {...base,id:'l4',unidade_id:'AP-101',servico:'agua'},
+    ],
+  });
+  const resultado = await app.buscarLeiturasEquipe('equipe','dionatan','2026-11');
+  assert.deepEqual(resultado.map(l => [l.id,l.dispensada]),[['l1',true],['l2',false],['l3',false],['l4',true]]);
+  const xlsx = new ExcelJS.Workbook();
+  await xlsx.xlsx.load(await gerarPlanilhaEquipe(resultado,'Dionatan Gomes'));
+  const planilha = xlsx.getWorksheet('Leituras da equipe');
+  assert.equal(planilha.getCell('F2').value,'Dispensada');
+  assert.equal(planilha.getCell('F3').value,'');
 });

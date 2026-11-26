@@ -90,5 +90,16 @@ body:has(.convite-pagina) { margin: 0; }
 .equipes-leituras { list-style: none; margin: 0; padding: 0; }
 .equipes-leituras li { justify-content: space-between; border-bottom: 1px solid #d8e6ee; }
 .equipes-erro { color: #9a221a; }
-.equipes-foto { margin: 12px 0; }
-.equipes-foto img { display: block; max-width: 100%; margin-top: 8px; }
+.equipes-dispensada { font-weight: 650; color: #40576a; }
+.equipes-foto {
+  width: min(calc(100% - 24px), 660px);
+  max-height: 92dvh;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+}
+.equipes-foto::backdrop { background: #000c; }
+.equipes-foto header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.equipes-foto img { display: block; max-width: 100%; max-height: calc(92dvh - 90px); margin: 8px auto 0; object-fit: contain; }

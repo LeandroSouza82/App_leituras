@@ -73,17 +73,33 @@ export async function atualizarCondominiosEquipe(id, condominios, idsJaLiberados
   }));
 }
 
-export function buscarLeiturasEquipe(condominioId, autorId, mes) {
+export async function buscarLeiturasEquipe(condominioId, autorId, mes) {
   if (!condominioId || !autorId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
     throw new Error('Selecione o leiturista, o condomínio e o mês.');
   }
   const [ano, mesNum] = mes.split('-').map(Number);
   const inicio = new Date(Date.UTC(ano, mesNum - 1, 1, 3)).toISOString();
   const fim = new Date(Date.UTC(ano, mesNum, 1, 3)).toISOString();
-  return paginar(() => supabase.from('leituras_detalhes')
-    .select('id, unidade_id, servico, leitura_atual, foto_url, data_leitura')
-    .eq('condominio_id', condominioId).eq('leiturista_id', autorId)
-    .gte('data_leitura', inicio).lt('data_leitura', fim).order('unidade_id').order('servico').order('id'));
+  const [leituras, unidades] = await Promise.all([
+    paginar(() => supabase.from('leituras_detalhes')
+      .select('id, unidade_id, servico, leitura_atual, foto_url, data_leitura')
+      .eq('condominio_id', condominioId).eq('leiturista_id', autorId)
+      .gte('data_leitura', inicio).lt('data_leitura', fim).order('unidade_id').order('servico').order('id')),
+    consultarUnidades(condominioId),
+  ]);
+  const dispensas = new Set();
+  for (const unidade of unidades) {
+    for (const servico of unidade.servicos_sem_medidor || []) {
+      for (const nome of [unidade.numero, unidade.nome, unidade.identificador]) {
+        if (nome != null) dispensas.add(String(servico).toUpperCase() + ':' + String(nome).trim());
+      }
+    }
+  }
+  return leituras.map(leitura => ({
+    ...leitura,
+    dispensada: !leitura.foto_url
+      && dispensas.has(String(leitura.servico).toUpperCase() + ':' + String(leitura.unidade_id).trim()),
+  }));
 }
 
 export async function abrirFotoEquipe(referencia) {

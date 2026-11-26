@@ -11,7 +11,7 @@ import './Equipes.css';
 
 function Equipes({ userId, onClose }) {
   const dialog = useRef(null);
-  const figura = useRef(null);
+  const dialogFoto = useRef(null);
   const [condominios, setCondominios] = useState([]);
   const [convites, setConvites] = useState([]);
   const [autores, setAutores] = useState([]);
@@ -54,7 +54,7 @@ function Equipes({ userId, onClose }) {
 
   useEffect(() => {
     if (!foto) return;
-    figura.current?.scrollIntoView({ block: 'nearest' });
+    if (!dialogFoto.current.open) dialogFoto.current.showModal();
     return () => URL.revokeObjectURL(foto.url);
   }, [foto]);
 
@@ -181,9 +181,11 @@ function Equipes({ userId, onClose }) {
             <ul className="equipes-leituras">
               {leituras.map(l => (
                 <li key={l.id}>
-                  <span><strong>{l.unidade_id}</strong> · {l.servico} · {Number(l.leitura_atual).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
+                  <span><strong>{l.unidade_id}</strong> · {l.servico} · {l.dispensada
+                    ? <span className="equipes-dispensada">Dispensada</span>
+                    : Number(l.leitura_atual).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
                   {l.foto_url && <button className="equipes-secundario" disabled={ocupado} onClick={() =>
-                    executar(async () => setFoto({ url: await abrirFotoEquipe(l.foto_url), unidade: l.unidade_id }))
+                    executar(async () => setFoto({ url: await abrirFotoEquipe(l.foto_url), unidade: l.unidade_id, servico: l.servico }))
                   }>Ver foto</button>}
                 </li>
               ))}
@@ -191,10 +193,14 @@ function Equipes({ userId, onClose }) {
           </>
         )}
         {foto && (
-          <figure className="equipes-foto" ref={figura}>
-            <button className="equipes-secundario" onClick={() => setFoto(null)}>Fechar foto</button>
+          <dialog className="equipes-foto" ref={dialogFoto} aria-label={'Foto da unidade ' + foto.unidade}
+            onCancel={(event) => { event.preventDefault(); setFoto(null); }}>
+            <header>
+              <strong>{foto.unidade} · {foto.servico}</strong>
+              <button type="button" className="equipes-secundario" autoFocus onClick={() => setFoto(null)}>Fechar foto</button>
+            </header>
             <img src={foto.url} alt={'Medidor da unidade ' + foto.unidade} />
-          </figure>
+          </dialog>
         )}
       </section>
     </dialog>

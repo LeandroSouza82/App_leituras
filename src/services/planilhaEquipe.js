@@ -21,7 +21,7 @@ export async function gerarPlanilhaEquipe(leituras, leiturista) {
       leitura_atual: Number(leitura.leitura_atual),
       data_leitura: new Date(leitura.data_leitura).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
       leiturista,
-      foto: leitura.foto_url || leitura.tem_foto ? 'Sim' : '',
+      foto: leitura.foto_url || leitura.tem_foto ? 'Sim' : leitura.dispensada ? 'Dispensada' : '',
     });
   }
   return planilha.xlsx.writeBuffer();
