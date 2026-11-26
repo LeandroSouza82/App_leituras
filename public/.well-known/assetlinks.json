@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.fastleituras.app",
+      "sha256_cert_fingerprints": [
+        "08:9D:E7:E4:90:74:2E:5E:8A:27:EE:27:60:B2:C8:74:6F:6E:19:93:4B:12:4F:0A:CC:4F:C7:07:43:9E:1C:02"
+      ]
+    }
+  }
+]

@@ -21,7 +21,9 @@
     </script>
     <script type="module">
       var path = window.location.pathname;
-      if (path !== '/confirmacao-email' && path !== '/redefinir-senha') {
+      if (path === '/convite' || path === '/convite/') {
+        import('/src/conviteMain.jsx');
+      } else if (path !== '/confirmacao-email' && path !== '/redefinir-senha') {
         import('/src/main.jsx');
       }
     </script>
