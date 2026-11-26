@@ -42,6 +42,15 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
 
+            <!-- Convites HTTPS abrem no Android quando o domínio confirma a assinatura do app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="fastleitura.appviper.com.br" android:path="/convite" />
+                <data android:scheme="https" android:host="fastleitura.appviper.com.br" android:path="/convite/" />
+            </intent-filter>
+
             <!-- Deep Link para Retorno do OAuth / Supabase Auth -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -2,7 +2,7 @@
 
 O mesmo APK atende as duas funções. A conta administradora tem a área **Equipes** no menu principal. As demais contas usam o aplicativo e veem apenas seus próprios condomínios e os condomínios atribuídos à sua conta.
 
-Em **Menu → Equipes**, selecione os condomínios, toque em **Criar convite** e depois em **Convidar pelo WhatsApp**. A seleção só pode ser compartilhada depois de sincronizar as unidades e as leituras anteriores dos serviços ativos. O convidado abre o link, toca em **Abrir o Fast Leituras**, confere o e-mail da conta Google e aceita dentro do aplicativo. Se precisar do APK, ele baixa, instala e volta ao mesmo link para abrir o app. O convite é de uso único, vale sete dias e pode ser cancelado antes do aceite.
+Em **Menu → Equipes**, selecione os condomínios, toque em **Criar convite** e depois em **Convidar pelo WhatsApp**. A seleção só pode ser compartilhada depois de sincronizar as unidades e as leituras anteriores dos serviços ativos. Com o Android App Link verificado, o link do WhatsApp abre o Fast Leituras. O convidado confere sua conta Google e, ao aceitar, entra na lista de leituras com os condomínios atribuídos. No navegador, é possível baixar o APK atualizado e reabrir o mesmo convite depois de instalar. O convite é de uso único, vale sete dias e pode ser cancelado antes do aceite.
 
 O leiturista recebe os dados do condomínio e as leituras anteriores no card compartilhado. Em **Definir meu valor**, ele pode informar o próprio valor. O campo começa vazio, com `R$ 0,00` como indicação. Cada conta consulta apenas o valor cadastrado para ela.
 
@@ -12,8 +12,8 @@ As leituras sincronizadas ficam ligadas ao identificador do condomínio, com a c
 
 1. Aplique a migração de equipe no Supabase antes de testar o menu e os convites. O APK mantém o fluxo antigo de sincronização enquanto a migração estiver ausente.
 2. Registre somente o ID já verificado da conta administradora na tabela privada equipe_interna.administradores. Guarde a operação no registro de implantação. Contas comuns não podem entrar nessa tabela pelo aplicativo.
-3. Publique a rota do convite no mesmo domínio usado para confirmação de e-mail. O Android recebe o convite no aplicativo e autentica pelo Google nativo.
-4. Configure `VITE_FAST_LEITURAS_APK_URL` com a URL HTTPS do APK oficial assinado. A página usa `VITE_FAST_LEITURAS_ANDROID_URL` como alternativa para configurações legadas.
+3. Publique a rota do convite e `/.well-known/assetlinks.json` em `fastleitura.appviper.com.br`. Confira que o JSON retorna HTTP 200, com o certificado SHA-256 da versão Android e sem redirecionamento.
+4. Configure `VITE_FAST_LEITURAS_APK_URL` com a URL HTTPS do APK oficial assinado ou inclua o APK como `/downloads/Fast-Leituras.apk` na publicação web. A página também aceita a configuração legada `VITE_FAST_LEITURAS_ANDROID_URL`.
 5. Gere o APK com a assinatura original para que a instalação funcione como atualização e preserve as filas offline.
 
 Para validar, use uma conta administradora, uma conta Google de leiturista e um condomínio de teste. Confirme o aceite pelo link, a ausência do menu **Equipe** na conta leiturista e que uma segunda conta não consegue usar o mesmo convite. Sincronize uma leitura com foto, confira a foto e exporte o Excel como administrador. Remova o acesso e confirme que a leitura e a foto continuam visíveis para o administrador.

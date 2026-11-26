@@ -790,24 +790,6 @@ const App = () => {
     );
   }
 
-  if (convite) {
-    return (
-      <AceitarConvite
-        key={convite}
-        token={convite}
-        email={session.user.email}
-        contaGoogle={session.user.identities?.some(identidade => identidade.provider === 'google')
-          || session.user.app_metadata?.providers?.includes('google') === true}
-        onLogout={handleLogout}
-        onClose={(aceito) => {
-          if (aceito) setAbrirLeituras(true);
-          localStorage.removeItem(CHAVE_CONVITE_PENDENTE);
-          setConvite(null);
-        }}
-      />
-    );
-  }
-
   if (!notificationPermissionStatus.checked || notificationPermissionStatus.userId !== session.user.id) {
     return (
       <div className="legal-consent-loading" role="status">
@@ -834,6 +816,25 @@ const App = () => {
         }}
         onPermissionGranted={revalidarPermissaoNotificacao}
         onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (convite) {
+    return (
+      <AceitarConvite
+        key={convite}
+        token={convite}
+        email={session.user.email}
+        contaGoogle={session.user.identities?.some(identidade => identidade.provider === 'google')
+          || session.user.app_metadata?.providers?.includes('google') === true}
+        onLogout={handleLogout}
+        onClose={(aceito) => {
+          if (localStorage.getItem(CHAVE_CONVITE_PENDENTE) !== convite) return;
+          if (aceito) setAbrirLeituras(true);
+          localStorage.removeItem(CHAVE_CONVITE_PENDENTE);
+          setConvite(null);
+        }}
       />
     );
   }

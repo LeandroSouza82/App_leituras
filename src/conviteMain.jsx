@@ -25,15 +25,10 @@ function PaginaConvite({ token }) {
         <h1 id="convite-titulo">{token ? 'Você foi convidado para o Fast Leituras' : 'Convite indisponível'}</h1>
         {token ? (
           <>
-            <p>Abra o aplicativo, entre com sua conta Google e aceite o convite. Os condomínios da sua equipe vão aparecer no app.</p>
-            <a className="equipes-primario" href={abrirConviteAndroid(token)}><Smartphone size={19} /> Abrir o Fast Leituras</a>
-            {apk ? (
-              <>
-                <a className="equipes-secundario" href={apk} referrerPolicy="no-referrer"><ArrowDownToLine size={19} /> Baixar o APK atualizado</a>
-                <p>Depois de instalar no Android, volte a esta página e toque em <strong>Abrir o Fast Leituras</strong>.</p>
-              </>
-            ) : <p>Se ainda precisa instalar o app, peça o APK atualizado a quem enviou o convite. Depois, volte a este link.</p>}
-            <p>Se abriu pelo WhatsApp e o botão não respondeu, abra este link no Chrome do Android.</p>
+            <p>Instale ou atualize o aplicativo no Android para aceitar o convite e receber os condomínios da equipe.</p>
+            <a className="equipes-primario" href={apk ?? '/downloads/Fast-Leituras.apk'} referrerPolicy="no-referrer"><ArrowDownToLine size={19} /> Baixar APK para Android</a>
+            <a className="equipes-secundario" href={abrirConviteAndroid(token)}><Smartphone size={19} /> Já instalei, abrir convite</a>
+            <p>Depois de instalar, toque no mesmo link do WhatsApp. Se esta página continuar aberta, use o botão acima para abrir o convite no app.</p>
           </>
         ) : <p>Abra o link completo ou peça um novo convite ao responsável pela equipe.</p>}
       </section>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { abrirConviteAndroid, lerTokenConvite, linkConvite, ouvirConvitesAndroid, urlApkOficial } from '../src/services/conviteEquipe.js';
+import { abrirConviteAndroid, APP_ANDROID, lerTokenConvite, linkConvite, ouvirConvitesAndroid, URL_CONVITE, urlApkOficial } from '../src/services/conviteEquipe.js';
 
 const token = 'a'.repeat(64);
 
@@ -35,7 +36,26 @@ test('download usa somente endereço HTTPS sem credenciais', () => {
   assert.equal(urlApkOficial(''), null);
 });
 
-test('Android simulado entrega convite com o app fechado e no retorno com o app aberto', async () => {
+test('o Android associa somente a rota HTTPS de convites ao pacote assinado', async () => {
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  const filtro = manifest.match(/<intent-filter android:autoVerify="true">([\s\S]*?)<\/intent-filter>/)?.[1];
+  assert.ok(filtro);
+  assert.match(filtro, /android\.intent\.action\.VIEW/);
+  assert.match(filtro, /android\.intent\.category\.BROWSABLE/);
+  assert.match(filtro, /android\.intent\.category\.DEFAULT/);
+  const convite = new URL(URL_CONVITE);
+  const urls = Array.from(filtro.matchAll(/<data android:scheme="(.*?)" android:host="(.*?)" android:path="(.*?)"\s*\/>/g),
+    ([, esquema, host, caminho]) => `${esquema}://${host}${caminho}`);
+  assert.deepEqual(urls, [convite.href, `${convite.href}/`]);
+
+  const declaracoes = JSON.parse(await readFile(new URL('../public/.well-known/assetlinks.json', import.meta.url), 'utf8'));
+  assert.deepEqual(declaracoes[0].relation, ['delegate_permission/common.handle_all_urls']);
+  assert.equal(declaracoes[0].target.namespace, 'android_app');
+  assert.equal(declaracoes[0].target.package_name, APP_ANDROID);
+  assert.match(declaracoes[0].target.sha256_cert_fingerprints[0], /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+});
+
+test('Android simulado entrega App Link HTTPS com o app fechado e com o app aberto', async () => {
   const recebidos = [];
   const outrosLinks = [];
   let abrir;
@@ -47,11 +67,11 @@ test('Android simulado entrega convite com o app fechado e no retorno com o app 
       abrir = callback;
       return { remove: () => { removido = true; } };
     },
-    async getLaunchUrl() { return { url: 'com.fastleituras.app://convite?token=' + token }; },
+    async getLaunchUrl() { return { url: linkConvite(token) }; },
   };
   const cancelar = ouvirConvitesAndroid(app, convite => recebidos.push(convite), url => outrosLinks.push(url));
   await Promise.resolve();
-  abrir({ url: 'com.fastleituras.app://convite?token=' + segundoToken });
+  abrir({ url: linkConvite(segundoToken) });
   abrir({ url: 'com.fastleituras.app://auth-callback/' });
   assert.deepEqual(recebidos, [token, segundoToken]);
   assert.deepEqual(outrosLinks, ['com.fastleituras.app://auth-callback/']);
