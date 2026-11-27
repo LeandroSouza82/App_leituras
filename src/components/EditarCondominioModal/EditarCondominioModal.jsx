@@ -39,20 +39,21 @@ const buildFormState = (condominio) => ({
   longitude: condominio?.longitude || null,
 });
 
-const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
+const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'cadastro' }) => {
   const [form, setForm] = useState(() => buildFormState(condominio));
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [mostrarConfirmacaoGps, setMostrarConfirmacaoGps] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
-  const somenteValor = condominio?.compartilhado === true;
+  const compartilhado = condominio?.compartilhado === true;
+  const somenteValor = compartilhado && modo === 'valor';
 
   useEffect(() => {
     if (isOpen) {
       setForm(buildFormState(condominio));
       setFeedback(null);
     }
-  }, [isOpen, condominio]);
+  }, [isOpen, condominio, modo]);
 
   if (!isOpen || !condominio) {
     return <Toast {...toast} onClose={dismissToast} />;
@@ -135,6 +136,36 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
       return;
     }
 
+    const dadosDeCampo = {
+      endereco: form.endereco.trim(),
+      instrucoesAcesso: form.instrucoesAcesso.trim(),
+      contatoSindico: form.contatoSindico.trim(),
+    };
+
+    if (compartilhado) {
+      const alteracoes = Object.fromEntries(
+        Object.entries(dadosDeCampo).filter(([campo, valor]) => valor !== (condominio[campo] || '').trim())
+      );
+      if (Object.keys(alteracoes).length === 0) {
+        onClose();
+        return;
+      }
+
+      setSalvando(true);
+      setFeedback(null);
+      try {
+        if (await onSave(condominio.id, alteracoes) === false) {
+          setFeedback({ tipo: 'erro', mensagem: 'Não foi possível salvar as alterações. Tente novamente.' });
+          return;
+        }
+        showToast('Dados do condomínio atualizados!');
+        onClose();
+      } finally {
+        setSalvando(false);
+      }
+      return;
+    }
+
     if (!form.nome?.trim()) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe o nome do condomínio.' });
       return;
@@ -172,9 +203,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
       diaLeitura: String(form.diaLeitura).trim(),
       apartamentos: Number(form.apartamentos),
       valor: valorNumerico,
-      endereco: form.endereco.trim(),
-      instrucoesAcesso: form.instrucoesAcesso.trim(),
-      contatoSindico: form.contatoSindico.trim(),
+      ...dadosDeCampo,
     };
 
     setSalvando(true);
@@ -208,7 +237,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <div className={`form-feedback form-feedback-${feedback.tipo}`}>{feedback.mensagem}</div>
           )}
 
-          {!somenteValor && <>
+          {!compartilhado && <>
           <label className="field field-full">
             <span>Nome do condomínio</span>
             <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
@@ -238,10 +267,10 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
           </label>
           </>}
 
-          <label className="field field-full">
+          {(!compartilhado || somenteValor) && <label className="field field-full">
             <span>{somenteValor ? 'Seu valor para este condomínio' : 'Valor'}</span>
             <input type="text" name="valor" inputMode="decimal" value={form.valor} onChange={handleChange} placeholder="R$ 0,00" />
-          </label>
+          </label>}
 
           {!somenteValor && <>
           <label className="field field-full">
@@ -265,7 +294,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
           </label>
 
-          {form.latitude && form.longitude && (
+          {!compartilhado && form.latitude && form.longitude && (
             <button
               type="button"
               onClick={handleLimparGps}

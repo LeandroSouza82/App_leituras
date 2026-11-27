@@ -35,7 +35,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
   const isAtrasado = !leitura.completo && diaLeitura !== null && diaLeitura < diaAtual;
   const isHoje = !leitura.completo && diaLeitura !== null && diaLeitura === diaAtual;
   const isAmanha = !leitura.completo && diaLeitura !== null && diaAtual < ultimoDiaDoMes && diaLeitura === diaAtual + 1;
-  const [mostrarModalEdicao, setMostrarModalEdicao] = useState(false);
+  const [modoEdicao, setModoEdicao] = useState(null);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [mostrarModalDeletar, setMostrarModalDeletar] = useState(false);
   const [mostrarModalFoto, setMostrarModalFoto] = useState(false);
@@ -96,8 +96,10 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
 
   const abrirEdicao = () => {
     setMenuMaisAberto(false);
-    setMostrarModalEdicao(true);
+    setModoEdicao('cadastro');
   };
+
+  const temGps = leitura.latitude != null && leitura.longitude != null;
 
   const salvarLocalizacaoGPS = async (e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -114,8 +116,8 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
         return;
       }
       const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
-      onEdit(leitura.id, { latitude: position.coords.latitude, longitude: position.coords.longitude });
-      showToast('📍 Localização GPS salva com sucesso no aparelho!');
+      const sucesso = await onEdit(leitura.id, { latitude: position.coords.latitude, longitude: position.coords.longitude });
+      if (sucesso) showToast('📍 Localização GPS salva com sucesso!');
     } catch (error) {
       await customAlert('Erro no hardware de GPS ou permissão. Tente novamente em local aberto.', 'Erro de GPS');
     } finally {
@@ -127,7 +129,7 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
     if (e) { e.preventDefault(); e.stopPropagation(); }
     if (!leitura) return;
     let termoBusca = '';
-    if (leitura.latitude && leitura.longitude) {
+    if (temGps) {
       termoBusca = `${leitura.latitude},${leitura.longitude}`;
     } else if (leitura.endereco && String(leitura.endereco).trim() !== '') {
       termoBusca = leitura.endereco.trim();
@@ -218,10 +220,10 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
         <div className="item-divider" />
 
         {/* ── LINHA 4: Valor + Ações principais + Menu "..." ── */}
-        <div className="item-row-actions">
+        <div className={`item-row-actions${leitura.compartilhado ? ' item-row-actions--compartilhado' : ''}`}>
           {leitura.compartilhado ? (
-            <button type="button" className="item-value item-value-edit" onClick={abrirEdicao} aria-label="Editar meu valor">
-              {leitura.valor == null ? 'Definir meu valor' : formatCurrency(leitura.valor)}
+            <button type="button" className="item-value item-value-edit" onClick={() => { setMenuMaisAberto(false); setModoEdicao('valor'); }} aria-label="Editar meu valor">
+              {formatCurrency(leitura.valor ?? 0)}
             </button>
           ) : <span className="item-value">{formatCurrency(leitura.valor)}</span>}
 
@@ -266,9 +268,8 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                     onClick={abrirEdicao}
                   >
                     <Pencil size={14} />
-                    {leitura.compartilhado ? 'Meu valor' : 'Editar'}
+                    Editar
                   </button>
-                  {!leitura.compartilhado && <>
                   <button
                     type="button"
                     className="item-dropdown-item item-dropdown-item--gps"
@@ -276,8 +277,9 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                     disabled={capturandoGpsId === leitura.id}
                   >
                     <LocateFixed size={14} />
-                    {leitura.latitude && leitura.longitude ? 'Atualizar GPS' : 'Capturar GPS'}
+                    {temGps ? 'Atualizar GPS' : 'Capturar GPS'}
                   </button>
+                  {!leitura.compartilhado && <>
                   <div className="item-dropdown-divider" />
                   <button
                     type="button"
@@ -312,8 +314,9 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
         onCancel={() => setMostrarModalDeletar(false)}
       />
       <EditarCondominioModal
-        isOpen={mostrarModalEdicao}
-        onClose={() => setMostrarModalEdicao(false)}
+        isOpen={modoEdicao !== null}
+        modo={modoEdicao}
+        onClose={() => setModoEdicao(null)}
         condominio={leitura}
         onSave={(id, dadosAtualizados) => onEdit(id, dadosAtualizados)}
       />
