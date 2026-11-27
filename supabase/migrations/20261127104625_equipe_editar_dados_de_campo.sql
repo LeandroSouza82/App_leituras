@@ -6,6 +6,7 @@ language plpgsql security definer set search_path = ''
 as $$
 declare
   v_leiturista uuid := auth.uid();
+  v_dia_leitura integer;
   v_latitude numeric;
   v_longitude numeric;
 begin
@@ -33,6 +34,13 @@ begin
     end if;
   end if;
 
+  if p_dados ? 'dia_leitura' then
+    if btrim(p_dados->>'dia_leitura') !~ '^(0?[1-9]|[12][0-9]|3[01])$' then
+      raise exception using errcode = '22023', message = 'Informe um dia de leitura entre 1 e 31.';
+    end if;
+    v_dia_leitura := btrim(p_dados->>'dia_leitura')::integer;
+  end if;
+
   if p_dados ?| array['latitude', 'longitude'] and not (p_dados @> '{"latitude":null,"longitude":null}'::jsonb) then
     if jsonb_typeof(p_dados->'latitude') is distinct from 'number'
       or jsonb_typeof(p_dados->'longitude') is distinct from 'number' then
@@ -48,7 +56,7 @@ begin
   update public.condominios c
   set nome = case when p_dados ? 'nome' then btrim(p_dados->>'nome') else c.nome end,
       tipo_leitura = case when p_dados ? 'tipo_leitura' then btrim(p_dados->>'tipo_leitura') else c.tipo_leitura end,
-      dia_leitura = case when p_dados ? 'dia_leitura' then btrim(p_dados->>'dia_leitura') else c.dia_leitura end,
+      dia_leitura = coalesce(v_dia_leitura, c.dia_leitura),
       apartamentos = case when p_dados ? 'apartamentos' then (p_dados->>'apartamentos')::integer else c.apartamentos end,
       endereco = case when p_dados ? 'endereco' then nullif(btrim(p_dados->>'endereco'), '') else c.endereco end,
       instrucoes_acesso = case when p_dados ? 'instrucoes_acesso' then nullif(btrim(p_dados->>'instrucoes_acesso'), '') else c.instrucoes_acesso end,
