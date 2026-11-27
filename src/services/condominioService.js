@@ -60,8 +60,8 @@ const toApplicationCondominio = (row, mesReferencia = getCurrentMonthKey(), comp
     endereco: row.endereco || '',
     instrucoesAcesso: row.instrucoes_acesso || '',
     contatoSindico: row.telefone_sindico || '',
-    latitude: row.latitude ? Number(row.latitude) : null,
-    longitude: row.longitude ? Number(row.longitude) : null,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
     completo: Boolean(leituraDoMes?.concluido),
     mesReferencia,
   };
@@ -152,13 +152,11 @@ export const salvarCondominio = async (condominioData) => {
 };
 
 export const atualizarCondominio = async (id, condominioData, { compartilhado = false } = {}) => {
-  if (compartilhado) {
+  if (compartilhado && Object.keys(condominioData).length === 1 && Object.hasOwn(condominioData, 'valor')) {
     return { valor: await salvarValorCompartilhado(id, condominioData.valor) };
   }
   try {
     const client = requireSupabase();
-    const userId = await getAuthenticatedUserId();
-    
     // Constrói um payload seguro com apenas os campos fornecidos e válidos
     const payload = {};
     
@@ -195,6 +193,16 @@ export const atualizarCondominio = async (id, condominioData, { compartilhado = 
       payload.longitude = condominioData.longitude === null ? null : Number(condominioData.longitude);
     }
     
+    if (compartilhado) {
+      const { error } = await client.rpc('equipe_editar_dados_de_campo', {
+        p_condominio_id: id,
+        p_dados: payload,
+      });
+      if (error) throwDatabaseError('Não foi possível atualizar o condomínio da equipe', error);
+      return condominioData;
+    }
+
+    const userId = await getAuthenticatedUserId();
     const { data, error } = await client
       .from('condominios')
       .update(payload)
@@ -214,9 +222,14 @@ export const atualizarCondominio = async (id, condominioData, { compartilhado = 
   }
 };
 
-export const deletarCondominio = async (id) => {
+export const deletarCondominio = async (id, { compartilhado = false } = {}) => {
   try {
     const client = requireSupabase();
+    if (compartilhado) {
+      const { error } = await client.rpc('equipe_ocultar_condominio', { p_condominio_id: id });
+      if (error) throwDatabaseError('Não foi possível remover o condomínio da sua lista', error);
+      return { id };
+    }
     const userId = await getAuthenticatedUserId();
     const { error } = await client.from('condominios').delete().eq('id', id).eq('user_id', userId);
 

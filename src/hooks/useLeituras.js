@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   alternarStatusLeitura,
   atualizarCondominio,
@@ -41,6 +41,7 @@ export const useLeituras = (onFeedback = () => {}) => {
   const ultimoDiaDoMes = new Date(dataAtual.getFullYear(), dataAtual.getMonth() + 1, 0).getDate();
   const [dadosLeituras, setLeituras] = useState([]);
   const [cacheCarregado, setCacheCarregado] = useState(false);
+  const ocultadosNestaSessao = useRef(new Set());
   const leituras = useMemo(
     () => leiturasParaMes(dadosLeituras, mesReferencia),
     [dadosLeituras, mesReferencia]
@@ -61,6 +62,10 @@ export const useLeituras = (onFeedback = () => {}) => {
 
   useEffect(() => {
     let isMounted = true;
+    const conta = contaOfflineAtiva();
+    const filtrarVisiveis = itens => itens.filter(item =>
+      !item.compartilhado || !ocultadosNestaSessao.current.has(`${conta}:${item.id}`)
+    );
     setPreparandoCiclos(true);
     const prepararCiclos = async dados => {
       const preparados = [];
@@ -84,7 +89,7 @@ export const useLeituras = (onFeedback = () => {}) => {
         const cachedData = localStorage.getItem('condominios_cache');
         if (cachedData && isMounted) {
           preparados = await prepararCiclos(protegerValoresNoCache(JSON.parse(cachedData), contaOfflineAtiva()));
-          if (isMounted) setLeituras(aplicarMesAtual(preparados, mesReferencia));
+          if (isMounted) setLeituras(aplicarMesAtual(filtrarVisiveis(preparados), mesReferencia));
         }
       } catch (e) {
         console.warn("Erro ao ler cache local de condominios", e);
@@ -103,7 +108,7 @@ export const useLeituras = (onFeedback = () => {}) => {
             const novos = await prepararCiclos(dados.filter(item => !conhecidos.has(String(item.id))));
             if (!isMounted) return;
             const ciclos = new Map(novos.map(item => [String(item.id), item]));
-            const atuais = aplicarMesAtual(dados.map(item => ({ ...item,
+            const atuais = aplicarMesAtual(filtrarVisiveis(dados).map(item => ({ ...item,
               cicloPendente: (conhecidos.get(String(item.id)) || ciclos.get(String(item.id)))?.cicloPendente || null,
             })), mesReferencia);
             setLeituras(atuais);
@@ -215,8 +220,22 @@ export const useLeituras = (onFeedback = () => {}) => {
   };
 
   const deletarLeitura = async (id) => {
-    await NotificationService.cancelForLeitura(id);
     const leituraAnterior = leituras.find((item) => item.id === id);
+    if (leituraAnterior?.compartilhado) {
+      const conta = contaOfflineAtiva();
+      try {
+        await deletarCondominio(id, { compartilhado: true });
+        ocultadosNestaSessao.current.add(`${conta}:${id}`);
+        if (conta === contaOfflineAtiva()) {
+          setLeituras((previous) => previous.filter((item) => item.id !== id));
+          await NotificationService.cancelForLeitura(id);
+        }
+      } catch (error) {
+        onFeedback(error.message, 'error');
+      }
+      return;
+    }
+    await NotificationService.cancelForLeitura(id);
     setLeituras((previous) => previous.filter((item) => item.id !== id));
 
     try {

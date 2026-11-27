@@ -223,6 +223,22 @@
   gap: 6px;
 }
 
+.item-row-actions--compartilhado {
+  flex-wrap: wrap;
+}
+
+.item-row-actions--compartilhado .item-value-edit {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.item-row-actions--compartilhado .item-btns {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 /* Botão base (rota / cam / mais) */
 .item-btn {
   display: inline-flex;

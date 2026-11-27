@@ -67,7 +67,7 @@ test('a consulta antiga do card compartilhado seleciona dados sem pedir o valor 
   assert.equal(card.apartamentos, 32);
 });
 
-test('editar um card compartilhado envia só o valor individual', async () => {
+test('salvar Meu valor no card compartilhado usa o valor individual', async () => {
   const chamadas = [];
   const client = { rpc: async (funcao, parametros) => {
     chamadas.push([funcao, parametros]);
@@ -76,4 +76,28 @@ test('editar um card compartilhado envia só o valor individual', async () => {
   const { atualizarCondominio } = await carregarServico(client);
   assert.deepEqual(await atualizarCondominio('dona-cacilda', { valor: 0 }, { compartilhado: true }), { valor: 0 });
   assert.deepEqual(chamadas, [['equipe_salvar_valor_individual', { p_condominio_id: 'dona-cacilda', p_valor: 0 }]]);
+});
+
+test('editar dados de campo e GPS usa a RPC do condomínio compartilhado', async () => {
+  const chamadas = [];
+  const { atualizarCondominio } = await carregarServico({ rpc: async (funcao, parametros) => {
+    chamadas.push([funcao, parametros]);
+    return {};
+  } });
+  const dados = { endereco: 'Rua nova', instrucoesAcesso: '', latitude: 0, longitude: -48.67 };
+  assert.deepEqual(await atualizarCondominio('dona-cacilda', dados, { compartilhado: true }), dados);
+  assert.deepEqual(chamadas, [['equipe_editar_dados_de_campo', {
+    p_condominio_id: 'dona-cacilda',
+    p_dados: { endereco: 'Rua nova', instrucoes_acesso: null, latitude: 0, longitude: -48.67 },
+  }]]);
+});
+
+test('excluir um card compartilhado oculta somente para a conta autenticada', async () => {
+  const chamadas = [];
+  const { deletarCondominio } = await carregarServico({ rpc: async (funcao, parametros) => {
+    chamadas.push([funcao, parametros]);
+    return {};
+  } });
+  assert.deepEqual(await deletarCondominio('dona-cacilda', { compartilhado: true }), { id: 'dona-cacilda' });
+  assert.deepEqual(chamadas, [['equipe_ocultar_condominio', { p_condominio_id: 'dona-cacilda' }]]);
 });

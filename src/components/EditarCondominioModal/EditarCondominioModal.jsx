@@ -35,24 +35,25 @@ const buildFormState = (condominio) => ({
   endereco: condominio?.endereco || '',
   instrucoesAcesso: condominio?.instrucoesAcesso || '',
   contatoSindico: condominio?.contatoSindico || '',
-  latitude: condominio?.latitude || null,
-  longitude: condominio?.longitude || null,
+  latitude: condominio?.latitude ?? null,
+  longitude: condominio?.longitude ?? null,
 });
 
-const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
+const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'cadastro' }) => {
   const [form, setForm] = useState(() => buildFormState(condominio));
   const [salvando, setSalvando] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [mostrarConfirmacaoGps, setMostrarConfirmacaoGps] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
-  const somenteValor = condominio?.compartilhado === true;
+  const compartilhado = condominio?.compartilhado === true;
+  const somenteValor = compartilhado && modo === 'valor';
 
   useEffect(() => {
     if (isOpen) {
       setForm(buildFormState(condominio));
       setFeedback(null);
     }
-  }, [isOpen, condominio]);
+  }, [isOpen, condominio, modo]);
 
   if (!isOpen || !condominio) {
     return <Toast {...toast} onClose={dismissToast} />;
@@ -94,7 +95,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
         longitude: null,
       };
 
-      const sucesso = await onSave(condominio.id, dadosAtualizados);
+      const sucesso = await onSave(condominio.id, compartilhado ? { latitude: null, longitude: null } : dadosAtualizados);
 
       if (sucesso === false) {
         throw new Error('Falha no onSave');
@@ -142,7 +143,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
 
     const camposNumericos = [
       { nome: 'apartamentos', rotulo: 'apartamentos', valor: form.apartamentos },
-      { nome: 'valor', rotulo: 'valor', valor: form.valor },
+      ...(!compartilhado ? [{ nome: 'valor', rotulo: 'valor', valor: form.valor }] : []),
       { nome: 'diaLeitura', rotulo: 'dia da leitura', valor: form.diaLeitura },
     ];
     const valorNumerico = parseCurrencyToNumber(form.valor);
@@ -171,16 +172,24 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
       tipoLeitura: form.tipoLeitura,
       diaLeitura: String(form.diaLeitura).trim(),
       apartamentos: Number(form.apartamentos),
-      valor: valorNumerico,
+      ...(!compartilhado ? { valor: valorNumerico } : {}),
       endereco: form.endereco.trim(),
       instrucoesAcesso: form.instrucoesAcesso.trim(),
       contatoSindico: form.contatoSindico.trim(),
     };
 
+    const alteracoes = compartilhado
+      ? Object.fromEntries(Object.entries(dadosAtualizados).filter(([campo, valor]) => valor !== condominio[campo]))
+      : dadosAtualizados;
+    if (Object.keys(alteracoes).length === 0) {
+      onClose();
+      return;
+    }
+
     setSalvando(true);
     setFeedback(null);
 
-    const sucesso = await onSave(condominio.id, dadosAtualizados);
+    const sucesso = await onSave(condominio.id, alteracoes);
     setSalvando(false);
 
     if (sucesso === false) {
@@ -238,10 +247,10 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
           </label>
           </>}
 
-          <label className="field field-full">
+          {(!compartilhado || somenteValor) && <label className="field field-full">
             <span>{somenteValor ? 'Seu valor para este condomínio' : 'Valor'}</span>
             <input type="text" name="valor" inputMode="decimal" value={form.valor} onChange={handleChange} placeholder="R$ 0,00" />
-          </label>
+          </label>}
 
           {!somenteValor && <>
           <label className="field field-full">
@@ -265,7 +274,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave }) => {
             <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
           </label>
 
-          {form.latitude && form.longitude && (
+          {form.latitude != null && form.longitude != null && (
             <button
               type="button"
               onClick={handleLimparGps}
