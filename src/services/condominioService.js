@@ -222,9 +222,14 @@ export const atualizarCondominio = async (id, condominioData, { compartilhado = 
   }
 };
 
-export const deletarCondominio = async (id) => {
+export const deletarCondominio = async (id, { compartilhado = false } = {}) => {
   try {
     const client = requireSupabase();
+    if (compartilhado) {
+      const { error } = await client.rpc('equipe_ocultar_condominio', { p_condominio_id: id });
+      if (error) throwDatabaseError('Não foi possível remover o condomínio da sua lista', error);
+      return { id };
+    }
     const userId = await getAuthenticatedUserId();
     const { error } = await client.from('condominios').delete().eq('id', id).eq('user_id', userId);
 

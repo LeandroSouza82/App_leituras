@@ -91,3 +91,13 @@ test('editar dados de campo e GPS usa a RPC do condomínio compartilhado', async
     p_dados: { endereco: 'Rua nova', instrucoes_acesso: null, latitude: 0, longitude: -48.67 },
   }]]);
 });
+
+test('excluir um card compartilhado oculta somente para a conta autenticada', async () => {
+  const chamadas = [];
+  const { deletarCondominio } = await carregarServico({ rpc: async (funcao, parametros) => {
+    chamadas.push([funcao, parametros]);
+    return {};
+  } });
+  assert.deepEqual(await deletarCondominio('dona-cacilda', { compartilhado: true }), { id: 'dona-cacilda' });
+  assert.deepEqual(chamadas, [['equipe_ocultar_condominio', { p_condominio_id: 'dona-cacilda' }]]);
+});

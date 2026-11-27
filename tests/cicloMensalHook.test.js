@@ -12,7 +12,7 @@ const bundled = await build({
     plugin.onResolve({ filter: /^react$|useDataLeituras$|condominioService$|notificationService$|offlineQueueStorage$|cicloMensalService$/ }, args => ({ path: args.path, namespace: 'hook-test' }));
     plugin.onLoad({ filter: /.*/, namespace: 'hook-test' }, ({ path }) => {
       const prefix = 'const f=globalThis.__cicloHook; ';
-      if (path === 'react') return { contents: prefix + 'export const useState=f.useState; export const useMemo=cb=>cb(); export const useEffect=f.useEffect;' };
+      if (path === 'react') return { contents: prefix + 'export const useState=f.useState; export const useRef=value=>f.useState(()=>({current:value}))[0]; export const useMemo=cb=>cb(); export const useEffect=f.useEffect;' };
       if (path.endsWith('useDataLeituras')) return { contents: prefix + 'export const useDataLeituras=()=>f.date;' };
       if (path.endsWith('cicloMensalService')) return { contents: prefix + 'export const cicloMensalService=f.service;' };
       if (path.endsWith('condominioService')) return { contents: 'export const buscarCondominios=async()=>{throw new Error("offline")}; export const alternarStatusLeitura=()=>{}; export const atualizarCondominio=()=>{}; export const deletarCondominio=()=>{}; export const salvarCondominio=()=>{};' };

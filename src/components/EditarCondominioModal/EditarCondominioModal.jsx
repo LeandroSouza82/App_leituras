@@ -35,8 +35,8 @@ const buildFormState = (condominio) => ({
   endereco: condominio?.endereco || '',
   instrucoesAcesso: condominio?.instrucoesAcesso || '',
   contatoSindico: condominio?.contatoSindico || '',
-  latitude: condominio?.latitude || null,
-  longitude: condominio?.longitude || null,
+  latitude: condominio?.latitude ?? null,
+  longitude: condominio?.longitude ?? null,
 });
 
 const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'cadastro' }) => {
@@ -95,7 +95,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
         longitude: null,
       };
 
-      const sucesso = await onSave(condominio.id, dadosAtualizados);
+      const sucesso = await onSave(condominio.id, compartilhado ? { latitude: null, longitude: null } : dadosAtualizados);
 
       if (sucesso === false) {
         throw new Error('Falha no onSave');
@@ -136,36 +136,6 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
       return;
     }
 
-    const dadosDeCampo = {
-      endereco: form.endereco.trim(),
-      instrucoesAcesso: form.instrucoesAcesso.trim(),
-      contatoSindico: form.contatoSindico.trim(),
-    };
-
-    if (compartilhado) {
-      const alteracoes = Object.fromEntries(
-        Object.entries(dadosDeCampo).filter(([campo, valor]) => valor !== (condominio[campo] || '').trim())
-      );
-      if (Object.keys(alteracoes).length === 0) {
-        onClose();
-        return;
-      }
-
-      setSalvando(true);
-      setFeedback(null);
-      try {
-        if (await onSave(condominio.id, alteracoes) === false) {
-          setFeedback({ tipo: 'erro', mensagem: 'Não foi possível salvar as alterações. Tente novamente.' });
-          return;
-        }
-        showToast('Dados do condomínio atualizados!');
-        onClose();
-      } finally {
-        setSalvando(false);
-      }
-      return;
-    }
-
     if (!form.nome?.trim()) {
       setFeedback({ tipo: 'erro', mensagem: 'Informe o nome do condomínio.' });
       return;
@@ -173,7 +143,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
 
     const camposNumericos = [
       { nome: 'apartamentos', rotulo: 'apartamentos', valor: form.apartamentos },
-      { nome: 'valor', rotulo: 'valor', valor: form.valor },
+      ...(!compartilhado ? [{ nome: 'valor', rotulo: 'valor', valor: form.valor }] : []),
       { nome: 'diaLeitura', rotulo: 'dia da leitura', valor: form.diaLeitura },
     ];
     const valorNumerico = parseCurrencyToNumber(form.valor);
@@ -202,14 +172,24 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
       tipoLeitura: form.tipoLeitura,
       diaLeitura: String(form.diaLeitura).trim(),
       apartamentos: Number(form.apartamentos),
-      valor: valorNumerico,
-      ...dadosDeCampo,
+      ...(!compartilhado ? { valor: valorNumerico } : {}),
+      endereco: form.endereco.trim(),
+      instrucoesAcesso: form.instrucoesAcesso.trim(),
+      contatoSindico: form.contatoSindico.trim(),
     };
+
+    const alteracoes = compartilhado
+      ? Object.fromEntries(Object.entries(dadosAtualizados).filter(([campo, valor]) => valor !== condominio[campo]))
+      : dadosAtualizados;
+    if (Object.keys(alteracoes).length === 0) {
+      onClose();
+      return;
+    }
 
     setSalvando(true);
     setFeedback(null);
 
-    const sucesso = await onSave(condominio.id, dadosAtualizados);
+    const sucesso = await onSave(condominio.id, alteracoes);
     setSalvando(false);
 
     if (sucesso === false) {
@@ -237,7 +217,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
             <div className={`form-feedback form-feedback-${feedback.tipo}`}>{feedback.mensagem}</div>
           )}
 
-          {!compartilhado && <>
+          {!somenteValor && <>
           <label className="field field-full">
             <span>Nome do condomínio</span>
             <input name="nome" value={form.nome} onChange={handleChange} placeholder="Ex: Jardim das Flores" />
@@ -294,7 +274,7 @@ const EditarCondominioModal = ({ isOpen, onClose, condominio, onSave, modo = 'ca
             <input name="contatoSindico" value={form.contatoSindico} onChange={handleChange} placeholder="(11) 99999-9999" />
           </label>
 
-          {!compartilhado && form.latitude && form.longitude && (
+          {form.latitude != null && form.longitude != null && (
             <button
               type="button"
               onClick={handleLimparGps}

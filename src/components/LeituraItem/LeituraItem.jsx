@@ -279,7 +279,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                     <LocateFixed size={14} />
                     {temGps ? 'Atualizar GPS' : 'Capturar GPS'}
                   </button>
-                  {!leitura.compartilhado && <>
                   <div className="item-dropdown-divider" />
                   <button
                     type="button"
@@ -289,7 +288,6 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
                     <Trash2 size={14} />
                     Excluir
                   </button>
-                  </>}
                 </div>
               )}
             </div>
@@ -307,7 +305,9 @@ const LeituraItem = ({ leitura, onToggle, onDelete, onEdit, isFocused, focoTipo 
       <ModalConfirmacaoDestrutiva
         isOpen={mostrarModalDeletar}
         titulo="Excluir condomínio"
-        mensagem="Tem certeza que deseja excluir este condomínio? Essa ação não pode ser desfeita."
+        mensagem={leitura.compartilhado
+          ? 'Excluir este condomínio da sua lista? A equipe seguirá com acesso ao cadastro, às leituras e às fotos.'
+          : 'Tem certeza que deseja excluir este condomínio? Essa ação não pode ser desfeita.'}
         textoCancelar="Cancelar"
         textoConfirmar="Excluir"
         onConfirm={() => { onDelete(leitura.id); setMostrarModalDeletar(false); }}
